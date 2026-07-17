@@ -65,7 +65,9 @@
 
 ```text
 开发语言：Go
-HTTP 服务：Go net/http
+HTTP Server：Go net/http.Server
+Web 框架与路由：Gin
+视频流：Go http.ServeContent
 数据库：SQLite
 数据库访问：database/sql + SQLite 驱动
 媒体探测：ffprobe
@@ -73,10 +75,14 @@ HTTP 服务：Go net/http
 配置文件：YAML
 日志：结构化日志
 接口格式：JSON
+依赖注入：构造函数手动注入
 部署方式：Docker 优先，同时支持直接运行二进制
+服务端平台：Linux 和 Windows
 ```
 
-视频流优先使用 Go 标准库 `http.ServeContent`，它能够处理基于 `io.ReadSeeker` 的内容响应以及 Range、条件请求等逻辑，不需要手动解析 Range 请求。
+Gin 负责路由分组、参数解析、JSON 响应和 API 中间件。底层仍使用 `http.Server` 管理超时和优雅退出。视频流使用 Go 标准库 `http.ServeContent`，它能够处理基于 `io.ReadSeeker` 的内容响应以及 Range、HEAD 和条件请求，不手动解析 Range 请求。
+
+Gin 仅属于 API 适配层，不能进入 Service、Repository、Scanner、Job 或 Domain。官方文档：[Gin 路由](https://gin-gonic.com/en/docs/routing/)、[Gin 中间件](https://gin-gonic.com/en/docs/middleware/)。
 
 ---
 
@@ -152,6 +158,31 @@ POST /api/v1/sources/{id}/scan
 
 除 `/health` 外，所有 API 默认要求 Bearer Token。媒体源根目录必须位于配置的允许目录中；所有文件访问都必须阻止 `..`、绝对路径注入和符号链接逃逸。
 
+### 5.9 Web 框架边界
+
+Gin 只负责 HTTP 协议适配。Handler 将路由参数和请求体转换成业务参数，并将 `c.Request.Context()` 传入 Service。Service 不接收 `*gin.Context`，业务错误也不依赖 Gin 类型。
+
+```text
+net/http.Server
+→ gin.Engine
+→ Gin Middleware
+→ Gin Handler
+→ Service
+→ Repository / MediaSource / Jobs
+```
+
+### 5.10 依赖注入和全局状态
+
+第一版采用构造函数手动注入，不引入 Wire、Fx 或 Service Locator。`internal/app` 是唯一 Composition Root，负责按顺序创建依赖、启动 Worker 和 HTTP Server，并按相反顺序关闭资源。
+
+禁止使用全局数据库、全局配置、全局 Service 或在 Handler 内临时创建 Repository。需要替换或测试的外部边界通过接口注入。
+
+### 5.11 跨平台原则
+
+Linux 和 Windows 都是服务端支持平台。业务层统一使用 Go 跨平台 API；文件 ID、路径安全、系统信号和凭据权限等平台差异放在 `internal/platform` 中，通过构建标签或平台实现隔离。
+
+Docker 是 Linux 环境下的优先部署方式；Windows 支持直接运行二进制和后台服务方式。所有正式版本必须同时通过 Linux 与 Windows 测试矩阵。
+
 ---
 
 ## 6. 推荐目录结构
@@ -164,7 +195,9 @@ local-media-server/
 │
 ├── internal/
 │   ├── app/
-│   │   └── app.go
+│   │   ├── app.go
+│   │   ├── bootstrap.go
+│   │   └── lifecycle.go
 │   │
 │   ├── config/
 │   │   ├── config.go
@@ -172,6 +205,8 @@ local-media-server/
 │   │
 │   ├── api/
 │   │   ├── router.go
+│   │   ├── request.go
+│   │   ├── response.go
 │   │   ├── middleware/
 │   │   │   ├── auth.go
 │   │   │   ├── logging.go
@@ -238,6 +273,14 @@ local-media-server/
 │   │   ├── worker.go
 │   │   └── task.go
 │   │
+│   ├── platform/
+│   │   ├── fileid.go
+│   │   ├── fileid_unix.go
+│   │   ├── fileid_windows.go
+│   │   ├── path.go
+│   │   ├── path_unix.go
+│   │   └── path_windows.go
+│   │
 │   └── storage/
 │       ├── source.go
 │       └── local_source.go
@@ -246,14 +289,19 @@ local-media-server/
 │   └── 001_initial.sql
 │
 ├── configs/
-│   └── config.example.yaml
+│   ├── config.example.yaml
+│   └── config.windows.example.yaml
 │
 ├── api/
 │   └── openapi.yaml
 │
 ├── scripts/
 │   ├── dev.sh
-│   └── build.sh
+│   ├── build.sh
+│   ├── dev.ps1
+│   ├── build.ps1
+│   ├── install-service.ps1
+│   └── uninstall-service.ps1
 │
 ├── Dockerfile
 ├── docker-compose.yml
@@ -589,6 +637,296 @@ GET /api/v1/media/{id}/stream
 * 使用适合局域网媒体的 `Cache-Control`，缩略图可长期缓存，原始媒体默认私有缓存
 
 安全拼接必须同时验证词法路径和最终解析路径。不能只调用 `filepath.Join`；应使用 `filepath.Clean`、`filepath.Rel` 并检查符号链接解析结果，防止 `..`、绝对路径和链接逃出媒体源。
+
+---
+
+### 7.7 Gin API 模块
+
+Gin 负责路由、HTTP 参数、请求 DTO、响应 DTO 和中间件。使用 `gin.New()` 创建 Engine，不使用带默认日志和恢复逻辑的 `gin.Default()`；项目使用自己的结构化日志和 Recovery。
+
+```go
+func NewRouter(
+    health *handler.HealthHandler,
+    media *handler.MediaHandler,
+    sources *handler.SourceHandler,
+    scans *handler.ScanHandler,
+    tags *handler.TagHandler,
+    progress *handler.ProgressHandler,
+    stream *handler.StreamHandler,
+    auth gin.HandlerFunc,
+) *gin.Engine {
+    engine := gin.New()
+    engine.Use(
+        middleware.RequestID(),
+        middleware.Recovery(),
+        middleware.Logging(),
+    )
+
+    engine.GET("/health", health.Get)
+
+    api := engine.Group("/api/v1")
+    api.Use(auth)
+    {
+        api.GET("/media", media.List)
+        api.GET("/media/:id", media.Get)
+        api.PATCH("/media/:id/user-data", media.UpdateUserData)
+        api.PUT("/media/:id/progress", progress.Update)
+        api.GET("/media/:id/thumbnail", stream.Thumbnail)
+        api.GET("/media/:id/stream", stream.Stream)
+        api.HEAD("/media/:id/stream", stream.Stream)
+
+        api.GET("/sources", sources.List)
+        api.POST("/sources", sources.Create)
+        api.PATCH("/sources/:id", sources.Update)
+        api.DELETE("/sources/:id", sources.Delete)
+        api.POST("/sources/:id/scan", scans.Start)
+
+        api.GET("/tags", tags.List)
+        api.POST("/tags", tags.Create)
+        api.PATCH("/tags/:id", tags.Update)
+        api.DELETE("/tags/:id", tags.Delete)
+    }
+
+    return engine
+}
+```
+
+Gin Engine 作为标准 `http.Handler` 交给 `http.Server`：
+
+```go
+server := &http.Server{
+    Addr:              cfg.Server.Address(),
+    Handler:           router,
+    ReadHeaderTimeout: cfg.Server.ReadHeaderTimeout,
+    IdleTimeout:       cfg.Server.IdleTimeout,
+}
+```
+
+不直接调用 `engine.Run()`，这样可以统一管理超时、监听错误和优雅退出。视频流可能持续很长时间，不设置会截断正常播放的全局短 `WriteTimeout`；如果以后需要写入超时，应对普通 JSON API 和流接口分别设计。
+
+中间件顺序：
+
+```text
+Request ID
+→ Recovery
+→ Structured Logging
+→ CORS（仅配置了 Web 来源时）
+→ API Token（仅 /api/v1）
+→ Handler
+```
+
+Gin 的可信代理列表默认设为空。只有明确部署反向代理时才配置受信任的代理地址，不能无条件信任所有 `X-Forwarded-*` 请求头。
+
+Handler 规则：
+
+* 请求结构使用 API DTO，不直接绑定 Domain 或数据库结构体
+* 使用 Gin 完成参数读取和 JSON 绑定，再执行显式业务校验
+* 将 `c.Request.Context()` 传入 Service，以支持取消和客户端断开
+* 统一由响应组件转换业务错误，不在每个 Handler 复制错误 JSON
+* 限制 JSON 请求体大小，拒绝未知或非法字段
+* Handler 不打开数据库事务，不直接访问 Repository
+* Service 和下层模块禁止依赖 `gin.Context`、`gin.H` 或 Gin 错误类型
+
+视频流 Handler 使用：
+
+```go
+http.ServeContent(
+    c.Writer,
+    c.Request,
+    content.Name,
+    content.ModifiedAt,
+    content.Reader,
+)
+```
+
+流接口不挂载压缩或响应体包装中间件，Handler 调用 `ServeContent` 前不得写入响应体。GET 和 HEAD 都显式注册到同一个 Handler。
+
+API 测试使用 `net/http/httptest` 驱动完整的 Gin Engine，覆盖路由、认证、中间件、错误格式、HEAD 和 Range。
+
+---
+
+### 7.8 依赖注入与应用生命周期
+
+依赖注入使用普通 Go 构造函数。`cmd/server/main.go` 只负责加载启动参数、调用 `app.New`、运行和返回退出码；所有依赖组装集中在 `internal/app/bootstrap.go`。
+
+组装顺序：
+
+```text
+Config
+→ Logger
+→ Clock / ID Generator
+→ SQLite Database
+→ Repositories
+→ Asset Store / MediaSource Factory
+→ ffprobe / ffmpeg Process Runner
+→ Services
+→ Job Queue / Workers
+→ Gin Handlers
+→ Gin Router
+→ http.Server
+→ App
+```
+
+关闭顺序与创建顺序相反：
+
+```text
+停止接收 HTTP 请求
+→ 等待在途请求
+→ 停止领取新任务
+→ 等待或取消正在执行的 Worker
+→ 关闭任务队列
+→ 关闭数据库
+→ 刷新并关闭日志
+```
+
+构造函数示例：
+
+```go
+func NewMediaService(
+    mediaRepo MediaRepository,
+    userDataRepo UserDataRepository,
+    assetRepo AssetRepository,
+    sourceFactory MediaSourceFactory,
+    clock Clock,
+) *MediaService
+
+type MediaUseCase interface {
+    List(ctx context.Context, query MediaQuery) (MediaPage, error)
+    Get(ctx context.Context, mediaID string) (MediaDetail, error)
+    UpdateUserData(ctx context.Context, command UpdateUserDataCommand) error
+}
+
+func NewMediaHandler(service MediaUseCase) *MediaHandler
+
+func NewApp(cfg Config) (*App, error)
+```
+
+依赖注入规则：
+
+* 构造函数接收依赖并返回可用对象，缺少必需依赖时立即失败
+* 构造函数不启动 Goroutine 或监听端口，运行行为由 `App.Start` 统一触发
+* 接口定义在使用方或稳定业务边界，不为每个结构体机械创建接口
+* Repository 实现可以是具体类型，但 Service 依赖可替换的 Repository 接口
+* ffprobe、ffmpeg、时钟、ID、文件系统和任务调度器必须可替换
+* 配置加载完成后视为只读，通过构造函数传递需要的子配置
+* 不使用包级可变变量保存数据库、配置、Logger、Service 或 Gin Engine
+* 不在请求期间临时组装依赖
+* 循环依赖视为模块边界错误，不通过 Service Locator 规避
+
+Bootstrap 使用清理栈记录已经成功创建的资源。如果后续依赖构造失败，必须按相反顺序释放数据库、文件句柄和日志等已创建资源，再返回错误，避免启动失败时泄漏锁和句柄。
+
+测试注入：
+
+```text
+Handler 测试：注入 Fake Service 或受控 Service
+Service 测试：注入内存 Repository、Fake Clock、Fake ID Generator
+扫描测试：注入临时 MediaSource 和 Fake Probe
+任务测试：注入 Fake Process Runner，不启动真实 ffmpeg
+集成测试：使用临时 SQLite 数据库和真实迁移
+```
+
+`App` 持有需要关闭的顶层资源并负责生命周期，业务对象不自行读取环境变量或退出进程。只有 `main` 决定进程退出。
+
+---
+
+### 7.9 Windows 开发与兼容方案
+
+V1 正式支持 Windows x64 直接运行二进制。开发阶段支持控制台启动；正式发布提供 PowerShell 启停脚本和 Windows 后台服务安装说明。Windows ARM64 在建立独立测试矩阵后再列为正式支持。
+
+#### 路径和媒体源
+
+支持以下本地来源：
+
+```text
+D:\Media
+E:\Photos
+\\NAS\Videos
+```
+
+作为 Windows 后台服务运行时，用户会话中的映射盘符可能不可见，因此网络共享优先配置 UNC 路径，不推荐使用 `Z:\Videos`。运行服务的账户必须具有对应共享目录的读取权限。
+
+Windows 路径校验必须处理：
+
+* 盘符和 UNC Volume
+* 路径大小写不敏感
+* `.`、`..` 和混合路径分隔符
+* 符号链接、Junction 和其他 Reparse Point
+* 中文、空格和长路径
+* 不同 Volume 之间无法使用普通相对路径比较的情况
+
+白名单验证使用平台适配器完成规范化和最终目标校验。不能通过简单字符串前缀判断根目录关系；必须比较 Volume，并在解析链接后再次确认目标仍位于允许根目录。
+
+#### 文件身份
+
+文件身份使用平台实现：
+
+```text
+Windows：Volume 标识 + File ID
+Unix/Linux：device + inode
+无法稳定获得文件 ID：file_size + quick_hash
+```
+
+平台代码使用构建标签隔离。文件系统或网络共享无法提供稳定 File ID 时自动退回快速指纹，不因为缺少 File ID 阻止扫描。
+
+#### ffmpeg 和 ffprobe
+
+Windows 配置允许显式指定 `.exe`：
+
+```yaml
+media:
+  ffmpeg_path: 'C:\Tools\ffmpeg\bin\ffmpeg.exe'
+  ffprobe_path: 'C:\Tools\ffmpeg\bin\ffprobe.exe'
+```
+
+调用外部程序使用 `exec.CommandContext` 并逐个传递参数，不通过 `cmd.exe` 或 PowerShell 拼接命令字符串。这样可以正确处理空格、中文路径并降低命令注入风险。启动时检查可执行文件存在并验证版本命令可以正常运行。
+
+#### SQLite 和数据目录
+
+V1 优先选择无需用户安装 C 编译工具链、可以在 Linux 和 Windows 构建的 SQLite 驱动。如果最终选择依赖 CGO 的驱动，发布流程必须提供完整的 Windows 构建环境和预编译二进制，不能要求普通用户自行安装编译器。
+
+Windows 默认数据目录建议：
+
+```text
+C:\ProgramData\Luma\
+├── media.db
+├── thumbnails\
+├── cache\
+├── logs\
+└── secrets\
+```
+
+数据库、WAL、缓存和缩略图不能放在只读媒体目录或网络共享中。Token 文件需要限制为运行服务的账户和管理员可读；不能假设 `chmod 0600` 在 Windows 上等同于完整 ACL 控制。
+
+#### 构建、运行和服务
+
+仓库提供：
+
+```text
+scripts/dev.ps1
+scripts/build.ps1
+scripts/install-service.ps1
+scripts/uninstall-service.ps1
+configs/config.windows.example.yaml
+```
+
+PowerShell 脚本必须使用仓库内的确定路径，不依赖用户当前目录。开发模式使用控制台日志；后台服务模式写结构化文件日志并支持优雅停止。
+
+#### Windows 测试矩阵
+
+每次发布至少验证：
+
+* Windows 上启动、迁移、优雅退出和重启恢复
+* `D:\Media`、UNC、中文、空格和长路径
+* 路径大小写变化不会创建重复媒体
+* Junction/Reparse Point 无法逃出白名单
+* Windows File ID 与 quick hash 回退
+* ffmpeg/ffprobe 路径包含空格
+* 文件被播放器或复制程序占用时扫描不会崩溃
+* SQLite WAL、并发 Worker 和异常退出恢复
+* GET、HEAD、Range 和客户端中断
+* Windows 后台服务账户读取 UNC 共享
+
+CI 至少包含 Linux 与 Windows x64。平台相关测试不得只在 Linux 上使用路径字符串模拟。
 
 ---
 
@@ -1146,6 +1484,7 @@ server:
   port: 8080
   read_header_timeout: 10s
   idle_timeout: 60s
+  shutdown_timeout: 30s
 
 security:
   api_token_file: /data/secrets/api_token
@@ -1192,9 +1531,51 @@ workers:
 
 `allowed_origins` 为空时不发送 CORS 允许头。移动 App 不依赖浏览器 CORS；只有明确部署 Web 客户端时才配置允许来源。
 
+Windows 示例 `configs/config.windows.example.yaml`：
+
+```yaml
+server:
+  host: 0.0.0.0
+  port: 8080
+  read_header_timeout: 10s
+  idle_timeout: 60s
+  shutdown_timeout: 30s
+
+security:
+  api_token_file: 'C:\ProgramData\Luma\secrets\api_token'
+  allowed_origins: []
+  allowed_roots:
+    - 'D:\Media'
+    - '\\NAS\Videos'
+
+database:
+  path: 'C:\ProgramData\Luma\media.db'
+  busy_timeout_ms: 5000
+  wal: true
+
+storage:
+  thumbnail_dir: 'C:\ProgramData\Luma\thumbnails'
+  cache_dir: 'C:\ProgramData\Luma\cache'
+
+media:
+  ffmpeg_path: 'C:\Tools\ffmpeg\bin\ffmpeg.exe'
+  ffprobe_path: 'C:\Tools\ffmpeg\bin\ffprobe.exe'
+  thumbnail_width: 640
+
+workers:
+  scan: 1
+  probe: 2
+  thumbnail: 1
+  lock_timeout: 10m
+```
+
+Windows 路径在 YAML 中优先使用单引号，避免反斜杠被当作转义字符。生产环境通过启动参数显式指定配置文件，不依赖当前工作目录。
+
 ---
 
-## 12. Docker 部署方案
+## 12. 部署方案
+
+### 12.1 Docker
 
 ```yaml
 services:
@@ -1222,6 +1603,45 @@ services:
 └── logs/
 ```
 
+### 12.2 Windows
+
+Windows 发布包：
+
+```text
+luma-server-windows-amd64.zip
+├── luma-server.exe
+├── config.example.yaml
+├── install-service.ps1
+├── uninstall-service.ps1
+└── README-Windows.md
+```
+
+首次运行流程：
+
+```text
+解压发布包
+→ 安装 ffmpeg/ffprobe 或配置现有路径
+→ 复制并修改 Windows 示例配置
+→ 在控制台执行配置检查
+→ 启动服务并确认 /health
+→ 按需安装为 Windows 后台服务
+```
+
+配置检查命令应只验证配置、目录、数据库可写性和外部程序，不启动长期运行的 HTTP 服务：
+
+```powershell
+.\luma-server.exe validate --config 'C:\ProgramData\Luma\config.yaml'
+```
+
+后台服务使用专用低权限账户运行。该账户需要：
+
+* 数据目录读写权限
+* Token 文件读取权限
+* 本地或 UNC 媒体目录只读权限
+* ffmpeg 和 ffprobe 执行权限
+
+安装脚本必须可重复执行并明确显示服务账户、配置文件和数据目录，不得静默授予整个磁盘的宽泛权限。卸载服务默认保留数据库、缩略图和配置，删除数据必须是单独且显式的操作。
+
 ---
 
 ## 13. 开发顺序
@@ -1233,6 +1653,10 @@ services:
 * Go 项目初始化
 * 配置加载
 * 日志
+* Gin Engine、路由分组和中间件
+* `http.Server` 启动与关闭
+* `internal/app` Composition Root
+* 构造函数手动依赖注入
 * SQLite 初始化
 * 数据库迁移
 * `/health`
@@ -1241,6 +1665,7 @@ services:
 * 媒体目录白名单
 * WAL、foreign_keys 和 busy_timeout
 * 优雅退出
+* Linux Shell 和 Windows PowerShell 开发脚本
 
 验收：
 
@@ -1248,6 +1673,9 @@ services:
 服务能启动
 数据库能自动创建
 配置错误时给出明确日志
+Linux 和 Windows 都能运行 `/health`
+Gin Handler 之外的模块不依赖 Gin
+应用启动和关闭顺序可由集成测试验证
 未认证请求无法访问业务 API
 白名单外目录无法创建为媒体源
 ```
@@ -1264,6 +1692,7 @@ services:
 * scan_id 和原子 missing 标记
 * 文件 ID 与快速指纹
 * 文件改名和移动识别
+* Windows 盘符、UNC 和 Reparse Point 处理
 
 验收：
 
@@ -1274,6 +1703,8 @@ services:
 文件暂时消失不会直接删除用户数据
 文件改名后仍保留原媒体 ID 和用户数据
 扫描失败或中断不会批量标记 missing
+Windows 路径大小写变化不会创建重复媒体
+UNC 来源可读取且无法通过 Junction 逃出白名单
 ```
 
 ### 阶段 3：元数据和缩略图
@@ -1283,6 +1714,7 @@ services:
 * ffprobe 调用
 * ffprobe JSON 解析
 * ffmpeg 缩略图
+* `exec.CommandContext` 跨平台进程执行器
 * SQLite 持久化任务队列
 * media_assets
 * 媒体状态更新
@@ -1297,6 +1729,7 @@ services:
 处理失败不会导致服务崩溃
 服务重启后未完成任务能够恢复
 数据库中不保存缩略图绝对路径
+Windows 可执行文件和媒体路径包含空格时仍能正常处理
 ```
 
 ### 阶段 4：媒体 API
@@ -1311,6 +1744,8 @@ services:
 * 文件名搜索
 * 缩略图接口
 * OpenAPI 契约
+* Gin DTO 绑定、校验和统一错误响应
+* Gin Router 集成测试
 
 验收：
 
@@ -1318,6 +1753,7 @@ services:
 客户端能够展示媒体网格
 列表接口不返回真实绝对路径
 相同 Cursor 不会因并列排序产生重复或遗漏
+路由、中间件和认证可通过 httptest 验证
 ```
 
 ### 阶段 5：视频流
@@ -1325,6 +1761,7 @@ services:
 完成：
 
 * Stream 接口
+* Gin Stream Handler
 * HTTP Range
 * HEAD
 * MIME 类型
@@ -1340,6 +1777,7 @@ services:
 跳转到视频中间位置时不必重新下载完整文件
 GET、HEAD 和条件请求行为正确
 无法通过构造路径读取媒体源外文件
+Gin 中间件不会压缩、缓冲或截断流响应
 ```
 
 ### 阶段 6：用户数据
@@ -1400,6 +1838,10 @@ WebP
 * 两个相同大小文件的快速指纹冲突
 * 原始目录暂时不可访问
 * 中文路径和空格路径
+* Windows 盘符和 UNC 路径
+* Windows 路径大小写变化
+* Windows 长路径
+* Junction 和 Reparse Point
 * `..` 路径穿越
 * 绝对路径注入
 * 指向媒体源外部的符号链接
@@ -1407,6 +1849,12 @@ WebP
 * 多个客户端同时播放
 * SQLite 写入繁忙和并发任务领取
 * Cursor 并列排序和翻页期间新增媒体
+* Gin 路由分组和中间件执行顺序
+* Gin JSON 绑定、未知字段和请求体大小限制
+* Gin Recovery 后错误格式与请求 ID
+* Composition Root 创建失败时已创建资源正确关闭
+* Linux 和 Windows x64 CI
+* Windows 后台服务启动、停止和 UNC 权限
 
 ---
 
@@ -1415,6 +1863,9 @@ WebP
 满足以下条件即可认为后端第一版完成：
 
 * 可以添加一个本地媒体目录
+* 使用 Gin 统一管理路由、中间件、参数和响应
+* `net/http.Server` 能够优雅启动和关闭 Gin Engine
+* 应用依赖由 Composition Root 通过构造函数注入，无全局可变服务
 * 可以手动触发扫描
 * 可以增量更新媒体索引
 * 文件改名或移动后尽量保留媒体 ID 和用户数据
@@ -1434,3 +1885,5 @@ WebP
 * 数据库不保存可迁移数据目录中的绝对资产路径
 * 除健康检查外的接口需要 API Token
 * 无法读取允许目录之外的文件
+* Windows x64 可以直接运行、扫描本地盘符和 UNC 来源
+* Linux 和 Windows 测试矩阵均通过
