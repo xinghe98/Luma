@@ -1,0 +1,40 @@
+# 本配置仅用于本地开发，通过 Air 监听源码并重启 API 服务。
+root = "."
+tmp_dir = ".cache/air"
+
+[build]
+# 每次变更后仅重新构建服务端入口，构建产物与日志统一放入可清理缓存目录。
+cmd = "go build -o ./.cache/air/luma-server.exe ./cmd/server"
+bin = ".cache/air/luma-server.exe"
+# 默认参数与原开发脚本保持一致，额外参数可由 dev 脚本继续传入。
+args_bin = ["-config", "configs/config.yaml", "-log-format", "text"]
+# Go 源码、配置和嵌入式迁移变化时均重新构建并启动服务。
+include_ext = ["go", "yaml", "yml", "sql"]
+include_dir = ["api", "cmd", "configs", "internal", "migrations"]
+# 模块依赖文件没有受监听的扩展名，因此需要显式加入。
+include_file = ["go.mod", "go.sum"]
+exclude_dir = [".cache", "data", "dist", "vendor"]
+exclude_regex = ["_test\\.go$"]
+exclude_unchanged = true
+follow_symlink = false
+log = "air.log"
+# 合并短时间内的连续保存事件，避免同一次编辑触发多次构建。
+delay = 300
+stop_on_error = true
+# Unix 平台先发送中断信号，以复用应用现有的优雅关闭流程；Windows 由 Air 负责终止旧进程。
+send_interrupt = true
+# 预留超过服务端 30 秒关闭期限的时间，随后再强制清理旧进程。
+kill_delay = 35000000000
+
+[log]
+# Air 自身日志显示时间，便于区分多次重载。
+time = true
+
+[misc]
+# 退出开发进程时删除 Air 的临时构建产物。
+clean_on_exit = true
+
+[screen]
+# 重载时保留历史日志，便于定位上一次运行失败原因。
+clear_on_rebuild = false
+keep_scroll = true

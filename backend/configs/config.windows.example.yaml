@@ -1,0 +1,40 @@
+# 本配置展示 Windows 本地盘符、UNC 路径和显式工具路径写法。
+server:
+  host: 0.0.0.0
+  port: 8080
+  read_header_timeout: 10s
+  idle_timeout: 60s
+  shutdown_timeout: 30s
+
+# Windows 路径使用 YAML 单引号，避免反斜杠转义。
+security:
+  api_token_file: 'C:\ProgramData\Luma\secrets\api_token'
+  allowed_origins: []
+  allowed_roots:
+    - 'D:\Media'
+    - '\\NAS\Videos'
+
+# 数据库和 Token 建议放在服务账户可写的 ProgramData 目录。
+database:
+  path: 'C:\ProgramData\Luma\media.db'
+  busy_timeout_ms: 5000
+  wal: true
+
+# 衍生数据不得写入只读媒体源或网络共享。
+storage:
+  thumbnail_dir: 'C:\ProgramData\Luma\thumbnails'
+  cache_dir: 'C:\ProgramData\Luma\cache'
+
+# 后台服务不依赖用户 PATH，因此显式指定媒体工具路径。
+media:
+  ffmpeg_path: 'C:\Tools\ffmpeg\bin\ffmpeg.exe'
+  ffprobe_path: 'C:\Tools\ffmpeg\bin\ffprobe.exe'
+  thumbnail_width: 640
+  scan_extensions: [mp4, mkv, mov, avi, webm, m4v, ts, jpg, jpeg, png, webp, gif, bmp]
+
+# Worker 数量控制后台媒体处理的资源占用。
+workers:
+  scan: 1
+  probe: 2
+  thumbnail: 1
+  lock_timeout: 10m

@@ -1,0 +1,13 @@
+backend/data/*
+!backend/data/media/
+backend/data/media/*
+!backend/data/media/.gitkeep
+backend/dist/
+backend/.cache/
+backend/*.db
+backend/*.db-shm
+backend/*.db-wal
+backend/configs/config.yaml
+*.log
+.idea/
+.vscode/

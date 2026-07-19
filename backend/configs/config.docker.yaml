@@ -1,0 +1,28 @@
+# 本配置用于容器部署：/media 只读，/data 持久化且可写。
+server:
+  host: 0.0.0.0
+  port: 8080
+  read_header_timeout: 10s
+  idle_timeout: 60s
+  shutdown_timeout: 30s
+security:
+  api_token_file: /data/secrets/api_token
+  allowed_origins: []
+  allowed_roots: [/media]
+database:
+  path: /data/media.db
+  busy_timeout_ms: 5000
+  wal: true
+storage:
+  thumbnail_dir: /data/thumbnails
+  cache_dir: /data/cache
+media:
+  ffmpeg_path: ffmpeg
+  ffprobe_path: ffprobe
+  thumbnail_width: 640
+  scan_extensions: [mp4, mkv, mov, avi, webm, m4v, ts, jpg, jpeg, png, webp, gif, bmp]
+workers:
+  scan: 1
+  probe: 2
+  thumbnail: 1
+  lock_timeout: 10m

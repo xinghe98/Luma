@@ -1,0 +1,21 @@
+# 本文件提供本地单节点部署，并将媒体目录以只读方式挂载。
+services:
+  luma-server:
+    build:
+      context: .
+    ports:
+      - "8080:8080"
+    volumes:
+      - luma-data:/data
+      - ./data/media:/media:ro
+    restart: unless-stopped
+    # 健康检查只访问不需要 Token 的存活端点。
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:8080/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  luma-data:

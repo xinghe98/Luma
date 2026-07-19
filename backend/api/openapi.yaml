@@ -1,0 +1,832 @@
+# Luma V0.1 系统接口契约；后续业务端点继续在同一文件扩展。
+openapi: 3.1.0
+info:
+  title: Luma Local Media API
+  version: 0.1.0
+servers:
+  - url: /
+paths:
+  /health:
+    get:
+      summary: 查询服务进程存活状态
+      responses:
+        "200":
+          description: 服务进程正常运行
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Health"
+  /api/v1/system/info:
+    get:
+      summary: 查询服务端运行信息
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: 服务端运行信息
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /api/v1/sources:
+    get:
+      summary: 查询媒体源列表
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: 不包含真实根路径的媒体源列表
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/Source" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      summary: 创建本地媒体源
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateSource" }
+      responses:
+        "201":
+          description: 媒体源已创建
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Source" }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "403": { $ref: "#/components/responses/ForbiddenPath" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /api/v1/sources/{id}:
+    parameters:
+      - $ref: "#/components/parameters/SourceID"
+    patch:
+      summary: 更新或重新启用媒体源
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateSource" }
+      responses:
+        "200":
+          description: 更新后的媒体源
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Source" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      summary: 软禁用媒体源并保留全部索引
+      security: [{ bearerAuth: [] }]
+      responses:
+        "204": { description: 媒体源已禁用 }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/v1/sources/{id}/scan:
+    parameters:
+      - $ref: "#/components/parameters/SourceID"
+    post:
+      summary: 创建异步媒体源扫描任务
+      security: [{ bearerAuth: [] }]
+      responses:
+        "202":
+          description: 扫描任务已持久化并等待执行
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ScanJob" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /api/v1/scan-jobs/latest:
+    get:
+      summary: 查询最近扫描任务
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: query
+          name: source_id
+          schema: { type: string }
+      responses:
+        "200":
+          description: 最近扫描任务
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ScanJob" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/v1/scan-jobs/{id}:
+    get:
+      summary: 查询扫描任务状态和进度
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: 扫描任务详情
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ScanJob" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/v1/media:
+    get:
+      summary: 查询媒体列表
+      description: |
+        默认排除状态为 missing 的媒体，以及已禁用或软删除来源下的媒体。
+        sort=duration 时仅包含 duration 已稳定的行（duration_ms 非空，或 status 为 ready/failed）。
+        sort=file_size 时仅包含 status 为 ready/failed 的行。
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: query
+          name: q
+          description: 按文件名搜索，最多 200 个字符。
+          schema: { type: string, maxLength: 200 }
+        - in: query
+          name: type
+          schema: { type: string, enum: [video, image] }
+        - in: query
+          name: favorite
+          description: true 仅返回收藏媒体；false 包含未创建用户数据的媒体。
+          schema: { type: boolean }
+        - in: query
+          name: tag_id
+          description: 仅返回关联当前用户指定标签的媒体。
+          schema: { type: string, maxLength: 200 }
+        - in: query
+          name: sort
+          description: created_at/filename 含处理中媒体；duration/file_size 仅含排序键已稳定的行。
+          schema:
+            type: string
+            enum: [created_at, filename, duration, file_size]
+            default: created_at
+        - in: query
+          name: order
+          schema: { type: string, enum: [asc, desc], default: desc }
+        - in: query
+          name: cursor
+          description: 上一页返回的不透明游标；筛选或排序条件改变后不可复用。
+          schema: { type: string }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+      responses:
+        "200":
+          description: 媒体列表
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MediaPage" }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /api/v1/media/continue-watching:
+    get:
+      summary: 查询继续观看列表
+      description: 返回有进度、未完成且当前可见的视频，按最近播放时间和媒体 ID 降序稳定分页。
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: query
+          name: cursor
+          description: 与当前用户和继续观看集合绑定的不透明游标。
+          schema: { type: string }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+      responses:
+        "200":
+          description: 继续观看媒体列表
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MediaPage" }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /api/v1/media/{id}:
+    parameters:
+      - $ref: "#/components/parameters/MediaID"
+    get:
+      summary: 查询媒体详情
+      description: missing 媒体及已禁用或软删除来源下的媒体视为不存在。
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: 媒体详情
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MediaDetail" }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/MediaNotFound" }
+  /api/v1/media/{id}/thumbnail:
+    parameters:
+      - $ref: "#/components/parameters/MediaID"
+    get:
+      summary: 获取媒体缩略图
+      description: |
+        返回当前可用的默认图片资产；支持使用 If-None-Match 进行 ETag 条件请求。
+        若资产已记录内容哈希且 If-None-Match 命中，服务端可直接返回 304 而不读取文件体。
+        内容变更重新生成完成前，仍可能提供上一份 ready 缩略图。
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: header
+          name: If-None-Match
+          description: 客户端缓存的缩略图 ETag。
+          schema: { type: string }
+      responses:
+        "200":
+          description: 缩略图二进制内容
+          headers:
+            ETag:
+              description: 当前缩略图资产的强 ETag。
+              schema: { type: string }
+            Cache-Control:
+              description: 固定为 private, max-age=604800, must-revalidate。
+              schema: { type: string, const: "private, max-age=604800, must-revalidate" }
+          content:
+            image/*:
+              schema: { type: string, format: binary }
+        "304":
+          description: If-None-Match 与当前 ETag 匹配，无响应体。
+          headers:
+            ETag:
+              schema: { type: string }
+            Cache-Control:
+              schema: { type: string, const: "private, max-age=604800, must-revalidate" }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/MediaOrThumbnailNotFound" }
+  /api/v1/media/{id}/stream:
+    parameters:
+      - $ref: "#/components/parameters/MediaID"
+    get:
+      summary: 播放原始视频
+      description: |
+        仅服务可见的视频原文件，支持标准单段 HTTP Range、条件请求和进度跳转。
+        discovered、probing、thumbnailing、ready、failed 状态均可 Direct Play；图片和不可见媒体返回 404。
+        弱 ETag 与 Content-Length 均基于打开瞬间的 size/mtime 快照；媒体源根目录不可访问时返回 503 SOURCE_OFFLINE。
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: header
+          name: Range
+          schema: { type: string, examples: ["bytes=0-1048575"] }
+        - in: header
+          name: If-None-Match
+          schema: { type: string }
+        - in: header
+          name: If-Modified-Since
+          schema: { type: string }
+        - in: header
+          name: If-Range
+          description: 弱 ETag 不能用于 If-Range 强比较；客户端可使用 Last-Modified 日期。
+          schema: { type: string }
+      responses:
+        "200":
+          description: 完整视频内容
+          headers:
+            Accept-Ranges: { schema: { type: string, const: bytes } }
+            Content-Length: { schema: { type: integer, format: int64 } }
+            ETag: { schema: { type: string }, description: 由打开瞬间文件大小和秒级修改时间生成的弱 ETag。 }
+            Last-Modified: { schema: { type: string } }
+            Cache-Control: { schema: { type: string, const: "private, max-age=0, must-revalidate" } }
+          content:
+            video/*:
+              schema: { type: string, format: binary }
+        "206":
+          description: Range 指定的部分视频内容
+          headers:
+            Accept-Ranges: { schema: { type: string, const: bytes } }
+            Content-Length: { schema: { type: integer, format: int64 } }
+            Content-Range: { schema: { type: string } }
+            ETag: { schema: { type: string } }
+            Last-Modified: { schema: { type: string } }
+            Cache-Control: { schema: { type: string, const: "private, max-age=0, must-revalidate" } }
+          content:
+            video/*:
+              schema: { type: string, format: binary }
+        "304":
+          description: 条件请求命中，无响应体
+          headers:
+            ETag: { schema: { type: string } }
+            Last-Modified: { schema: { type: string } }
+            Cache-Control: { schema: { type: string, const: "private, max-age=0, must-revalidate" } }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/MediaNotFound" }
+        "416":
+          description: Range 不可满足；Content-Range 为 bytes */快照文件大小，响应体由 Go 标准库生成。
+          headers:
+            Content-Range: { schema: { type: string } }
+        "503":
+          description: 媒体源根目录当前不可访问，error.code 为 SOURCE_OFFLINE
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+    head:
+      summary: 查询原始视频响应元数据
+      description: 与 GET 使用相同的认证、可见性和条件请求语义，但不返回响应体。
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: header
+          name: If-None-Match
+          schema: { type: string }
+        - in: header
+          name: If-Modified-Since
+          schema: { type: string }
+      responses:
+        "200":
+          description: 视频响应元数据
+          headers:
+            Accept-Ranges: { schema: { type: string, const: bytes } }
+            Content-Length: { schema: { type: integer, format: int64 } }
+            ETag: { schema: { type: string } }
+            Last-Modified: { schema: { type: string } }
+            Cache-Control: { schema: { type: string, const: "private, max-age=0, must-revalidate" } }
+        "304": { description: 条件请求命中，无响应体 }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/MediaNotFound" }
+        "503":
+          description: 媒体源根目录当前不可访问，error.code 为 SOURCE_OFFLINE
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+  /api/v1/media/{id}/original:
+    parameters:
+      - $ref: "#/components/parameters/MediaID"
+    get:
+      summary: 浏览原始图片
+      description: |
+        仅服务可见的图片原文件，支持 HTTP Range 和条件请求；视频和不可见媒体返回 404。
+        discovered、probing、thumbnailing、ready、failed 状态均可读取原图，不依赖缩略图处理结果。
+        弱 ETag 与 Content-Length 均基于打开瞬间的 size/mtime 快照；媒体源根目录不可访问时返回 503 SOURCE_OFFLINE。
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: header
+          name: Range
+          schema: { type: string, examples: ["bytes=0-1048575"] }
+        - in: header
+          name: If-None-Match
+          schema: { type: string }
+        - in: header
+          name: If-Modified-Since
+          schema: { type: string }
+        - in: header
+          name: If-Range
+          description: 弱 ETag 不能用于 If-Range 强比较；客户端可使用 Last-Modified 日期。
+          schema: { type: string }
+      responses:
+        "200":
+          description: 完整原始图片
+          headers:
+            Accept-Ranges: { schema: { type: string, const: bytes } }
+            Content-Length: { schema: { type: integer, format: int64 } }
+            ETag: { schema: { type: string }, description: 由打开瞬间文件大小和秒级修改时间生成的弱 ETag。 }
+            Last-Modified: { schema: { type: string } }
+            Cache-Control: { schema: { type: string, const: "private, max-age=0, must-revalidate" } }
+            X-Content-Type-Options: { schema: { type: string, const: nosniff } }
+          content:
+            image/*:
+              schema: { type: string, format: binary }
+        "206":
+          description: Range 指定的部分图片内容
+          headers:
+            Accept-Ranges: { schema: { type: string, const: bytes } }
+            Content-Length: { schema: { type: integer, format: int64 } }
+            Content-Range: { schema: { type: string } }
+            ETag: { schema: { type: string } }
+            Last-Modified: { schema: { type: string } }
+            Cache-Control: { schema: { type: string, const: "private, max-age=0, must-revalidate" } }
+            X-Content-Type-Options: { schema: { type: string, const: nosniff } }
+          content:
+            image/*:
+              schema: { type: string, format: binary }
+        "304":
+          description: 条件请求命中，无响应体
+          headers:
+            ETag: { schema: { type: string } }
+            Last-Modified: { schema: { type: string } }
+            Cache-Control: { schema: { type: string, const: "private, max-age=0, must-revalidate" } }
+            X-Content-Type-Options: { schema: { type: string, const: nosniff } }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/MediaNotFound" }
+        "416":
+          description: Range 不可满足；Content-Range 为 bytes */快照文件大小，响应体由 Go 标准库生成。
+          headers:
+            Content-Range: { schema: { type: string } }
+        "503":
+          description: 媒体源根目录当前不可访问，error.code 为 SOURCE_OFFLINE
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+    head:
+      summary: 查询原始图片响应元数据
+      description: 与 GET 使用相同的认证、可见性和条件请求语义，但不返回响应体。
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: header
+          name: If-None-Match
+          schema: { type: string }
+        - in: header
+          name: If-Modified-Since
+          schema: { type: string }
+      responses:
+        "200":
+          description: 原始图片响应元数据
+          headers:
+            Accept-Ranges: { schema: { type: string, const: bytes } }
+            Content-Length: { schema: { type: integer, format: int64 } }
+            ETag: { schema: { type: string } }
+            Last-Modified: { schema: { type: string } }
+            Cache-Control: { schema: { type: string, const: "private, max-age=0, must-revalidate" } }
+            X-Content-Type-Options: { schema: { type: string, const: nosniff } }
+        "304": { description: 条件请求命中，无响应体 }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/MediaNotFound" }
+        "503":
+          description: 媒体源根目录当前不可访问，error.code 为 SOURCE_OFFLINE
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+  /api/v1/media/{id}/user-data:
+    parameters:
+      - $ref: "#/components/parameters/MediaID"
+    get:
+      summary: 查询媒体用户数据
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: 当前用户的完整媒体数据；无记录时 revision 为 0。
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MediaUserData" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/MediaNotFound" }
+    patch:
+      summary: 原子修改用户数据和媒体标签
+      description: 字段缺失表示保持不变；custom_title/notes 为 null 表示清除；tag_ids 表示完整替换。base_revision 不匹配返回 409。
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateMediaUserData" }
+      responses:
+        "200":
+          description: 更新后的完整用户数据
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MediaUserData" }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404":
+          description: 媒体不存在时 error.code 为 MEDIA_NOT_FOUND；tag_ids 含不存在或不属于当前用户的标签时为 TAG_NOT_FOUND。
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /api/v1/media/{id}/progress:
+    parameters:
+      - $ref: "#/components/parameters/MediaID"
+    put:
+      summary: 保存视频播放进度
+      description: |
+        在同一事务内读取服务端媒体时长后截断 position_ms；达到时长 90% 自动完成。
+        与 PATCH /user-data 共用 media_user_data.revision；旧 base_revision 返回 409 REVISION_CONFLICT。
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateProgress" }
+      responses:
+        "200":
+          description: 更新后的完整用户数据
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MediaUserData" }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/MediaNotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422":
+          description: 目标媒体不是可播放视频，error.code 为 MEDIA_NOT_PLAYABLE。
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+  /api/v1/tags:
+    get:
+      summary: 查询当前用户标签
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: 标签列表
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/Tag" } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      summary: 创建标签
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateTag" }
+      responses:
+        "201":
+          description: 已创建标签
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Tag" }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /api/v1/tags/{id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string }
+    patch:
+      summary: 重命名标签
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateTag" }
+      responses:
+        "200":
+          description: 更新后的标签
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Tag" }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+    delete:
+      summary: 删除标签和关联关系
+      security: [{ bearerAuth: [] }]
+      responses:
+        "204": { description: 标签已删除 }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+  schemas:
+    Health:
+      type: object
+      required: [status, version]
+      properties:
+        status:
+          type: string
+          const: ok
+        version:
+          type: string
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message, details]
+          properties:
+            code: { type: string }
+            message: { type: string }
+            details: {}
+    CreateSource:
+      type: object
+      additionalProperties: false
+      required: [name, root_path]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 200 }
+        root_path: { type: string, minLength: 1 }
+    UpdateSource:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        name: { type: string, minLength: 1, maxLength: 200 }
+        root_path: { type: string, minLength: 1 }
+        enabled: { type: boolean }
+    Source:
+      type: object
+      required: [id, name, type, enabled, status, created_at, updated_at]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        type: { type: string, const: local }
+        enabled: { type: boolean }
+        status: { type: string, enum: [online, offline, degraded, disabled] }
+        last_scan_id: { type: string }
+        last_seen_at: { type: string, format: date-time }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    ScanJob:
+      type: object
+      required: [id, source_id, status, phase, discovered_count, processed_count, failed_count, created_at, updated_at, processing]
+      properties:
+        id: { type: string }
+        source_id: { type: string }
+        status: { type: string, enum: [pending, running, completed, failed, cancelled, interrupted] }
+        phase: { type: string }
+        discovered_count: { type: integer, format: int64, minimum: 0 }
+        processed_count: { type: integer, format: int64, minimum: 0 }
+        failed_count: { type: integer, format: int64, minimum: 0 }
+        started_at: { type: string, format: date-time }
+        finished_at: { type: string, format: date-time }
+        error_code: { type: string }
+        error_message: { type: string }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+        processing: { $ref: "#/components/schemas/ProcessingSummary" }
+    ProcessingSummary:
+      type: object
+      required: [status, total, discovered, probing, thumbnailing, ready, failed]
+      properties:
+        status: { type: string, enum: [pending, running, completed, completed_with_errors] }
+        total: { type: integer, format: int64, minimum: 0 }
+        discovered: { type: integer, format: int64, minimum: 0 }
+        probing: { type: integer, format: int64, minimum: 0 }
+        thumbnailing: { type: integer, format: int64, minimum: 0 }
+        ready: { type: integer, format: int64, minimum: 0 }
+        failed: { type: integer, format: int64, minimum: 0 }
+    MediaPage:
+      type: object
+      additionalProperties: false
+      required: [items, next_cursor]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/MediaSummary" }
+        next_cursor:
+          type: [string, "null"]
+          description: 下一页的不透明游标；没有下一页时为 null。
+    MediaSummary:
+      type: object
+      required: [id, title, filename, media_type, duration_ms, width, height, thumbnail_url, stream_url, original_url, favorite, progress_ms, completed, last_played_at, user_data_revision, status]
+      properties:
+        id: { type: string }
+        title: { type: string, description: 按 custom_title、detected_title、filename 顺序计算的展示标题。 }
+        filename: { type: string }
+        media_type: { type: string, enum: [video, image] }
+        duration_ms: { type: [integer, "null"], format: int64, minimum: 0 }
+        width: { type: [integer, "null"], minimum: 1 }
+        height: { type: [integer, "null"], minimum: 1 }
+        thumbnail_url:
+          type: string
+          description: 当前媒体的缩略图端点；不存在 ready 默认缩略图资产时为空字符串。
+        stream_url:
+          type: [string, "null"]
+          description: 视频的 Direct Play 地址；图片固定为 null。
+        original_url:
+          type: [string, "null"]
+          description: 图片原文件地址；视频固定为 null。
+        favorite: { type: boolean, description: 读取现有用户数据；无记录时为 false。 }
+        progress_ms: { type: integer, format: int64, minimum: 0, description: 读取现有用户数据；无记录时为 0。 }
+        completed: { type: boolean, description: 是否已达到服务端完成阈值。 }
+        last_played_at: { type: [string, "null"], format: date-time }
+        user_data_revision: { type: integer, format: int64, minimum: 0 }
+        status: { type: string, enum: [discovered, probing, thumbnailing, ready, failed] }
+    MediaDetail:
+      allOf:
+        - $ref: "#/components/schemas/MediaSummary"
+        - type: object
+          required: [source_id, mime_type, file_size, video_codec, audio_codec, container, bitrate, frame_rate_num, frame_rate_den, audio_track_count, orientation, captured_at, created_at, indexed_at]
+          properties:
+            source_id: { type: string }
+            mime_type: { type: string }
+            file_size: { type: integer, format: int64, minimum: 0 }
+            video_codec: { type: string }
+            audio_codec: { type: string }
+            container: { type: string }
+            bitrate: { type: integer, format: int64, minimum: 0 }
+            frame_rate_num: { type: [integer, "null"] }
+            frame_rate_den: { type: [integer, "null"], minimum: 1 }
+            audio_track_count: { type: [integer, "null"], minimum: 0 }
+            orientation: { type: [integer, "null"] }
+            captured_at: { type: [string, "null"], format: date-time }
+            created_at: { type: string, format: date-time, description: 媒体首次进入媒体库的时间。 }
+            indexed_at: { type: [string, "null"], format: date-time }
+    Tag:
+      type: object
+      additionalProperties: false
+      required: [id, name, usage_count, revision, created_at, updated_at]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        usage_count: { type: integer, format: int64, minimum: 0 }
+        revision: { type: integer, format: int64, minimum: 1 }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    MediaUserData:
+      type: object
+      additionalProperties: false
+      required: [media_id, custom_title, favorite, notes, progress_ms, completed, last_played_at, tags, revision, created_at, updated_at]
+      properties:
+        media_id: { type: string }
+        custom_title: { type: [string, "null"], maxLength: 200 }
+        favorite: { type: boolean }
+        notes: { type: [string, "null"], maxLength: 20000, description: 另有 64 KiB UTF-8 字节上限；只有 null 表示清除，空字符串会原样保存。 }
+        progress_ms: { type: integer, format: int64, minimum: 0 }
+        completed: { type: boolean }
+        last_played_at: { type: [string, "null"], format: date-time }
+        tags: { type: array, items: { $ref: "#/components/schemas/Tag" } }
+        revision: { type: integer, format: int64, minimum: 0 }
+        created_at: { type: [string, "null"], format: date-time }
+        updated_at: { type: [string, "null"], format: date-time }
+    UpdateMediaUserData:
+      type: object
+      additionalProperties: false
+      required: [base_revision]
+      minProperties: 2
+      properties:
+        base_revision: { type: integer, format: int64, minimum: 0 }
+        custom_title: { type: [string, "null"], minLength: 1, maxLength: 200 }
+        favorite: { type: boolean }
+        notes: { type: [string, "null"], maxLength: 20000, description: 另有 64 KiB UTF-8 字节上限；只有 null 表示清除，空字符串会原样保存。 }
+        tag_ids: { type: array, maxItems: 100, uniqueItems: true, items: { type: string } }
+    UpdateProgress:
+      type: object
+      additionalProperties: false
+      required: [position_ms, base_revision]
+      properties:
+        position_ms: { type: integer, format: int64, minimum: 0 }
+        base_revision: { type: integer, format: int64, minimum: 0 }
+    CreateTag:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 100 }
+    UpdateTag:
+      type: object
+      additionalProperties: false
+      required: [name, base_revision]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 100 }
+        base_revision: { type: integer, format: int64, minimum: 1 }
+  parameters:
+    SourceID:
+      in: path
+      name: id
+      required: true
+      schema: { type: string }
+    MediaID:
+      in: path
+      name: id
+      required: true
+      schema: { type: string, minLength: 1 }
+  responses:
+    Unauthorized:
+      description: API Token 缺失或无效
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    InvalidRequest:
+      description: 请求参数、请求体或业务输入无效
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    ForbiddenPath:
+      description: 媒体源路径不在白名单中
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    NotFound:
+      description: 资源不存在
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    MediaNotFound:
+      description: 媒体不存在或当前不可见，error.code 为 MEDIA_NOT_FOUND
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          example:
+            error: { code: MEDIA_NOT_FOUND, message: 媒体不存在, details: null }
+    MediaOrThumbnailNotFound:
+      description: 媒体不存在时 error.code 为 MEDIA_NOT_FOUND；媒体没有可用缩略图资产时为 THUMBNAIL_NOT_FOUND
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          examples:
+            media_not_found:
+              value:
+                error: { code: MEDIA_NOT_FOUND, message: 媒体不存在, details: null }
+            thumbnail_not_found:
+              value:
+                error: { code: THUMBNAIL_NOT_FOUND, message: 缩略图不存在, details: null }
+    Conflict:
+      description: 资源状态或唯一性冲突
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }

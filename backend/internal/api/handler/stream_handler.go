@@ -1,0 +1,57 @@
+package handler
+
+import (
+	"context"
+	"errors"
+	"net/http"
+
+	"github.com/gin-gonic/gin"
+
+	"github.com/xinghe98/Luma/backend/internal/api/response"
+	"github.com/xinghe98/Luma/backend/internal/domain"
+)
+
+// StreamUseCase 定义原始媒体 Handler 所需的业务能力。
+type StreamUseCase interface {
+	Open(context.Context, string) (domain.StreamContent, error)
+	OpenOriginal(context.Context, string) (domain.StreamContent, error)
+}
+
+// StreamHandler 将原始媒体内容适配为支持 Range 的 HTTP 响应。
+type StreamHandler struct {
+	// service 提供原始媒体业务能力。
+	service StreamUseCase
+}
+
+// NewStreamHandler 创建原始媒体 Handler。
+func NewStreamHandler(service StreamUseCase) (*StreamHandler, error) {
+	if service == nil {
+		return nil, errors.New("原始媒体业务用例不能为空")
+	}
+	return &StreamHandler{service: service}, nil
+}
+
+// Stream 处理 GET 和 HEAD /api/v1/media/:id/stream。
+func (h *StreamHandler) Stream(c *gin.Context) {
+	content, err := h.service.Open(c.Request.Context(), c.Param("id"))
+	h.serve(c, content, err)
+}
+
+// Original 处理 GET 和 HEAD /api/v1/media/:id/original。
+func (h *StreamHandler) Original(c *gin.Context) {
+	content, err := h.service.OpenOriginal(c.Request.Context(), c.Param("id"))
+	h.serve(c, content, err)
+}
+
+func (h *StreamHandler) serve(c *gin.Context, content domain.StreamContent, err error) {
+	if err != nil {
+		response.FromError(c, err)
+		return
+	}
+	defer content.Reader.Close()
+	c.Header("Content-Type", content.MIMEType)
+	c.Header("ETag", content.ETag)
+	c.Header("Cache-Control", "private, max-age=0, must-revalidate")
+	c.Header("X-Content-Type-Options", "nosniff")
+	http.ServeContent(c.Writer, c.Request, content.Name, content.ModifiedAt, content.Reader)
+}

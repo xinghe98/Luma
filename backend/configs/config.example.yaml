@@ -1,0 +1,39 @@
+# 本配置用于仓库内本地开发，所有相对路径均相对于本文件解析。
+server:
+  host: 0.0.0.0
+  port: 8080
+  read_header_timeout: 10s
+  idle_timeout: 60s
+  shutdown_timeout: 30s
+
+# API Token 不直接写入 YAML，而是存放在独立安全文件中。
+security:
+  api_token_file: ../data/secrets/api_token
+  allowed_origins: []
+  allowed_roots:
+    - ../data/media
+
+# SQLite 数据必须位于只读媒体目录之外。
+database:
+  path: ../data/media.db
+  busy_timeout_ms: 5000
+  wal: true
+
+# 缩略图和缓存属于可再生成的衍生数据。
+storage:
+  thumbnail_dir: ../data/thumbnails
+  cache_dir: ../data/cache
+
+# 外部媒体工具按参数数组调用，不经过 Shell 拼接。
+media:
+  ffmpeg_path: ffmpeg
+  ffprobe_path: ffprobe
+  thumbnail_width: 640
+  scan_extensions: [mp4, mkv, mov, avi, webm, m4v, ts, jpg, jpeg, png, webp, gif, bmp]
+
+# Worker 数量限制并发媒体处理对主机资源的占用。
+workers:
+  scan: 1
+  probe: 2
+  thumbnail: 1
+  lock_timeout: 10m

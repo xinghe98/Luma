@@ -1,0 +1,28 @@
+# 后端持续集成：在 Linux 与 Windows 上执行测试、静态检查和构建。
+name: Backend
+
+on:
+  push:
+    paths: ["backend/**", ".github/workflows/backend.yml"]
+  pull_request:
+    paths: ["backend/**", ".github/workflows/backend.yml"]
+
+jobs:
+  # 双平台矩阵确保路径、SQLite 和生命周期代码保持可移植。
+  test:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      - run: go test ./...
+      - run: go vet ./...
+      - run: go build ./cmd/server

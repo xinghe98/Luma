@@ -1,5 +1,105 @@
 # 本地媒体管理服务端 V1 架构与开发方案
 
+> 当前实现状态：阶段 1 至阶段 6 的后端能力已落地。现已包含项目基建、增量扫描、元数据与缩略图、媒体查询、视频 Direct Play、图片原图浏览，以及收藏、标题、笔记、标签、播放进度和继续观看。用户数据写入使用 revision 乐观锁，用户数据与标签关系在同一事务中更新。
+
+## 快速开始
+
+要求 Go 1.24；执行 `-check-config` 时还要求本机已安装 `ffmpeg` 与 `ffprobe`。本地开发使用 Air `v1.62.0` 热重载 API 服务，该版本与项目的 Go 1.24 基线兼容。
+
+```bash
+cd backend
+go mod download
+cp configs/config.example.yaml configs/config.yaml
+go test ./...
+sh ./scripts/dev.sh
+```
+
+Windows 使用 PowerShell 启动：
+
+```powershell
+Copy-Item configs/config.example.yaml configs/config.yaml
+.\scripts\dev.ps1
+```
+
+开发脚本优先使用 `PATH` 中已安装的 `air`；如果本机尚未安装，则自动通过 `go run github.com/air-verse/air@v1.62.0` 使用固定版本。修改 `cmd`、`internal`、`configs`、`migrations` 或 `api` 下的 Go、YAML、SQL 文件后，Air 会重新构建并重启 API 服务。临时二进制和 Air 日志位于 `.cache/air`，退出时自动清理。生产环境仍直接运行构建后的 `luma-server`，不使用 Air。
+
+服务首次启动会在 `data/secrets/api_token` 生成 API Token。`GET /health` 无需认证，其余 `/api/v1` 接口需发送 `Authorization: Bearer <token>`。本地示例媒体目录是 `data/media`，服务端只读它；SQLite、Token 和衍生数据写入独立的 `data` 子目录。
+
+常用命令：
+
+```bash
+go run ./cmd/server -config configs/config.yaml -check-config
+sh ./scripts/build.sh
+docker compose up --build
+```
+
+`configs/config.example.yaml` 是入库的配置模板；首次开发前将其复制为已被 Git 忽略的 `configs/config.yaml`，后续仅修改本地配置。Windows 可使用 `scripts/dev.ps1`、`scripts/build.ps1`。如需提前安装 Air，可执行 `go install github.com/air-verse/air@v1.62.0`。生产运行应复制示例配置并显式传入路径，不要直接依赖当前工作目录。
+
+### 本地扫描闭环
+
+以下请求均需使用首次启动生成的 Token。创建媒体源时 `root_path` 必须位于 `security.allowed_roots` 中，响应永远不会返回真实路径。
+
+```bash
+curl -X POST http://127.0.0.1:8080/api/v1/sources \
+  -H "Authorization: Bearer ${TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"本地媒体","root_path":"/media"}'
+
+curl -X POST http://127.0.0.1:8080/api/v1/sources/{source_id}/scan \
+  -H "Authorization: Bearer ${TOKEN}"
+
+curl http://127.0.0.1:8080/api/v1/scan-jobs/{scan_id} \
+  -H "Authorization: Bearer ${TOKEN}"
+```
+
+### 媒体查询
+
+媒体只读端点均需 Bearer Token。列表默认排除 `missing` 媒体，以及已禁用或软删除来源下的媒体。`sort=duration` 仅含 duration 已稳定的行；`sort=file_size` 仅含 `ready`/`failed`。无 ready 缩略图时 `thumbnail_url` 为空字符串；视频使用 `stream_url`，图片使用 `original_url`，不适用的字段为 `null`。
+
+```bash
+curl "http://127.0.0.1:8080/api/v1/media?type=video&sort=created_at&order=desc&limit=50" \
+  -H "Authorization: Bearer ${TOKEN}"
+
+curl http://127.0.0.1:8080/api/v1/media/{media_id} \
+  -H "Authorization: Bearer ${TOKEN}"
+
+curl http://127.0.0.1:8080/api/v1/media/{media_id}/thumbnail \
+  -H "Authorization: Bearer ${TOKEN}" \
+  -H 'If-None-Match: "previous-etag"' \
+  --output thumbnail.jpg
+
+curl -I http://127.0.0.1:8080/api/v1/media/{media_id}/stream \
+  -H "Authorization: Bearer ${TOKEN}"
+
+curl http://127.0.0.1:8080/api/v1/media/{media_id}/stream \
+  -H "Authorization: Bearer ${TOKEN}" \
+  -H "Range: bytes=0-1048575" \
+  --output video.part
+
+curl http://127.0.0.1:8080/api/v1/media/{image_id}/original \
+  -H "Authorization: Bearer ${TOKEN}" \
+  --output original.jpg
+```
+
+列表响应的 `next_cursor` 为 `null` 时表示没有下一页，否则将其原样传入下一次请求。视频 `stream_url` 和图片 `original_url` 均支持 GET、HEAD、Range、`If-None-Match`、`If-Modified-Since` 和 `If-Range`；响应使用私有缓存和基于实际文件大小、修改时间的弱 ETag。媒体列表支持 `favorite` 与 `tag_id` 筛选，用户数据通过 `/user-data` 与 `/progress` 写入。
+
+### 依赖注入基线
+
+项目采用构造函数手动注入，不使用全局容器、Service Locator、Wire 或 Fx。`internal/app/bootstrap.go` 是唯一 Composition Root，依赖创建顺序为：
+
+```text
+Config / Logger
+→ PathPolicy / SQLite Repositories / TokenAuthenticator / LocalSourceFactory
+→ SystemService / SourceService / ScanService / MediaService / StreamService
+→ LocalScanner / ScanWorker
+→ HealthHandler / SystemHandler / SourceHandler / ScanHandler / MediaHandler / StreamHandler
+→ Gin Router
+→ http.Server
+→ App
+```
+
+接口定义在消费方：Service 依赖数据库和路径校验接口，Handler 依赖 UseCase 接口，Router 只接收已经构造好的 Handler 和认证器。创建中途失败或应用关闭时，`cleanupStack` 按依赖创建的相反顺序且仅执行一次清理。测试可分别注入 Fake Pinger、Fake RootValidator 和 Fake UseCase，不需要启动 SQLite、Gin 或真实文件系统。
+
 ## 1. 项目定位
 
 本项目是部署在个人服务器、家庭服务器或内网服务器上的媒体管理后端。
@@ -218,42 +318,40 @@ local-media-server/
 │   │       ├── source_handler.go
 │   │       ├── scan_handler.go
 │   │       ├── stream_handler.go
+│   │       ├── user_data_handler.go
 │   │       ├── tag_handler.go
-│   │       └── progress_handler.go
+│   │       └── optional.go
 │   │
 │   ├── domain/
 │   │   ├── asset.go
 │   │   ├── media.go
 │   │   ├── source.go
 │   │   ├── tag.go
-│   │   ├── user.go
+│   │   ├── user_data.go
 │   │   ├── job.go
 │   │   └── errors.go
 │   │
 │   ├── service/
-│   │   ├── asset_service.go
 │   │   ├── media_service.go
 │   │   ├── source_service.go
 │   │   ├── scan_service.go
 │   │   ├── stream_service.go
-│   │   ├── tag_service.go
-│   │   └── progress_service.go
+│   │   ├── user_data_service.go
+│   │   └── tag_service.go
 │   │
 │   ├── repository/
-│   │   ├── asset_repository.go
 │   │   ├── media_repository.go
 │   │   ├── source_repository.go
 │   │   ├── tag_repository.go
-│   │   ├── user_repository.go
+│   │   ├── user_data_repository.go
 │   │   ├── job_repository.go
 │   │   └── sqlite/
 │   │       ├── database.go
 │   │       ├── migrations.go
-│   │       ├── asset_repository.go
 │   │       ├── media_repository.go
 │   │       ├── source_repository.go
 │   │       ├── tag_repository.go
-│   │       ├── user_repository.go
+│   │       ├── user_data_repository.go
 │   │       └── job_repository.go
 │   │
 │   ├── scanner/
@@ -305,6 +403,7 @@ local-media-server/
 │
 ├── Dockerfile
 ├── docker-compose.yml
+├── .air.toml
 ├── go.mod
 ├── go.sum
 └── README.md
@@ -593,20 +692,23 @@ ffmpeg 缩略图：1 至 2 个 Worker
 * 失败任务记录 `attempt_count`、`error_code` 和 `error_message`
 * ffprobe 和缩略图任务默认最多重试一次
 * 任务处理必须幂等，重复执行不得产生重复记录
-* 服务启动时将超时的 `running` 任务重新置为 `pending`
-* 服务启动时将遗留的 `probing`、`thumbnailing` 媒体重新加入对应任务
-* 服务退出时停止领取新任务，并等待正在执行的任务在超时内结束
+* 服务启动时将遗留的 `running` 任务重新置为 `pending` 或最终失败
+* 运行期间按 `workers.lock_timeout` 回收超时锁，并对外部工具施加相同执行超时
+* 服务启动与周期恢复会将遗留的 `discovered`/`probing`/`thumbnailing` 媒体重新加入对应任务
+* 处理失败的媒体在内容未变时重新扫描仍会重新探测
+* 服务退出时取消执行上下文；未完成任务保持 `running`，下次启动由恢复逻辑接管
 
 扫描任务被服务重启中断时标记为 `interrupted`，不得执行 `missing` 更新。后续可以由用户重新触发扫描。
 
 ---
 
-### 7.6 Stream 模块
+### 7.6 原始媒体模块
 
-流接口：
+内容接口：
 
 ```http
 GET /api/v1/media/{id}/stream
+GET /api/v1/media/{id}/original
 ```
 
 处理流程：
@@ -632,9 +734,11 @@ GET /api/v1/media/{id}/stream
 * 流接口不经过压缩中间件
 * 客户端断开后及时停止读取
 * 返回 `Accept-Ranges: bytes`
-* 根据文件大小和修改时间生成稳定的弱 ETag
+* 根据打开瞬间的文件大小和秒级修改时间生成稳定的弱 ETag，并与 `Content-Length` 使用同一快照
 * 正确处理 `If-None-Match`、`If-Modified-Since` 和 `If-Range`
 * 使用适合局域网媒体的 `Cache-Control`，缩略图可长期缓存，原始媒体默认私有缓存
+* 缓存已解析的媒体源根路径，避免每个 Range 请求重复 `EvalSymlinks`
+* 根目录不可访问时返回 503 `SOURCE_OFFLINE`，不与 `MEDIA_NOT_FOUND` 混淆
 
 安全拼接必须同时验证词法路径和最终解析路径。不能只调用 `filepath.Join`；应使用 `filepath.Clean`、`filepath.Rel` 并检查符号链接解析结果，防止 `..`、绝对路径和链接逃出媒体源。
 
@@ -645,50 +749,22 @@ GET /api/v1/media/{id}/stream
 Gin 负责路由、HTTP 参数、请求 DTO、响应 DTO 和中间件。使用 `gin.New()` 创建 Engine，不使用带默认日志和恢复逻辑的 `gin.Default()`；项目使用自己的结构化日志和 Recovery。
 
 ```go
-func NewRouter(
-    health *handler.HealthHandler,
-    media *handler.MediaHandler,
-    sources *handler.SourceHandler,
-    scans *handler.ScanHandler,
-    tags *handler.TagHandler,
-    progress *handler.ProgressHandler,
-    stream *handler.StreamHandler,
-    auth gin.HandlerFunc,
-) *gin.Engine {
-    engine := gin.New()
-    engine.Use(
-        middleware.RequestID(),
-        middleware.Recovery(),
-        middleware.Logging(),
-    )
-
-    engine.GET("/health", health.Get)
-
-    api := engine.Group("/api/v1")
-    api.Use(auth)
-    {
-        api.GET("/media", media.List)
-        api.GET("/media/:id", media.Get)
-        api.PATCH("/media/:id/user-data", media.UpdateUserData)
-        api.PUT("/media/:id/progress", progress.Update)
-        api.GET("/media/:id/thumbnail", stream.Thumbnail)
-        api.GET("/media/:id/stream", stream.Stream)
-        api.HEAD("/media/:id/stream", stream.Stream)
-
-        api.GET("/sources", sources.List)
-        api.POST("/sources", sources.Create)
-        api.PATCH("/sources/:id", sources.Update)
-        api.DELETE("/sources/:id", sources.Delete)
-        api.POST("/sources/:id/scan", scans.Start)
-
-        api.GET("/tags", tags.List)
-        api.POST("/tags", tags.Create)
-        api.PATCH("/tags/:id", tags.Update)
-        api.DELETE("/tags/:id", tags.Delete)
-    }
-
-    return engine
-}
+// 当前已注册路由：
+// GET  /health
+// GET  /api/v1/system/info
+// GET|POST|PATCH|DELETE /api/v1/sources...
+// POST /api/v1/sources/:id/scan
+// GET  /api/v1/scan-jobs/latest|/api/v1/scan-jobs/:id
+// GET  /api/v1/media
+// GET  /api/v1/media/:id
+// GET  /api/v1/media/:id/thumbnail
+// GET|HEAD /api/v1/media/:id/stream
+// GET|HEAD /api/v1/media/:id/original
+// GET|PATCH /api/v1/media/:id/user-data
+// PUT /api/v1/media/:id/progress
+// GET /api/v1/media/continue-watching
+// GET|POST /api/v1/tags
+// PATCH|DELETE /api/v1/tags/:id
 ```
 
 Gin Engine 作为标准 `http.Handler` 交给 `http.Server`：
@@ -1064,6 +1140,7 @@ CREATE TABLE media_assets (
         status IN ('pending', 'ready', 'failed')
     ),
     generator_version INTEGER NOT NULL DEFAULT 1,
+    content_sha256 TEXT,
     error_message TEXT,
     created_at_ms INTEGER NOT NULL,
     updated_at_ms INTEGER NOT NULL,
@@ -1073,7 +1150,7 @@ CREATE TABLE media_assets (
 );
 ```
 
-`storage_key` 是数据目录下的相对键，不允许保存绝对路径或包含 `..`。
+`storage_key` 是数据目录下的相对键，不允许保存绝对路径或包含 `..`。`content_sha256` 为缩略图文件内容哈希，用于强 ETag 与 304 短路径；旧数据可为空，读取时回退为现算哈希。
 
 ### 8.5 media_user_data
 
@@ -1084,17 +1161,21 @@ CREATE TABLE media_user_data (
     custom_title TEXT,
     favorite INTEGER NOT NULL DEFAULT 0 CHECK (favorite IN (0, 1)),
     notes TEXT,
+    -- rating 为历史预留列，V1 API 不读写。
     rating INTEGER CHECK (rating IS NULL OR rating BETWEEN 1 AND 5),
     progress_ms INTEGER NOT NULL DEFAULT 0 CHECK (progress_ms >= 0),
     completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1)),
     last_played_at_ms INTEGER,
     created_at_ms INTEGER NOT NULL,
     updated_at_ms INTEGER NOT NULL,
+    revision INTEGER NOT NULL DEFAULT 1 CHECK (revision > 0),
     PRIMARY KEY(user_id, media_id),
     FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
     FOREIGN KEY(media_id) REFERENCES media_items(id) ON DELETE CASCADE
 );
 ```
+
+`revision` 是该用户对该媒体整行用户数据的乐观锁版本（含收藏、标题、笔记与播放进度）。`PATCH /user-data` 与 `PUT /progress` 共用同一版本；任一写入成功后另一路基于旧 `base_revision` 的请求返回 409 `REVISION_CONFLICT`。客户端应使用响应中的新 `revision`（或重新 GET）后重试。删除标签会递增所有仍关联该标签的媒体用户数据版本。
 
 显示标题按以下顺序计算：
 
@@ -1112,6 +1193,7 @@ CREATE TABLE tags (
     user_id TEXT NOT NULL,
     name TEXT NOT NULL,
     normalized_name TEXT NOT NULL,
+    revision INTEGER NOT NULL DEFAULT 1 CHECK (revision > 0),
     created_at_ms INTEGER NOT NULL,
     updated_at_ms INTEGER NOT NULL,
     UNIQUE(user_id, normalized_name),
@@ -1120,7 +1202,7 @@ CREATE TABLE tags (
 );
 ```
 
-`normalized_name` 由服务端统一执行 Unicode 规范化、去除首尾空白和大小写折叠，用于避免同一用户创建视觉上重复的标签。
+`normalized_name` 由服务端统一执行 Unicode 规范化、去除首尾空白和大小写折叠，用于避免同一用户创建视觉上重复的标签。标签重命名使用独立的 `revision` 乐观锁。
 
 ### 8.7 media_tags
 
@@ -1322,6 +1404,28 @@ GET /api/v1/scan-jobs/{id}
 GET /api/v1/scan-jobs/latest
 ```
 
+扫描任务响应中的 `status: completed` 和 `phase: completed` 只表示目录遍历、索引写入及 missing 提交完成。ffprobe 和缩略图是后续异步任务，通过同一响应的 `processing` 判断：
+
+```json
+{
+  "status": "completed",
+  "phase": "completed",
+  "processing": {
+    "status": "running",
+    "total": 120,
+    "discovered": 3,
+    "probing": 1,
+    "thumbnailing": 2,
+    "ready": 112,
+    "failed": 2
+  }
+}
+```
+
+客户端应轮询 `GET /api/v1/scan-jobs/{id}`。`processing.status` 为 `completed` 时全部成功；为 `completed_with_errors` 时处理已全部结束但存在最终失败；为 `running` 时仍有 `discovered`、`probing` 或 `thumbnailing` 媒体。空媒体源在扫描完成后直接返回 `completed`。
+
+处理失败时，服务日志会按 `media_id` 记录 ffprobe 或 ffmpeg 的内部错误，API 仅返回不泄露真实路径的汇总。再次发起来源扫描会重试状态为 `failed` 的媒体；扫描器会忽略 macOS 生成的 `._*` AppleDouble 辅助文件。
+
 ### 9.4 媒体列表
 
 ```http
@@ -1333,15 +1437,10 @@ GET /api/v1/media
 ```text
 q
 type=video|image
-source_id
-tag_id
-favorite
-status
-folder
 sort=created_at|filename|duration|file_size
 order=asc|desc
 cursor
-limit
+limit（1-100，默认 50）
 ```
 
 返回：
@@ -1359,6 +1458,7 @@ limit
       "height": 1080,
       "thumbnail_url": "/api/v1/media/media_001/thumbnail",
       "stream_url": "/api/v1/media/media_001/stream",
+      "original_url": null,
       "favorite": false,
       "progress_ms": 120000,
       "status": "ready"
@@ -1370,50 +1470,49 @@ limit
 
 响应中的 `title` 是已经按 `custom_title → detected_title → filename` 计算后的展示标题，不暴露内部字段选择逻辑给客户端。
 
+`next_cursor` 没有下一页时为 `null`。默认列表排除 `status = missing` 的媒体，同时排除已禁用或软删除来源下的媒体。视频的 `stream_url` 指向阶段 5 Direct Play 接口且 `original_url` 为 `null`；图片的 `original_url` 指向原图接口且 `stream_url` 为 `null`。`favorite`、`progress_ms`、`completed`、`last_played_at` 和 `user_data_revision` 来自当前用户数据；无记录时使用默认值。没有 `status=ready` 的默认缩略图资产时，`thumbnail_url` 为空字符串。
+
 `created_at` 在 API 中表示 `discovered_at_ms`。所有排序必须追加 `id` 作为稳定的第二排序键，例如：
 
 ```text
 discovered_at_ms DESC, id DESC
 ```
 
-Cursor 必须编码排序字段值、媒体 ID、排序方向和筛选条件摘要。修改筛选或排序条件后旧 Cursor 失效。对于可空字段必须固定 NULL 的排列规则。
+为降低处理过程中可变排序键导致的翻页漏项：
+
+* `sort=duration` 仅返回 `duration_ms IS NOT NULL` 或 `status IN (ready, failed)` 的行
+* `sort=file_size` 仅返回 `status IN (ready, failed)` 的行
+* `sort=created_at` / `filename` 仍包含处理中媒体；完整浏览扫描中的库优先使用这两种排序
+
+Cursor 必须编码排序字段值、媒体 ID、排序方向和筛选条件摘要。修改筛选或排序条件后旧 Cursor 失效。对于可空字段必须固定 NULL 的排列规则。文件 rename 等极端情况下，可变键排序仍可能出现漏项或跳项。
 
 ### 9.5 媒体详情
 
 ```http
 GET /api/v1/media/{id}
-PATCH /api/v1/media/{id}/user-data
 ```
 
-修改用户数据：
+详情返回列表全部字段，并增加 `source_id`、`mime_type`、`file_size`、`video_codec`、`audio_codec`、`container`、`bitrate`、`frame_rate_num`、`frame_rate_den`、`audio_track_count`、`orientation`、`captured_at`、`created_at` 和 `indexed_at`。不存在、处于 `missing` 状态或属于已禁用/软删除来源的媒体统一返回 404 `MEDIA_NOT_FOUND`。
 
-```json
-{
-  "custom_title": "自定义标题",
-  "favorite": true,
-  "notes": "以后继续观看",
-  "rating": 5,
-  "tag_ids": ["tag_1", "tag_2"]
-}
-```
-
-`custom_title` 写入 `media_user_data`，ffprobe 或文件扫描得到的标题写入 `media_items.detected_title`。`tag_ids` 与其他用户数据必须在同一事务中更新。传入的标签必须属于当前用户。
+`GET /api/v1/media/{id}/user-data` 返回完整用户数据和标签；无记录时 `revision` 为 0。`PATCH /api/v1/media/{id}/user-data` 原子修改收藏、自定义标题、笔记和标签关系。请求必须携带 `base_revision`，字段缺失表示保持不变，`custom_title`/`notes` 为 `null` 表示清除，`tag_ids` 表示完整替换。版本不匹配返回 409 `REVISION_CONFLICT`。
 
 ### 9.6 缩略图和媒体内容
 
 ```http
 GET /api/v1/media/{id}/thumbnail
-GET /api/v1/media/{id}/stream
 ```
 
 接口职责：
 
 ```text
-/thumbnail：返回当前默认封面资产，适用于视频和图片
-/stream：返回原始媒体内容，视频和原图统一使用该接口
+/thumbnail：返回当前默认图片资产，适用于视频和图片
 ```
 
-第一版不提供语义重复的 `/content`。`/stream` 支持 GET、HEAD、Range 和条件请求。缩略图响应使用基于资产版本的强 ETag 和长期缓存；原始媒体使用基于文件大小与修改时间的弱 ETag，并默认返回私有缓存策略。
+缩略图返回图片二进制，响应携带强 `ETag`（内容 SHA-256）和 `Cache-Control: private, max-age=604800, must-revalidate`。客户端可发送 `If-None-Match`，匹配时返回 304 且不包含响应体；若资产已持久化内容哈希，304 路径不必读盘。媒体没有可用缩略图资产时返回 404 `THUMBNAIL_NOT_FOUND`；媒体本身不可见时返回 404 `MEDIA_NOT_FOUND`。内容变更触发重新生成时，完成前仍可提供上一份 ready 缩略图。
+
+`GET` 和 `HEAD /api/v1/media/{id}/stream` 仅服务视频原文件。除 `missing` 外的可见视频处理状态均可 Direct Play；响应支持单段 Range、206、416、ETag、Last-Modified 和条件请求。文件定位只使用服务端保存的来源根目录与安全相对路径，打开前后都会验证最终目标仍位于媒体源内。弱 ETag 与 `Content-Length` 均基于打开瞬间的 size/mtime 快照（mtime 截断到秒，与 `Last-Modified` 对齐）；媒体源根目录不可访问时返回 503 `SOURCE_OFFLINE`，原文件缺失返回 404 `MEDIA_NOT_FOUND`。本地媒体源根路径会缓存规范结果，避免每个 Range 请求重复 `EvalSymlinks`。
+
+`GET` 和 `HEAD /api/v1/media/{id}/original` 仅服务图片原文件，支持 JPEG、PNG、WebP、GIF 和 BMP。可见图片无需等待缩略图生成完成即可读取原图；视频请求该接口返回 404。接口与视频流复用相同的安全打开、Range、条件请求、快照 ETag 和来源离线语义，并额外返回 `X-Content-Type-Options: nosniff`。
 
 ### 9.7 播放进度
 
@@ -1425,11 +1524,12 @@ PUT /api/v1/media/{id}/progress
 
 ```json
 {
-  "position_ms": 120000
+  "position_ms": 120000,
+  "base_revision": 3
 }
 ```
 
-服务端以已探测到的媒体时长为准。进度不得小于 0；超过服务端时长时进行截断。是否标记完成由统一阈值计算，例如播放到 90% 以上。
+`position_ms` 与 `base_revision` 均必填。服务端在同一事务内读取可见视频的当前时长：进度不得小于 0；超过时长时截断；达到时长 90% 及以上自动 `completed=true`。进度写入会递增与 `PATCH /user-data` 共用的 `revision`，因此播放心跳与元数据编辑可能互相产生 409，客户端需用最新 revision 重试。非视频返回 422 `MEDIA_NOT_PLAYABLE`；时长尚不可用返回 409 `MEDIA_DURATION_UNAVAILABLE`。
 
 ### 9.8 标签
 
@@ -1440,7 +1540,7 @@ PATCH  /api/v1/tags/{id}
 DELETE /api/v1/tags/{id}
 ```
 
-标签名称使用规范化值做同一用户内的唯一性校验。删除标签只删除标签关系，不删除媒体。
+标签名称使用规范化值做同一用户内的唯一性校验。`PATCH` 重命名必须携带 `base_revision`。删除标签只删除标签关系并递增关联媒体的用户数据 `revision`，不删除媒体。
 
 ---
 
@@ -1466,9 +1566,17 @@ UNAUTHORIZED
 FORBIDDEN_PATH
 SOURCE_NOT_FOUND
 SOURCE_OFFLINE
+SOURCE_CONFLICT
 MEDIA_NOT_FOUND
 MEDIA_FILE_MISSING
+THUMBNAIL_NOT_FOUND
 SCAN_ALREADY_RUNNING
+SCAN_NOT_FOUND
+TAG_NOT_FOUND
+TAG_ALREADY_EXISTS
+REVISION_CONFLICT
+MEDIA_DURATION_UNAVAILABLE
+MEDIA_NOT_PLAYABLE
 FFPROBE_FAILED
 THUMBNAIL_FAILED
 INTERNAL_ERROR
@@ -1734,18 +1842,18 @@ Windows 可执行文件和媒体路径包含空格时仍能正常处理
 
 ### 阶段 4：媒体 API
 
-完成：
+完成（已落地）：
 
-* 媒体列表
-* 媒体详情
-* 分页
-* 稳定 Cursor
-* 类型筛选
-* 文件名搜索
-* 缩略图接口
-* OpenAPI 契约
-* Gin DTO 绑定、校验和统一错误响应
-* Gin Router 集成测试
+* [x] 媒体列表
+* [x] 媒体详情
+* [x] 分页
+* [x] 稳定 Cursor
+* [x] 类型筛选
+* [x] 文件名搜索
+* [x] 缩略图接口
+* [x] OpenAPI 契约
+* [x] Gin DTO 绑定、校验和统一错误响应
+* [x] Gin Router 集成测试
 
 验收：
 
@@ -1756,9 +1864,9 @@ Windows 可执行文件和媒体路径包含空格时仍能正常处理
 路由、中间件和认证可通过 httptest 验证
 ```
 
-### 阶段 5：视频流
+### 阶段 5：原始媒体内容
 
-完成：
+已完成后端实现：
 
 * Stream 接口
 * Gin Stream Handler
@@ -1768,6 +1876,11 @@ Windows 可执行文件和媒体路径包含空格时仍能正常处理
 * 文件不存在处理
 * 路径穿越和符号链接逃逸防护
 * ETag、条件请求和缓存策略
+* 图片原图 GET/HEAD 接口
+* JPEG、PNG、WebP、GIF、BMP MIME 白名单
+* 图片 `original_url` 媒体响应字段
+
+真实手机播放器、Windows UNC 和长视频拖动仍需在客户端与部署环境中执行手工验收。
 
 验收：
 
@@ -1782,16 +1895,16 @@ Gin 中间件不会压缩、缓冲或截断流响应
 
 ### 阶段 6：用户数据
 
-完成：
+已完成后端实现：
 
-* 收藏
-* 标签
-* 笔记
-* 播放进度
-* 继续观看列表
-* 默认用户和 user_id
-* 自定义标题与探测标题分离
-* 用户数据与标签事务更新
+* [x] 收藏、笔记和自定义标题
+* [x] 标签 CRUD、Unicode 规范化和媒体关联
+* [x] 播放进度、90% 自动完成和 revision 冲突保护
+* [x] 继续观看稳定分页
+* [x] 默认用户和认证 user_id
+* [x] 自定义标题与探测标题分离
+* [x] 用户数据与标签事务更新
+* [x] 收藏与标签媒体筛选
 
 验收：
 
