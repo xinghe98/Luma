@@ -1,0 +1,60 @@
+# 轻影 Luma · Flutter 客户端
+
+轻影是一款连接家庭服务器或内网服务器的私有视频、图片管理播放器。本目录是 Android 优先、同时适配平板宽屏的 Flutter 客户端。媒体浏览、搜索、详情、缩略图、原图、播放、用户数据和扫描状态均来自 Luma 服务端 API。
+
+## 运行
+
+环境：Flutter 3.41.6（stable）及 Dart 3.11.4。
+
+```bash
+flutter pub get
+flutter run
+```
+
+连接时填写服务端 origin（例如 `http://192.168.1.10:8080`）及服务端生成的 API Token。业务 API 默认使用 `/api/v1`，可通过 `--dart-define=LUMA_API_PREFIX=/api/v2` 覆盖。
+
+静态检查与测试：
+
+```bash
+dart format .
+flutter analyze
+flutter test
+```
+
+Android 调试包可通过 `flutter build apk --debug` 构建。
+
+## 服务器连接
+
+- `/health` 用于检测服务存活。
+- `/api/v1/system/info` 用于验证 Token，并读取版本、平台、架构和数据库状态。
+- 地址和 Token 使用系统安全存储；设置页断开连接时清除连接凭据。
+- 服务器别名仅保存在当前客户端，可在设置页编辑，不写入服务端。
+
+连接成功后会进入主应用；设置页可以断开并回到首次连接页。收藏、笔记和播放进度写入服务端，缩略图缓存由 Flutter 图片缓存管理。
+
+## 页面结构
+
+- 首次连接：地址输入、最近服务器，以及加载、成功和失败反馈。
+- 首页：欢迎区、扫描状态、继续观看、最近添加和收藏。
+- 图片库 / 影音库：固定类型的媒体网格，筛选、排序、下拉刷新和响应式布局。
+- 搜索：最近搜索、类型/标签组合筛选和无结果状态。
+- 媒体详情：封面、播放/大图、收藏、元数据、标签、笔记、媒体源名称和文件名。
+- 播放器：使用认证视频流和 HTTP Range，支持拖动、快进后退、倍速和锁定。
+- 设置：服务器状态、扫描、缓存、关于和断开连接；主题切换在页面右上角。
+
+手机使用 Material 3 底部导航（首页、图片库、影音库、搜索、设置）；宽度达到 840px 后切换为侧边导航。媒体网格会在 2–5 列间自适应，详情页在宽屏使用双栏布局。默认浅色主题，可在设置页右上角切换深色。
+
+## 代码结构与后端接入
+
+- `lib/app/`：依赖组装、Scope，以及会话、媒体和设置共享 Controller。
+- `lib/data/api/`：Dio 请求、API Prefix、会话认证和统一错误。
+- `lib/data/decoders/`：独立的 JSON 到类型模型映射。
+- `lib/data/repositories/`：媒体、来源和扫描数据边界。
+- `lib/data/mock/`、`lib/data/fixtures/`：仅供测试使用，不进入生产依赖图。
+- `lib/features/`：每个页面独立目录，包含页面入口、Controller、widgets 和 dialogs。
+- `lib/shared/`：按 branding、media、states、layout、formatters 分类的跨页面组件。
+- `assets/`：轻影品牌 Logo 与 Android App 图标源文件。
+
+页面入口只负责响应式布局和组件编排；异步状态、筛选和业务动作由对应 Controller 管理。页面不直接依赖 Dio 或解析 JSON，项目继续使用 `ChangeNotifier`、构造注入和 `AppScope`，不引入全局 Service Locator。
+
+代码质量约定：页面入口目标低于 120 行，普通 Dart 文件目标不超过 200 行；提交前运行格式化、静态检查和测试。

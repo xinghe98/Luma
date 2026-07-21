@@ -30,7 +30,7 @@ type mediaCursor struct {
 }
 
 func encodeMediaCursor(query domain.MediaListQuery, item domain.Media) (string, error) {
-	payload := mediaCursor{Version: 2, Sort: query.Sort, Order: query.Order, ID: item.ID, FilterHash: mediaFilterHash(query)}
+	payload := mediaCursor{Version: 3, Sort: query.Sort, Order: query.Order, ID: item.ID, FilterHash: mediaFilterHash(query)}
 	switch query.Sort {
 	case domain.MediaSortFilename:
 		payload.StringValue = item.Filename
@@ -65,7 +65,7 @@ func decodeMediaCursor(value string, query domain.MediaListQuery) (*domain.Media
 	if err := json.Unmarshal(decoded, &payload); err != nil {
 		return nil, fmt.Errorf("%w: cursor 格式无效", domain.ErrInvalidRequest)
 	}
-	if payload.Version != 2 || payload.ID == "" || payload.Sort != query.Sort || payload.Order != query.Order || payload.FilterHash != mediaFilterHash(query) {
+	if payload.Version != 3 || payload.ID == "" || payload.Sort != query.Sort || payload.Order != query.Order || payload.FilterHash != mediaFilterHash(query) {
 		return nil, fmt.Errorf("%w: cursor 与当前查询不匹配", domain.ErrInvalidRequest)
 	}
 	return &domain.MediaPageKey{StringValue: payload.StringValue, IntValue: payload.IntValue, Null: payload.Null, ID: payload.ID}, nil
@@ -80,12 +80,13 @@ func mediaFilterHash(query domain.MediaListQuery) string {
 		MediaType        string `json:"media_type"`
 		Favorite         *bool  `json:"favorite"`
 		TagID            string `json:"tag_id"`
+		WatchStatus      string `json:"watch_status"`
 		ContinueWatching bool   `json:"continue_watching"`
 		// Sort 是排序字段。
 		Sort string `json:"sort"`
 		// Order 是排序方向。
 		Order string `json:"order"`
-	}{query.UserID, query.Search, query.MediaType, query.Favorite, query.TagID, query.ContinueWatching, query.Sort, query.Order})
+	}{query.UserID, query.Search, query.MediaType, query.Favorite, query.TagID, query.WatchStatus, query.ContinueWatching, query.Sort, query.Order})
 	sum := sha256.Sum256(value)
 	return hex.EncodeToString(sum[:])
 }

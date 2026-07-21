@@ -113,7 +113,7 @@ func (fakeMediaUseCase) Get(context.Context, string, string) (domain.Media, erro
 	}, nil
 }
 
-func (fakeMediaUseCase) Thumbnail(_ context.Context, _, ifNoneMatch string) (domain.ThumbnailContent, error) {
+func (fakeMediaUseCase) Thumbnail(_ context.Context, _, _, ifNoneMatch string) (domain.ThumbnailContent, error) {
 	const etag = `"etag"`
 	if ifNoneMatch == etag {
 		return domain.ThumbnailContent{MIMEType: "image/jpeg", ETag: etag, NotModified: true}, nil

@@ -152,7 +152,7 @@ func TestMediaRepositorySearchUserDataAndThumbnail(t *testing.T) {
 	if len(items) != 1 || items[0].Title != "自定义标题" || !items[0].Favorite || items[0].ProgressMS != 321 || !items[0].HasThumbnail {
 		t.Fatalf("unexpected media: %#v", items)
 	}
-	asset, err := repository.GetThumbnail(context.Background(), "media_1")
+	asset, err := repository.GetThumbnail(context.Background(), "media_1", domain.ThumbnailVariantDefault)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -178,6 +178,7 @@ func TestMediaRepositoryUserFiltersAndContinueWatching(t *testing.T) {
 	}{
 		{"video_new", domain.MediaTypeVideo}, {"video_old", domain.MediaTypeVideo},
 		{"video_done", domain.MediaTypeVideo}, {"image", domain.MediaTypeImage}, {"untouched", domain.MediaTypeVideo},
+		{"zero_progress", domain.MediaTypeVideo},
 	} {
 		insertMedia(t, repository, item.id, "source_filters", item.id+".mp4", item.mediaType, domain.MediaStatusReady, 1000, &duration)
 	}
@@ -196,6 +197,7 @@ func TestMediaRepositoryUserFiltersAndContinueWatching(t *testing.T) {
 		{"video_old", 0, 40000, 0, 2000},
 		{"video_done", 1, 95000, 1, 4000},
 		{"image", 1, 1, 0, 5000},
+		{"zero_progress", 0, 0, 0, 0},
 	} {
 		if _, err := repository.db.Exec(`INSERT INTO media_user_data(
             user_id,media_id,favorite,progress_ms,completed,last_played_at_ms,created_at_ms,updated_at_ms,revision
@@ -218,6 +220,27 @@ func TestMediaRepositoryUserFiltersAndContinueWatching(t *testing.T) {
 	tagged, err := repository.List(ctx, domain.MediaListQuery{UserID: "user_local", TagID: "tag_filter", Sort: domain.MediaSortCreatedAt, Order: domain.SortDescending, Limit: 20})
 	if err != nil || len(tagged) != 1 || tagged[0].ID != "video_new" {
 		t.Fatalf("tagged=%#v err=%v", tagged, err)
+	}
+	for _, test := range []struct {
+		status string
+		ids    map[string]bool
+	}{
+		{domain.WatchStatusUnwatched, map[string]bool{"untouched": true, "zero_progress": true}},
+		{domain.WatchStatusWatching, map[string]bool{"video_new": true, "video_old": true, "image": true}},
+		{domain.WatchStatusCompleted, map[string]bool{"video_done": true}},
+	} {
+		filtered, err := repository.List(ctx, domain.MediaListQuery{
+			UserID: "user_local", WatchStatus: test.status,
+			Sort: domain.MediaSortCreatedAt, Order: domain.SortDescending, Limit: 20,
+		})
+		if err != nil || len(filtered) != len(test.ids) {
+			t.Fatalf("watch_status=%s items=%#v err=%v", test.status, filtered, err)
+		}
+		for _, item := range filtered {
+			if !test.ids[item.ID] {
+				t.Fatalf("watch_status=%s unexpected item=%s", test.status, item.ID)
+			}
+		}
 	}
 	watching, err := repository.List(ctx, domain.MediaListQuery{
 		UserID: "user_local", MediaType: domain.MediaTypeVideo, ContinueWatching: true,
@@ -285,7 +308,7 @@ func TestMediaRepositoryStableSortFiltersAndHasThumbnail(t *testing.T) {
 		t.Fatalf("file_size filter = %#v", sizeItems)
 	}
 
-	asset, err := repository.GetThumbnail(context.Background(), "media_ready")
+	asset, err := repository.GetThumbnail(context.Background(), "media_ready", domain.ThumbnailVariantDefault)
 	if err != nil {
 		t.Fatal(err)
 	}

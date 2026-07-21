@@ -3,6 +3,7 @@ module github.com/xinghe98/Luma/backend
 go 1.24.0
 
 require (
+	github.com/fsnotify/fsnotify v1.9.0
 	github.com/gin-gonic/gin v1.10.1
 	golang.org/x/sys v0.34.0
 	golang.org/x/text v0.15.0

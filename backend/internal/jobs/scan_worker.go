@@ -82,11 +82,11 @@ func NewScanWorker(
 	}, nil
 }
 
-// Run 恢复遗留任务并持续领取扫描任务，直到上下文取消。
+// Run 持续领取扫描任务，直到上下文取消；启动恢复由 Group 统一完成。
+// 空闲时同时等待 Notify 与 1 秒 ticker，避免唤醒信号丢失后任务永久挂起。
 func (w *ScanWorker) Run(ctx context.Context) error {
-	if err := w.scans.InterruptRunningJobs(ctx, w.clock.Now()); err != nil {
-		return fmt.Errorf("恢复遗留扫描任务: %w", err)
-	}
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
 	for {
 		job, err := w.scans.ClaimNextJob(ctx, w.workerID, w.clock.Now())
 		if err == nil {
@@ -105,6 +105,7 @@ func (w *ScanWorker) Run(ctx context.Context) error {
 		case <-ctx.Done():
 			return nil
 		case <-w.signal.C():
+		case <-ticker.C:
 		}
 	}
 }

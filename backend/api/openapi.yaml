@@ -153,6 +153,10 @@ paths:
           description: 仅返回关联当前用户指定标签的媒体。
           schema: { type: string, maxLength: 200 }
         - in: query
+          name: watch_status
+          description: 按当前用户观看状态筛选；无用户数据的媒体归入 unwatched。
+          schema: { type: string, enum: [unwatched, watching, completed] }
+        - in: query
           name: sort
           description: created_at/filename 含处理中媒体；duration/file_size 仅含排序键已稳定的行。
           schema:
@@ -220,11 +224,15 @@ paths:
     get:
       summary: 获取媒体缩略图
       description: |
-        返回当前可用的默认图片资产；支持使用 If-None-Match 进行 ETag 条件请求。
+        返回当前可用的默认或卡片图片资产；支持使用 If-None-Match 进行 ETag 条件请求。
         若资产已记录内容哈希且 If-None-Match 命中，服务端可直接返回 304 而不读取文件体。
         内容变更重新生成完成前，仍可能提供上一份 ready 缩略图。
       security: [{ bearerAuth: [] }]
       parameters:
+        - in: query
+          name: variant
+          description: 省略时保持原有默认缩略图行为；card 为 640×400 居中裁剪卡片图。
+          schema: { type: string, enum: [default, card], default: default }
         - in: header
           name: If-None-Match
           description: 客户端缓存的缩略图 ETag。
@@ -671,7 +679,7 @@ components:
           description: 下一页的不透明游标；没有下一页时为 null。
     MediaSummary:
       type: object
-      required: [id, title, filename, media_type, duration_ms, width, height, thumbnail_url, stream_url, original_url, favorite, progress_ms, completed, last_played_at, user_data_revision, status]
+      required: [id, title, filename, media_type, duration_ms, width, height, thumbnail_url, card_thumbnail_url, stream_url, original_url, favorite, progress_ms, completed, last_played_at, user_data_revision, status, created_at]
       properties:
         id: { type: string }
         title: { type: string, description: 按 custom_title、detected_title、filename 顺序计算的展示标题。 }
@@ -683,6 +691,9 @@ components:
         thumbnail_url:
           type: string
           description: 当前媒体的缩略图端点；不存在 ready 默认缩略图资产时为空字符串。
+        card_thumbnail_url:
+          type: string
+          description: 16:10 居中裁剪的卡片缩略图端点；尚未补齐时为空字符串。
         stream_url:
           type: [string, "null"]
           description: 视频的 Direct Play 地址；图片固定为 null。
@@ -695,11 +706,12 @@ components:
         last_played_at: { type: [string, "null"], format: date-time }
         user_data_revision: { type: integer, format: int64, minimum: 0 }
         status: { type: string, enum: [discovered, probing, thumbnailing, ready, failed] }
+        created_at: { type: string, format: date-time, description: 媒体首次进入媒体库的时间。 }
     MediaDetail:
       allOf:
         - $ref: "#/components/schemas/MediaSummary"
         - type: object
-          required: [source_id, mime_type, file_size, video_codec, audio_codec, container, bitrate, frame_rate_num, frame_rate_den, audio_track_count, orientation, captured_at, created_at, indexed_at]
+          required: [source_id, mime_type, file_size, video_codec, audio_codec, container, bitrate, frame_rate_num, frame_rate_den, audio_track_count, orientation, captured_at, indexed_at]
           properties:
             source_id: { type: string }
             mime_type: { type: string }
@@ -713,7 +725,6 @@ components:
             audio_track_count: { type: [integer, "null"], minimum: 0 }
             orientation: { type: [integer, "null"] }
             captured_at: { type: [string, "null"], format: date-time }
-            created_at: { type: string, format: date-time, description: 媒体首次进入媒体库的时间。 }
             indexed_at: { type: [string, "null"], format: date-time }
     Tag:
       type: object

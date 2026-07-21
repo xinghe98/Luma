@@ -10,12 +10,44 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/xinghe98/Luma/backend/internal/config"
 	dbrepo "github.com/xinghe98/Luma/backend/internal/repository/sqlite"
 )
+
+type stagedBackgroundRunner struct {
+	prepareStarted chan struct{}
+	prepareRelease chan struct{}
+}
+
+func (r *stagedBackgroundRunner) Prepare(ctx context.Context) error {
+	close(r.prepareStarted)
+	select {
+	case <-r.prepareRelease:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func (r *stagedBackgroundRunner) Run(ctx context.Context) error {
+	<-ctx.Done()
+	return nil
+}
+
+type acceptTrackingListener struct {
+	net.Listener
+	accepted chan struct{}
+	once     sync.Once
+}
+
+func (l *acceptTrackingListener) Accept() (net.Conn, error) {
+	l.once.Do(func() { close(l.accepted) })
+	return l.Listener.Accept()
+}
 
 // authenticatedJSONRequest 创建携带测试 Token 和可选 JSON 请求体的 HTTP 请求。
 func authenticatedJSONRequest(t *testing.T, method, url, token string, body []byte) *http.Request {
@@ -29,6 +61,40 @@ func authenticatedJSONRequest(t *testing.T, method, url, token string, body []by
 		request.Header.Set("Content-Type", "application/json")
 	}
 	return request
+}
+
+func TestAppDoesNotServeHTTPBeforeWorkerRecovery(t *testing.T) {
+	baseListener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	listener := &acceptTrackingListener{Listener: baseListener, accepted: make(chan struct{})}
+	worker := &stagedBackgroundRunner{prepareStarted: make(chan struct{}), prepareRelease: make(chan struct{})}
+	application := &App{
+		config: config.Config{Server: config.ServerConfig{ShutdownTimeout: time.Second}},
+		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+		server: &http.Server{Handler: http.HandlerFunc(func(http.ResponseWriter, *http.Request) {})},
+		worker: worker,
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- application.Serve(ctx, listener) }()
+	<-worker.prepareStarted
+	select {
+	case <-listener.accepted:
+		t.Fatal("HTTP server accepted connections before recovery completed")
+	case <-time.After(100 * time.Millisecond):
+	}
+	close(worker.prepareRelease)
+	select {
+	case <-listener.accepted:
+	case <-time.After(time.Second):
+		t.Fatal("HTTP server did not start after recovery completed")
+	}
+	cancel()
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
 }
 
 // TestAppStartsServesHealthAndShutsDown 验证应用完整注入链、启动和优雅关闭。

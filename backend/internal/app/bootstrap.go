@@ -10,6 +10,7 @@ import (
 	"github.com/xinghe98/Luma/backend/internal/api"
 	"github.com/xinghe98/Luma/backend/internal/api/handler"
 	"github.com/xinghe98/Luma/backend/internal/config"
+	"github.com/xinghe98/Luma/backend/internal/jobs"
 	"github.com/xinghe98/Luma/backend/internal/platform"
 	dbrepo "github.com/xinghe98/Luma/backend/internal/repository/sqlite"
 	"github.com/xinghe98/Luma/backend/internal/security"
@@ -119,6 +120,18 @@ func (b *bootstrap) build(ctx context.Context) (*App, error) {
 	scanService, err := service.NewScanService(sourceRepository, scanRepository, ids, clock, scanSignal)
 	if err != nil {
 		return nil, fmt.Errorf("创建扫描服务: %w", err)
+	}
+	// 自动扫描依赖 ScanService，故在 Worker 组创建后再挂接调度器。
+	if b.config.Media.AutoScan.Enabled {
+		autoScan, err := jobs.NewAutoScanScheduler(
+			sourceRepository, scanService, b.config.Media.AutoScan, clock, b.logger,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("创建自动扫描调度器: %w", err)
+		}
+		if err := workerGroup.Add(autoScan); err != nil {
+			return nil, fmt.Errorf("注册自动扫描调度器: %w", err)
+		}
 	}
 	mediaService, err := service.NewMediaService(mediaRepository, thumbnailStore)
 	if err != nil {

@@ -7,6 +7,8 @@ const (
 	JobTypeProbe = "probe_media"
 	// JobTypeThumbnail 表示生成默认缩略图的持久化任务，对应 jobs.job_type = generate_thumbnail。
 	JobTypeThumbnail = "generate_thumbnail"
+	// JobTypeCardThumbnail 表示为已就绪媒体补齐卡片裁剪缩略图。
+	JobTypeCardThumbnail = "generate_card_thumbnail"
 )
 
 // ProcessingJob 是可重试的持久化媒体处理任务，对应 jobs 表中的 probe/thumbnail 行。
@@ -19,6 +21,8 @@ type ProcessingJob struct {
 	MediaID string
 	// Attempt 对应本次领取后的 jobs.attempt_count（已含当前这次执行）。
 	Attempt int
+	// WorkerID 是领取该次 attempt 的 worker 标识，用作完成/失败时的租约围栏。
+	WorkerID string
 	// MaxAttempts 对应 jobs.max_attempts，默认 2（失败后最多再试 1 次）。
 	MaxAttempts int
 }
@@ -91,4 +95,6 @@ type ThumbnailResult struct {
 	Width int
 	// Height 对应 media_assets.height，生成文件实际像素高。
 	Height int
+	// Card 是新媒体默认缩略图生成后直接派生的卡片变体；旧调用可为空。
+	Card *ThumbnailResult
 }

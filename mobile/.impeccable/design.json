@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-07-20T00:00:00+08:00",
+  "title": "Design System: 轻影 Luma",
+  "extensions": {
+    "colorMeta": {
+      "ink": {"role": "neutral", "displayName": "深夜墨色", "canonical": "#101820", "tonalRamp": ["#101820", "#25303A", "#3D4852", "#57616A", "#727B83", "#90979D", "#B0B5B9", "#D2D5D7"]},
+      "mist": {"role": "primary", "displayName": "雾青", "canonical": "#9DBFC0", "tonalRamp": ["#172829", "#2C4142", "#435B5C", "#5B7677", "#759293", "#90AFB0", "#ADCDCE", "#CCECEC"]},
+      "gold": {"role": "secondary", "displayName": "低饱和金", "canonical": "#D0AA69", "tonalRamp": ["#2D220F", "#4A391B", "#685128", "#886B37", "#A88748", "#CAA55E", "#E6C782", "#F7E6BC"]}
+    },
+    "typographyMeta": {
+      "headline": {"displayName": "Headline", "purpose": "页面与区段标题。"},
+      "body": {"displayName": "Body", "purpose": "说明、元数据与错误信息。"},
+      "label": {"displayName": "Label", "purpose": "按钮、筛选与播放器状态。"}
+    },
+    "shadows": [],
+    "motion": [
+      {"name": "state-fast", "value": "180ms ease-out", "purpose": "控制层、HUD 和图标状态切换。"},
+      {"name": "state-standard", "value": "220ms ease-out", "purpose": "较大表面的显隐。"}
+    ],
+    "breakpoints": [
+      {"name": "media-grid-3", "value": "600px"},
+      {"name": "navigation-rail", "value": "840px"},
+      {"name": "extended-rail", "value": "1100px"}
+    ]
+  },
+  "components": [],
+  "narrative": {
+    "northStar": "安静的家庭放映室",
+    "overview": "轻影的界面服务于私人媒体，不把设计本身变成主角。深蓝黑播放环境降低环境光干扰，雾青色承担交互强调，低饱和金色只用于少量辅助信息。",
+    "keyCharacteristics": ["内容优先的克制层级", "低饱和冷中性色与单一主强调色", "Material 3 的原生可预期控件", "150–250ms 的状态型动效"],
+    "rules": [
+      {"name": "The One Voice Rule", "body": "主强调色只表达操作和状态；非交互装饰不得借用主色。", "section": "colors"},
+      {"name": "The Native Voice Rule", "body": "禁止在按钮、数据和播放器控制上使用展示字体。", "section": "typography"},
+      {"name": "The Flat-by-Default Rule", "body": "静止表面不使用装饰阴影，只有系统浮层和交互反馈允许获得临时层级。", "section": "elevation"}
+    ],
+    "dos": ["保持关键触控目标至少 48dp，并提供中文语义标签。", "使用 150–250ms 淡入淡出表达显隐和状态变化。", "让播放器内容占据视觉中心，控制层按需出现。"],
+    "donts": ["使用营销落地页式的大标题和视觉表演。", "使用霓虹紫渐变、玻璃拟态或高饱和色装饰播放器。", "使用冗长、弹跳或纯装饰动画打断观看。", "把关键功能做成只能猜到的手势。"]
+  }
+}

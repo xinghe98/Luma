@@ -17,7 +17,8 @@ type processingRepoFake struct {
 	// orphans 是探测任务使用的孤立媒体列表。
 	orphans []domain.MediaInput
 	// thumbnailOrphans 是缩略图任务使用的孤立媒体列表。
-	thumbnailOrphans []domain.MediaInput
+	thumbnailOrphans     []domain.MediaInput
+	cardThumbnailOrphans []domain.MediaInput
 	// completeErr 是完成任务时返回的错误。
 	completeErr error
 	// probeCompleted 记录探测任务是否完成。
@@ -40,6 +41,11 @@ func (f *processingRepoFake) EnqueueProbe(_ context.Context, _ string, mediaID s
 }
 
 func (f *processingRepoFake) EnqueueThumbnail(_ context.Context, _ string, mediaID, _, _ string, _ time.Time) error {
+	f.enqueuedThumbs = append(f.enqueuedThumbs, mediaID)
+	return nil
+}
+
+func (f *processingRepoFake) EnqueueCardThumbnail(_ context.Context, _ string, mediaID, _, _ string, _ time.Time) error {
 	f.enqueuedThumbs = append(f.enqueuedThumbs, mediaID)
 	return nil
 }
@@ -70,6 +76,15 @@ func (f *processingRepoFake) CompleteThumbnail(context.Context, domain.Processin
 	return true, nil
 }
 
+func (f *processingRepoFake) CompleteCardThumbnail(context.Context, domain.ProcessingJob, domain.MediaInput,
+	domain.ThumbnailResult, time.Time) (bool, error) {
+	if f.completeErr != nil {
+		return false, f.completeErr
+	}
+	f.thumbnailComplete = true
+	return true, nil
+}
+
 func (f *processingRepoFake) Fail(context.Context, domain.ProcessingJob, string, string, time.Time) (bool, error) {
 	f.failed = true
 	return true, nil
@@ -87,6 +102,9 @@ func (f *processingRepoFake) ReclaimExpired(context.Context, time.Time, time.Dur
 func (f *processingRepoFake) ListOrphans(_ context.Context, jobType string, _ int) ([]domain.MediaInput, error) {
 	if jobType == domain.JobTypeThumbnail {
 		return f.thumbnailOrphans, nil
+	}
+	if jobType == domain.JobTypeCardThumbnail {
+		return f.cardThumbnailOrphans, nil
 	}
 	return f.orphans, nil
 }

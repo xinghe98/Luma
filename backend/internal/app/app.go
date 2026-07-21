@@ -30,6 +30,8 @@ type App struct {
 
 // backgroundRunner 定义应用托管后台组件所需的阻塞运行能力。
 type backgroundRunner interface {
+	// Prepare 在服务对外就绪前恢复持久化任务。
+	Prepare(context.Context) error
 	// Run 持续运行后台组件，直到上下文取消或发生致命错误。
 	Run(context.Context) error
 }
@@ -48,6 +50,10 @@ func (a *App) Run(ctx context.Context) error {
 
 // Serve 在已创建的监听器上运行服务，便于测试生命周期且无需固定端口。
 func (a *App) Serve(ctx context.Context, listener net.Listener) error {
+	if err := a.worker.Prepare(ctx); err != nil {
+		_ = listener.Close()
+		return fmt.Errorf("prepare background workers: %w", err)
+	}
 	runCtx, cancelRun := context.WithCancel(ctx)
 	defer cancelRun()
 	serveError := make(chan error, 1)

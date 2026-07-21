@@ -10,5 +10,5 @@ import (
 type MediaRepository interface {
 	List(context.Context, domain.MediaListQuery) ([]domain.Media, error)
 	Get(context.Context, string, string) (domain.Media, error)
-	GetThumbnail(context.Context, string) (domain.ThumbnailAsset, error)
+	GetThumbnail(context.Context, string, string) (domain.ThumbnailAsset, error)
 }

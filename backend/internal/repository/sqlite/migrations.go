@@ -28,6 +28,7 @@ var allMigrations = []migration{
 	{version: 5, name: "005_stage4_media_api", sql: migrations.Stage4MediaAPI},
 	{version: 6, name: "006_media_asset_content_hash", sql: migrations.MediaAssetContentHash},
 	{version: 7, name: "007_stage6_user_data", sql: migrations.Stage6UserData},
+	{version: 8, name: "008_card_thumbnail_jobs", sql: migrations.CardThumbnailJobs},
 }
 
 // migrate 在单个事务中幂等应用数据库迁移并确保默认用户存在。

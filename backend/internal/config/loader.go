@@ -63,6 +63,11 @@ func defaults() Config {
 		Media: MediaConfig{
 			FFmpegPath: "ffmpeg", FFprobePath: "ffprobe",
 			ThumbnailWidth: 640, ScanExtensions: append([]string(nil), defaultExtensions...),
+			// 默认监听变更，并以半小时全量扫描兜底遗漏的文件系统事件。
+			AutoScan: AutoScanConfig{
+				Enabled: true, Mode: AutoScanModeHybrid,
+				Interval: 30 * time.Minute, Debounce: 30 * time.Second,
+			},
 		},
 		Workers: WorkersConfig{Scan: 1, Probe: 2, Thumbnail: 1, LockTimeout: 10 * time.Minute},
 	}
@@ -158,6 +163,9 @@ func Validate(cfg Config) error {
 	if cfg.Media.ThumbnailWidth <= 0 {
 		problems = append(problems, "media.thumbnail_width must be positive")
 	}
+	if err := validateAutoScan(cfg.Media.AutoScan); err != "" {
+		problems = append(problems, err)
+	}
 	if cfg.Workers.Scan <= 0 || cfg.Workers.Probe <= 0 || cfg.Workers.Thumbnail <= 0 || cfg.Workers.LockTimeout <= 0 {
 		problems = append(problems, "worker counts and workers.lock_timeout must be positive")
 	}
@@ -165,6 +173,23 @@ func Validate(cfg Config) error {
 		return fmt.Errorf("invalid configuration: %s", strings.Join(problems, "; "))
 	}
 	return nil
+}
+
+// validateAutoScan 校验自动扫描策略；关闭时仍要求 mode/interval/debounce 合法，便于随时启用。
+func validateAutoScan(cfg AutoScanConfig) string {
+	mode := strings.TrimSpace(cfg.Mode)
+	switch mode {
+	case AutoScanModeHybrid, AutoScanModePoll, AutoScanModeWatch:
+	default:
+		return "media.auto_scan.mode must be hybrid, poll, or watch"
+	}
+	if cfg.Interval <= 0 {
+		return "media.auto_scan.interval must be positive"
+	}
+	if cfg.Debounce <= 0 {
+		return "media.auto_scan.debounce must be positive"
+	}
+	return ""
 }
 
 // pathIsWithin 判断候选路径在词法层面是否位于指定根目录中。

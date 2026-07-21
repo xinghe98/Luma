@@ -36,8 +36,8 @@ func TestOpenMigratesAndCreatesDefaultUser(t *testing.T) {
 	if err := db.QueryRow("SELECT MAX(version) FROM schema_migrations").Scan(&version); err != nil {
 		t.Fatal(err)
 	}
-	if version != 7 {
-		t.Fatalf("migration version = %d, want 7", version)
+	if version != 8 {
+		t.Fatalf("migration version = %d, want 8", version)
 	}
 	for _, table := range []string{"media_user_data", "tags"} {
 		var columns int

@@ -48,6 +48,9 @@ func (w *ThumbnailWorker) Run(ctx context.Context) error {
 
 func (w *ThumbnailWorker) runOne(ctx context.Context) error {
 	job, err := w.repo.Claim(ctx, domain.JobTypeThumbnail, w.workerID, w.clock.Now())
+	if errors.Is(err, domain.ErrNoPendingJob) {
+		job, err = w.repo.Claim(ctx, domain.JobTypeCardThumbnail, w.workerID, w.clock.Now())
+	}
 	if err != nil {
 		return err
 	}
@@ -55,10 +58,23 @@ func (w *ThumbnailWorker) runOne(ctx context.Context) error {
 	var thumbnail domain.ThumbnailResult
 	if err == nil {
 		toolCtx, cancel := context.WithTimeout(ctx, w.toolTimeout)
-		thumbnail, err = w.thumbnailer.Generate(toolCtx, input, input.DurationMS)
+		if job.Type == domain.JobTypeCardThumbnail {
+			cardThumbnailer, ok := w.thumbnailer.(media.CardThumbnailer)
+			if !ok {
+				err = errors.New("缩略图生成器不支持卡片变体")
+			} else {
+				thumbnail, err = cardThumbnailer.GenerateCard(toolCtx, input, input.DurationMS)
+			}
+		} else {
+			thumbnail, err = w.thumbnailer.Generate(toolCtx, input, input.DurationMS)
+		}
 		cancel()
 		if err == nil {
-			_, err = w.repo.CompleteThumbnail(ctx, job, input, thumbnail, w.clock.Now())
+			if job.Type == domain.JobTypeCardThumbnail {
+				_, err = w.repo.CompleteCardThumbnail(ctx, job, input, thumbnail, w.clock.Now())
+			} else {
+				_, err = w.repo.CompleteThumbnail(ctx, job, input, thumbnail, w.clock.Now())
+			}
 			if err == nil {
 				return nil
 			}

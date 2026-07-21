@@ -28,6 +28,10 @@ const (
 	MediaSortLastPlayedAt = "last_played_at"
 	SortAscending         = "asc"
 	SortDescending        = "desc"
+
+	WatchStatusUnwatched = "unwatched"
+	WatchStatusWatching  = "watching"
+	WatchStatusCompleted = "completed"
 )
 
 // Media 表示可安全提供给业务层的媒体索引，不包含任何真实路径。
@@ -88,6 +92,8 @@ type Media struct {
 	UserDataRevision int64
 	// HasThumbnail 表示存在 status=ready 的默认缩略图资产；仅供 API 组装 thumbnail_url。
 	HasThumbnail bool
+	// HasCardThumbnail 表示存在 status=ready 的卡片裁剪缩略图资产。
+	HasCardThumbnail bool
 }
 
 // MediaPageKey 表示 keyset 分页中上一页最后一项的稳定排序位置。
@@ -114,6 +120,8 @@ type MediaListQuery struct {
 	Favorite *bool
 	// TagID 是当前用户的标签筛选。
 	TagID string
+	// WatchStatus 是当前用户的观看状态筛选。
+	WatchStatus string
 	// ContinueWatching 表示查询继续观看集合。
 	ContinueWatching bool
 	// Sort 是排序字段。
@@ -136,6 +144,8 @@ type MediaListRequest struct {
 	Favorite *bool
 	// TagID 是原始标签筛选。
 	TagID string
+	// WatchStatus 是原始观看状态筛选。
+	WatchStatus string
 	// ContinueWatching 表示查询继续观看集合。
 	ContinueWatching bool
 	// Sort 是原始排序字段。
@@ -173,6 +183,11 @@ type ThumbnailAsset struct {
 	// UpdatedAt 是缩略图资产更新时间。
 	UpdatedAt time.Time
 }
+
+const (
+	ThumbnailVariantDefault = "default"
+	ThumbnailVariantCard    = "card"
+)
 
 // ThumbnailContent 表示缩略图响应内容；NotModified 为 true 时无需响应体。
 type ThumbnailContent struct {

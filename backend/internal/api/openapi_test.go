@@ -53,14 +53,59 @@ func TestOpenAPIIsValidYAML(t *testing.T) {
 	if !ok || properties["original_url"] == nil {
 		t.Fatal("MediaSummary.original_url 契约缺失")
 	}
-	for _, property := range []string{"completed", "last_played_at", "user_data_revision"} {
+	for _, property := range []string{"completed", "last_played_at", "user_data_revision", "created_at"} {
 		if properties[property] == nil {
 			t.Fatalf("MediaSummary.%s 契约缺失", property)
 		}
+	}
+	required, ok := mediaSummary["required"].([]any)
+	if !ok || !containsYAMLString(required, "created_at") {
+		t.Fatal("MediaSummary.created_at 未标记为 required")
+	}
+	mediaDetail, ok := schemas["MediaDetail"].(map[string]any)
+	if !ok {
+		t.Fatal("MediaDetail schema 缺失")
+	}
+	allOf, ok := mediaDetail["allOf"].([]any)
+	if !ok || len(allOf) != 2 {
+		t.Fatal("MediaDetail allOf 契约缺失")
+	}
+	detailExtension, ok := allOf[1].(map[string]any)
+	if !ok {
+		t.Fatal("MediaDetail 扩展契约缺失")
+	}
+	detailProperties, _ := detailExtension["properties"].(map[string]any)
+	if detailProperties["created_at"] != nil {
+		t.Fatal("MediaDetail 不应重复定义 created_at")
+	}
+	mediaPath, ok := paths["/api/v1/media"].(map[string]any)
+	get, getOK := mediaPath["get"].(map[string]any)
+	parameters, parametersOK := get["parameters"].([]any)
+	if !ok || !getOK || !parametersOK || !hasQueryParameter(parameters, "watch_status") {
+		t.Fatal("GET /api/v1/media watch_status 参数契约缺失")
 	}
 	for _, schema := range []string{"Tag", "MediaUserData", "UpdateMediaUserData", "UpdateProgress"} {
 		if schemas[schema] == nil {
 			t.Fatalf("阶段 6 schema 缺失: %s", schema)
 		}
 	}
+}
+
+func containsYAMLString(values []any, expected string) bool {
+	for _, value := range values {
+		if value == expected {
+			return true
+		}
+	}
+	return false
+}
+
+func hasQueryParameter(parameters []any, name string) bool {
+	for _, value := range parameters {
+		parameter, ok := value.(map[string]any)
+		if ok && parameter["in"] == "query" && parameter["name"] == name {
+			return true
+		}
+	}
+	return false
 }

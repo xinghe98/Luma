@@ -36,3 +36,8 @@ var MediaAssetContentHash string
 //
 //go:embed 007_stage6_user_data.sql
 var Stage6UserData string
+
+// CardThumbnailJobs 保存嵌入服务端二进制的 008 卡片缩略图任务迁移。
+//
+//go:embed 008_card_thumbnail_jobs.sql
+var CardThumbnailJobs string

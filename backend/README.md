@@ -25,6 +25,31 @@ Copy-Item configs/config.example.yaml configs/config.yaml
 
 服务首次启动会在 `data/secrets/api_token` 生成 API Token。`GET /health` 无需认证，其余 `/api/v1` 接口需发送 `Authorization: Bearer <token>`。本地示例媒体目录是 `data/media`，服务端只读它；SQLite、Token 和衍生数据写入独立的 `data` 子目录。
 
+### 自动扫描
+
+默认 **开启**（`hybrid`，每 30 分钟兜底扫描）。服务端会在后台自动对**已启用**的本地媒体源调用与手动扫描相同的全量扫描任务（`ScanService.Start`），不新增公开 API：
+
+```yaml
+media:
+  auto_scan:
+    enabled: true
+    mode: hybrid    # hybrid | poll | watch
+    interval: 30m   # 定时全量兜底 / 刷新监视列表
+    debounce: 30s   # 文件系统事件合并窗口（拷贝未完成时避免连扫）
+```
+
+| mode | 行为 |
+| --- | --- |
+| `hybrid`（推荐） | 监视 `root_path` 树；事件经 debounce 后入队；并按 `interval` 全量兜底 |
+| `poll` | 仅按 `interval` 对所有启用源尝试扫描 |
+| `watch` | 仅依赖目录事件；监听失败时自动退化为 poll |
+
+说明：
+
+- 同一媒体源若已有 `pending`/`running` 扫描，自动触发会被合并（与 API `SCAN_ALREADY_RUNNING` 同一约束）。
+- Docker 只读挂载、SMB/NAS 上 inotify 类事件经常不可靠，请依赖 `hybrid`/`poll` 的定时兜底，或把服务跑在能直接看到磁盘事件的主机上。
+- App 无需改动；库内容更新后客户端下次刷新列表即可看到。手动「扫描」按钮仍然可用。
+
 常用命令：
 
 ```bash
@@ -38,6 +63,8 @@ docker compose up --build
 ### 本地扫描闭环
 
 以下请求均需使用首次启动生成的 Token。创建媒体源时 `root_path` 必须位于 `security.allowed_roots` 中，响应永远不会返回真实路径。
+
+服务重启采用扫描恢复策略 A：启动时先将上次遗留的 `running` 扫描一次性标记为 `interrupted`，不提交该次扫描的 `missing`，也不自动重试；`pending` 扫描会继续由 Worker 领取。用户可在服务就绪后手动重新发起被中断来源的扫描。扫描与媒体处理恢复全部成功后 HTTP 才开始对外服务，因此就绪探测不会早于持久化状态恢复。
 
 ```bash
 curl -X POST http://127.0.0.1:8080/api/v1/sources \
@@ -82,6 +109,24 @@ curl http://127.0.0.1:8080/api/v1/media/{image_id}/original \
 ```
 
 列表响应的 `next_cursor` 为 `null` 时表示没有下一页，否则将其原样传入下一次请求。视频 `stream_url` 和图片 `original_url` 均支持 GET、HEAD、Range、`If-None-Match`、`If-Modified-Since` 和 `If-Range`；响应使用私有缓存和基于实际文件大小、修改时间的弱 ETag。媒体列表支持 `favorite` 与 `tag_id` 筛选，用户数据通过 `/user-data` 与 `/progress` 写入。
+
+### Flutter 已封装但暂无前端功能
+
+Flutter 客户端的 `ApiClient` 已封装下列后端接口，但当前 App 没有对应的页面或操作入口。后端接口本身已经实现，不应因客户端暂未使用而删除；后续增加 UI 时直接复用现有客户端请求方法和独立 JSON Decoder。
+
+| 后端能力 | 接口 | Flutter 当前状态 |
+| --- | --- | --- |
+| 创建媒体源 | `POST /api/v1/sources` | 已封装请求；缺少媒体源名称和根目录输入页面 |
+| 编辑媒体源 | `PATCH /api/v1/sources/{id}` | 已封装请求；缺少名称、根目录和启用状态编辑入口 |
+| 禁用媒体源 | `DELETE /api/v1/sources/{id}` | 已封装请求；缺少媒体源列表、禁用确认和重新启用入口 |
+| 指定媒体源扫描 | `POST /api/v1/sources/{id}/scan` | 已封装并用于扫描；当前按钮会处理所有启用来源，缺少单来源选择入口 |
+| 创建标签 | `POST /api/v1/tags` | 已封装请求；缺少标签管理页面 |
+| 重命名标签 | `PATCH /api/v1/tags/{id}` | 已封装请求；缺少重命名入口和 revision 冲突提示 |
+| 删除标签 | `DELETE /api/v1/tags/{id}` | 已封装请求；缺少删除确认和关联媒体刷新入口 |
+| 编辑媒体标签 | `PATCH /api/v1/media/{id}/user-data` 的 `tag_ids` | 用户数据 PATCH 已封装；详情页目前只展示标签，不能添加或移除 |
+| 自定义媒体标题 | `PATCH /api/v1/media/{id}/user-data` 的 `custom_title` | 用户数据 PATCH 已封装；缺少标题编辑入口 |
+
+这些缺失项属于 Flutter 产品功能，不是后端接口缺陷。实现顺序继续遵循 `PRODUCT_PLAN.md` 的 P0 → P1 → P2：优先保证连接、媒体浏览、播放和进度闭环，再补媒体源管理、标签编辑和自定义标题。
 
 ### 依赖注入基线
 
@@ -662,6 +707,7 @@ running
 completed
 failed
 cancelled
+interrupted
 ```
 
 媒体状态：
@@ -692,13 +738,13 @@ ffmpeg 缩略图：1 至 2 个 Worker
 * 失败任务记录 `attempt_count`、`error_code` 和 `error_message`
 * ffprobe 和缩略图任务默认最多重试一次
 * 任务处理必须幂等，重复执行不得产生重复记录
-* 服务启动时将遗留的 `running` 任务重新置为 `pending` 或最终失败
+* 服务启动时将遗留的扫描 `running` 任务标记为 `interrupted`，保留 `pending` 任务等待执行
 * 运行期间按 `workers.lock_timeout` 回收超时锁，并对外部工具施加相同执行超时
 * 服务启动与周期恢复会将遗留的 `discovered`/`probing`/`thumbnailing` 媒体重新加入对应任务
 * 处理失败的媒体在内容未变时重新扫描仍会重新探测
 * 服务退出时取消执行上下文；未完成任务保持 `running`，下次启动由恢复逻辑接管
 
-扫描任务被服务重启中断时标记为 `interrupted`，不得执行 `missing` 更新。后续可以由用户重新触发扫描。
+扫描任务被服务重启中断时只在启动恢复阶段统一标记一次 `interrupted`，不得执行 `missing` 更新，也不自动重试。HTTP 在恢复完成后才就绪，后续由用户手动重新触发扫描。
 
 ---
 
@@ -1437,6 +1483,9 @@ GET /api/v1/media
 ```text
 q
 type=video|image
+favorite=true|false
+tag_id
+watch_status=unwatched|watching|completed
 sort=created_at|filename|duration|file_size
 order=asc|desc
 cursor
@@ -1470,7 +1519,7 @@ limit（1-100，默认 50）
 
 响应中的 `title` 是已经按 `custom_title → detected_title → filename` 计算后的展示标题，不暴露内部字段选择逻辑给客户端。
 
-`next_cursor` 没有下一页时为 `null`。默认列表排除 `status = missing` 的媒体，同时排除已禁用或软删除来源下的媒体。视频的 `stream_url` 指向阶段 5 Direct Play 接口且 `original_url` 为 `null`；图片的 `original_url` 指向原图接口且 `stream_url` 为 `null`。`favorite`、`progress_ms`、`completed`、`last_played_at` 和 `user_data_revision` 来自当前用户数据；无记录时使用默认值。没有 `status=ready` 的默认缩略图资产时，`thumbnail_url` 为空字符串。
+`next_cursor` 没有下一页时为 `null`。默认列表排除 `status = missing` 的媒体，同时排除已禁用或软删除来源下的媒体。`watch_status=unwatched` 返回进度为 0 且未完成的媒体（包括没有用户数据的媒体），`watching` 返回进度大于 0 且未完成的媒体，`completed` 返回已完成媒体。视频的 `stream_url` 指向阶段 5 Direct Play 接口且 `original_url` 为 `null`；图片的 `original_url` 指向原图接口且 `stream_url` 为 `null`。`favorite`、`progress_ms`、`completed`、`last_played_at` 和 `user_data_revision` 来自当前用户数据；无记录时使用默认值。没有 `status=ready` 的默认缩略图资产时，`thumbnail_url` 为空字符串。
 
 `created_at` 在 API 中表示 `discovered_at_ms`。所有排序必须追加 `id` 作为稳定的第二排序键，例如：
 
@@ -1683,23 +1732,15 @@ Windows 路径在 YAML 中优先使用单引号，避免反斜杠被当作转义
 
 ## 12. 部署方案
 
+可直接执行的 Docker、Linux systemd 和 Windows 服务部署步骤见仓库根目录 [README.md](../README.md)。本节只记录服务端部署约束。
+
 ### 12.1 Docker
 
-```yaml
-services:
-  media-server:
-    build: .
-    container_name: local-media-server
-    restart: unless-stopped
-    ports:
-      - "8080:8080"
-    volumes:
-      - ./data:/data
-      - /mnt/videos:/media/videos:ro
-      - /mnt/photos:/media/photos:ro
-    environment:
-      - TZ=Asia/Shanghai
+```bash
+docker compose up -d --build
 ```
+
+当前 `docker-compose.yml` 使用命名卷 `luma-data` 持久化 `/data`，并将 `${LUMA_MEDIA_DIR:-./data/media}` 只读挂载到 `/media`。容器以非特权用户运行，宿主机媒体目录必须允许该用户读取。Compose 的停止宽限期为 40 秒，应始终长于配置中的 30 秒优雅关闭时间。
 
 目录规划：
 
@@ -1708,7 +1749,7 @@ services:
 ├── media.db
 ├── thumbnails/
 ├── cache/
-└── logs/
+└── secrets/api_token
 ```
 
 ### 12.2 Windows
@@ -1738,10 +1779,10 @@ luma-server-windows-amd64.zip
 配置检查命令应只验证配置、目录、数据库可写性和外部程序，不启动长期运行的 HTTP 服务：
 
 ```powershell
-.\luma-server.exe validate --config 'C:\ProgramData\Luma\config.yaml'
+.\luma-server.exe -config 'C:\ProgramData\Luma\config.yaml' -check-config -log-format text
 ```
 
-后台服务使用专用低权限账户运行。该账户需要：
+安装脚本默认使用 Windows 服务的 `LocalSystem` 账户，并将二进制复制到稳定的 `C:\Program Files\Luma`。生产环境建议在服务管理器中改用专用低权限账户。该账户需要：
 
 * 数据目录读写权限
 * Token 文件读取权限

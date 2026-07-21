@@ -71,6 +71,15 @@ func TestParseProbeJSONRejectsInvalidJSON(t *testing.T) {
 	}
 }
 
+func TestParseProbeJSONPrefersVideoStreamDuration(t *testing.T) {
+	raw := []byte(`{"streams":[{"codec_type":"video","codec_name":"h264","width":1920,"height":1080,"duration":"20.530000","avg_frame_rate":"30/1"},{"codec_type":"audio","codec_name":"aac"}],"format":{"format_name":"mov,mp4,m4a,3gp,3g2,mj2","duration":"2898.175000"}}`)
+	got, err := parseProbeJSON(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertInt64Pointer(t, "duration", got.DurationMS, 20530)
+}
+
 func TestParseProbeJSONSkipsAttachedPicture(t *testing.T) {
 	raw := []byte(`{"streams":[
 		{"codec_type":"video","codec_name":"mjpeg","width":600,"height":600,"disposition":{"attached_pic":1}},

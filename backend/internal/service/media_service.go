@@ -67,11 +67,17 @@ func (s *MediaService) Get(ctx context.Context, id, userID string) (domain.Media
 }
 
 // Thumbnail 返回默认缩略图内容或 304 短路径结果。
-func (s *MediaService) Thumbnail(ctx context.Context, id, ifNoneMatch string) (domain.ThumbnailContent, error) {
+func (s *MediaService) Thumbnail(ctx context.Context, id, variant, ifNoneMatch string) (domain.ThumbnailContent, error) {
 	if strings.TrimSpace(id) == "" {
 		return domain.ThumbnailContent{}, fmt.Errorf("%w: 媒体 ID 无效", domain.ErrInvalidRequest)
 	}
-	asset, err := s.repository.GetThumbnail(ctx, id)
+	if variant == "" {
+		variant = domain.ThumbnailVariantDefault
+	}
+	if variant != domain.ThumbnailVariantDefault && variant != domain.ThumbnailVariantCard {
+		return domain.ThumbnailContent{}, fmt.Errorf("%w: variant 必须是 default 或 card", domain.ErrInvalidRequest)
+	}
+	asset, err := s.repository.GetThumbnail(ctx, id, variant)
 	if err != nil {
 		return domain.ThumbnailContent{}, err
 	}
@@ -118,8 +124,9 @@ func etagMatches(header, etag string) bool {
 func normalizeMediaQuery(request domain.MediaListRequest, userID string) (domain.MediaListQuery, error) {
 	query := domain.MediaListQuery{
 		UserID: userID, Search: strings.TrimSpace(request.Query), MediaType: strings.TrimSpace(request.MediaType),
-		Favorite: request.Favorite, TagID: strings.TrimSpace(request.TagID), ContinueWatching: request.ContinueWatching,
-		Sort: strings.TrimSpace(request.Sort), Order: strings.TrimSpace(request.Order), Limit: request.Limit,
+		Favorite: request.Favorite, TagID: strings.TrimSpace(request.TagID), WatchStatus: strings.TrimSpace(request.WatchStatus),
+		ContinueWatching: request.ContinueWatching,
+		Sort:             strings.TrimSpace(request.Sort), Order: strings.TrimSpace(request.Order), Limit: request.Limit,
 	}
 	if userID == "" {
 		return query, fmt.Errorf("%w: 用户身份无效", domain.ErrInvalidRequest)
@@ -132,6 +139,11 @@ func normalizeMediaQuery(request domain.MediaListRequest, userID string) (domain
 	}
 	if len(query.TagID) > 200 {
 		return query, fmt.Errorf("%w: tag_id 无效", domain.ErrInvalidRequest)
+	}
+	switch query.WatchStatus {
+	case "", domain.WatchStatusUnwatched, domain.WatchStatusWatching, domain.WatchStatusCompleted:
+	default:
+		return query, fmt.Errorf("%w: watch_status 必须是 unwatched、watching 或 completed", domain.ErrInvalidRequest)
 	}
 	if query.ContinueWatching {
 		if query.MediaType != "" && query.MediaType != domain.MediaTypeVideo {

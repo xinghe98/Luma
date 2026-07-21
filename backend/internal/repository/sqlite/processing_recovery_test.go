@@ -134,3 +134,39 @@ func TestProcessingEnqueueThumbnailCreatesAssetAndJob(t *testing.T) {
 		t.Fatalf("job=%s asset=%s key=%s", jobStatus, assetStatus, key)
 	}
 }
+
+func TestCardThumbnailFailureDoesNotDowngradeReadyMedia(t *testing.T) {
+	f := newProcessingFixture(t)
+	f.addMedia("media", domain.MediaStatusReady)
+	_, err := f.db.Exec(`INSERT INTO media_assets(id, media_id, asset_type, variant, storage_key, status, generator_version, created_at_ms, updated_at_ms)
+		VALUES ('default_asset', 'media', 'thumbnail', 'default', 'default.jpg', 'ready', 1, ?, ?)`, f.now.UnixMilli(), f.now.UnixMilli())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.repo.EnqueueCardThumbnail(context.Background(), "card_job", "media", "card_asset", "card.jpg", f.now); err != nil {
+		t.Fatal(err)
+	}
+	job, err := f.repo.Claim(context.Background(), domain.JobTypeCardThumbnail, "worker", f.now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.repo.Fail(context.Background(), job, "CARD_FAILED", "card failed", f.now); err != nil {
+		t.Fatal(err)
+	}
+	job, err = f.repo.Claim(context.Background(), domain.JobTypeCardThumbnail, "worker", f.now.Add(time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.repo.Fail(context.Background(), job, "CARD_FAILED", "card failed", f.now.Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	var mediaStatus, defaultStatus, cardStatus string
+	if err := f.db.QueryRow(`SELECT mi.status, d.status, c.status FROM media_items mi
+		JOIN media_assets d ON d.media_id=mi.id AND d.variant='default'
+		JOIN media_assets c ON c.media_id=mi.id AND c.variant='card' WHERE mi.id='media'`).Scan(&mediaStatus, &defaultStatus, &cardStatus); err != nil {
+		t.Fatal(err)
+	}
+	if mediaStatus != domain.MediaStatusReady || defaultStatus != "ready" || cardStatus != "failed" {
+		t.Fatalf("media=%s default=%s card=%s", mediaStatus, defaultStatus, cardStatus)
+	}
+}

@@ -13,6 +13,7 @@ type ProcessingRepository interface {
 	EnqueueProbe(context.Context, string, string, time.Time) error
 	// EnqueueThumbnail 确保默认缩略图资产存在并幂等创建缩略图任务。
 	EnqueueThumbnail(context.Context, string, string, string, string, time.Time) error
+	EnqueueCardThumbnail(context.Context, string, string, string, string, time.Time) error
 	// Claim 原子领取指定类型任务并递增执行次数。
 	Claim(context.Context, string, string, time.Time) (domain.ProcessingJob, error)
 	// GetMedia 返回有效媒体源中的内部文件定位和当前版本。
@@ -21,6 +22,7 @@ type ProcessingRepository interface {
 	CompleteProbe(context.Context, domain.ProcessingJob, domain.MediaInput, domain.ProbeResult, string, string, string, time.Time) (bool, error)
 	// CompleteThumbnail 在文件版本匹配时提交资产并将媒体标记为 ready。
 	CompleteThumbnail(context.Context, domain.ProcessingJob, domain.MediaInput, domain.ThumbnailResult, time.Time) (bool, error)
+	CompleteCardThumbnail(context.Context, domain.ProcessingJob, domain.MediaInput, domain.ThumbnailResult, time.Time) (bool, error)
 	// Fail 记录安全错误信息，并返回任务是否会再次执行。
 	Fail(context.Context, domain.ProcessingJob, string, string, time.Time) (bool, error)
 	// Recover 恢复服务异常退出时遗留的全部运行中任务。

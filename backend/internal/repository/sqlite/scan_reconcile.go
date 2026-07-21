@@ -109,7 +109,7 @@ func (r *ScanRepository) ReconcileFile(
 		_, err = tx.ExecContext(ctx, `UPDATE jobs SET status = 'cancelled', finished_at_ms = ?,
 			locked_at_ms = NULL, locked_by = NULL, error_code = 'MEDIA_CHANGED',
 			error_message = '媒体文件已变化', updated_at_ms = ?
-			WHERE entity_id = ? AND job_type IN ('probe_media', 'generate_thumbnail')
+			WHERE entity_id = ? AND job_type IN ('probe_media', 'generate_thumbnail', 'generate_card_thumbnail')
 			AND status IN ('pending', 'running')`, now.UnixMilli(), now.UnixMilli(), existing.ID)
 		if err != nil {
 			return domain.ReconcileResult{}, fmt.Errorf("取消过期媒体任务: %w", err)

@@ -18,7 +18,7 @@ import (
 type MediaUseCase interface {
 	List(context.Context, domain.MediaListRequest, string) (domain.MediaPage, error)
 	Get(context.Context, string, string) (domain.Media, error)
-	Thumbnail(context.Context, string, string) (domain.ThumbnailContent, error)
+	Thumbnail(context.Context, string, string, string) (domain.ThumbnailContent, error)
 }
 
 // MediaHandler 将媒体查询业务适配为 Gin API。
@@ -53,6 +53,8 @@ type mediaSummaryJSON struct {
 	Height *int `json:"height"`
 	// ThumbnailURL 是默认缩略图地址。
 	ThumbnailURL string `json:"thumbnail_url"`
+	// CardThumbnailURL 是 16:10 居中裁剪的卡片缩略图地址。
+	CardThumbnailURL string `json:"card_thumbnail_url"`
 	// StreamURL 是视频流地址。
 	StreamURL *string `json:"stream_url"`
 	// OriginalURL 是图片原图地址。
@@ -69,6 +71,8 @@ type mediaSummaryJSON struct {
 	UserDataRevision int64 `json:"user_data_revision"`
 	// Status 是媒体处理状态。
 	Status string `json:"status"`
+	// CreatedAt 是媒体首次进入媒体库的时间。
+	CreatedAt string `json:"created_at"`
 }
 
 type mediaDetailJSON struct {
@@ -98,8 +102,6 @@ type mediaDetailJSON struct {
 	Orientation *int `json:"orientation"`
 	// CapturedAt 是媒体拍摄时间。
 	CapturedAt *string `json:"captured_at"`
-	// CreatedAt 是媒体发现时间。
-	CreatedAt string `json:"created_at"`
 	// IndexedAt 是媒体索引完成时间。
 	IndexedAt *string `json:"indexed_at"`
 }
@@ -122,7 +124,7 @@ func (h *MediaHandler) List(c *gin.Context) {
 	page, err := h.service.List(c.Request.Context(), domain.MediaListRequest{
 		Query: c.Query("q"), MediaType: c.Query("type"), Sort: c.Query("sort"),
 		Order: c.Query("order"), Cursor: c.Query("cursor"), Limit: limit,
-		Favorite: favorite, TagID: c.Query("tag_id"),
+		Favorite: favorite, TagID: c.Query("tag_id"), WatchStatus: c.Query("watch_status"),
 	}, c.GetString("user_id"))
 	if err != nil {
 		response.FromError(c, err)
@@ -175,7 +177,7 @@ func (h *MediaHandler) Get(c *gin.Context) {
 
 // Thumbnail 处理 GET /api/v1/media/:id/thumbnail。
 func (h *MediaHandler) Thumbnail(c *gin.Context) {
-	content, err := h.service.Thumbnail(c.Request.Context(), c.Param("id"), c.GetHeader("If-None-Match"))
+	content, err := h.service.Thumbnail(c.Request.Context(), c.Param("id"), c.Query("variant"), c.GetHeader("If-None-Match"))
 	if err != nil {
 		response.FromError(c, err)
 		return
@@ -196,6 +198,7 @@ func presentMediaSummary(item domain.Media) mediaSummaryJSON {
 		DurationMS: item.DurationMS, Width: item.Width, Height: item.Height,
 		Favorite: item.Favorite, ProgressMS: item.ProgressMS, Completed: item.Completed,
 		UserDataRevision: item.UserDataRevision, Status: item.Status,
+		CreatedAt: item.DiscoveredAt.UTC().Format(time.RFC3339Nano),
 	}
 	if item.LastPlayedAt != nil {
 		value := item.LastPlayedAt.UTC().Format(time.RFC3339Nano)
@@ -210,6 +213,9 @@ func presentMediaSummary(item domain.Media) mediaSummaryJSON {
 	}
 	if item.HasThumbnail {
 		summary.ThumbnailURL = "/api/v1/media/" + escaped + "/thumbnail"
+	}
+	if item.HasCardThumbnail {
+		summary.CardThumbnailURL = "/api/v1/media/" + escaped + "/thumbnail?variant=card"
 	}
 	return summary
 }
@@ -232,7 +238,7 @@ func presentMediaDetail(item domain.Media) mediaDetailJSON {
 		FileSize: item.FileSize, VideoCodec: item.VideoCodec, AudioCodec: item.AudioCodec,
 		Container: item.Container, Bitrate: item.Bitrate, FrameRateNum: item.FrameRateNum,
 		FrameRateDen: item.FrameRateDen, AudioTrackCount: item.AudioTrackCount,
-		Orientation: item.Orientation, CreatedAt: item.DiscoveredAt.UTC().Format(time.RFC3339Nano),
+		Orientation: item.Orientation,
 	}
 	if item.CapturedAt != nil {
 		value := item.CapturedAt.UTC().Format(time.RFC3339Nano)

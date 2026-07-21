@@ -93,10 +93,13 @@ func (r *ScanRepository) ClaimNextJob(ctx context.Context, workerID string, now 
 	if err := requireAffected(result, domain.ErrNoPendingScan); err != nil {
 		return domain.ScanJob{}, err
 	}
-	_, err = tx.ExecContext(ctx, `UPDATE scan_jobs SET status = 'running', phase = 'walking',
-        started_at_ms = ?, updated_at_ms = ? WHERE id = ?`, now.UnixMilli(), now.UnixMilli(), id)
+	result, err = tx.ExecContext(ctx, `UPDATE scan_jobs SET status = 'running', phase = 'walking',
+		started_at_ms = ?, updated_at_ms = ? WHERE id = ? AND status = 'pending'`, now.UnixMilli(), now.UnixMilli(), id)
 	if err != nil {
 		return domain.ScanJob{}, fmt.Errorf("更新扫描任务运行状态: %w", err)
+	}
+	if err := requireAffected(result, domain.ErrNoPendingScan); err != nil {
+		return domain.ScanJob{}, err
 	}
 	job, err := scanJob(tx.QueryRowContext(ctx, scanJobSelect+` WHERE sj.id = ?`, id))
 	if err != nil {
@@ -178,10 +181,13 @@ func (r *ScanRepository) CompleteJob(ctx context.Context, jobID, sourceID string
 	if err != nil {
 		return fmt.Errorf("提交 missing 标记: %w", err)
 	}
-	_, err = tx.ExecContext(ctx, `UPDATE jobs SET status = 'completed', finished_at_ms = ?,
+	result, err = tx.ExecContext(ctx, `UPDATE jobs SET status = 'completed', finished_at_ms = ?,
         locked_at_ms = NULL, locked_by = NULL, updated_at_ms = ? WHERE id = ? AND status = 'running'`,
 		now.UnixMilli(), now.UnixMilli(), jobID)
 	if err != nil {
+		return err
+	}
+	if err := requireAffected(result, domain.ErrScanNotFound); err != nil {
 		return err
 	}
 	sourceStatus := domain.SourceStatusOnline
@@ -243,18 +249,42 @@ func (r *ScanRepository) InterruptRunningJobs(ctx context.Context, now time.Time
 		return err
 	}
 	defer tx.Rollback()
-	_, err = tx.ExecContext(ctx, `UPDATE scan_jobs SET status = 'interrupted', phase = 'finished',
+	var inconsistent int
+	err = tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM jobs j
+		LEFT JOIN scan_jobs sj ON sj.id = j.id
+		WHERE j.job_type = 'scan_source' AND (
+			(j.status = 'running' AND COALESCE(sj.status, '') <> 'running') OR
+			(j.status <> 'running' AND sj.status = 'running')
+		)`).Scan(&inconsistent)
+	if err != nil {
+		return fmt.Errorf("校验扫描任务恢复状态: %w", err)
+	}
+	if inconsistent != 0 {
+		return fmt.Errorf("扫描任务恢复状态不一致: %d 条", inconsistent)
+	}
+	result, err := tx.ExecContext(ctx, `UPDATE scan_jobs SET status = 'interrupted', phase = 'finished',
         finished_at_ms = ?, error_code = 'SCAN_INTERRUPTED', error_message = '服务退出导致扫描中断', updated_at_ms = ?
         WHERE status = 'running'`, now.UnixMilli(), now.UnixMilli())
 	if err != nil {
 		return err
 	}
-	_, err = tx.ExecContext(ctx, `UPDATE jobs SET status = 'interrupted', finished_at_ms = ?,
+	scanCount, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("读取 scan_jobs 恢复影响行数: %w", err)
+	}
+	result, err = tx.ExecContext(ctx, `UPDATE jobs SET status = 'interrupted', finished_at_ms = ?,
         error_code = 'SCAN_INTERRUPTED', error_message = '服务退出导致扫描中断',
         locked_at_ms = NULL, locked_by = NULL, updated_at_ms = ?
         WHERE job_type = 'scan_source' AND status = 'running'`, now.UnixMilli(), now.UnixMilli())
 	if err != nil {
 		return err
+	}
+	jobCount, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("读取 jobs 恢复影响行数: %w", err)
+	}
+	if scanCount != jobCount {
+		return fmt.Errorf("扫描任务恢复影响行数不一致: scan_jobs=%d jobs=%d", scanCount, jobCount)
 	}
 	return tx.Commit()
 }

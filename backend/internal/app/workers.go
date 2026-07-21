@@ -62,6 +62,6 @@ func (b *bootstrap) buildWorkers(database *sql.DB, sources *dbrepo.SourceReposit
 	if err != nil {
 		return nil, nil, err
 	}
-	group, err := jobs.NewGroup(recovery, runners...)
+	group, err := jobs.NewGroup(scans, clock, recovery, runners...)
 	return group, scanSignal, err
 }

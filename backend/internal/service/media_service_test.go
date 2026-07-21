@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"testing"
 	"time"
@@ -22,6 +24,7 @@ type fakeMediaRepository struct {
 	assetErr error
 	// readCalls 指向缩略图读取次数计数器。
 	readCalls *int
+	variant   string
 }
 
 func (r *fakeMediaRepository) List(_ context.Context, query domain.MediaListQuery) ([]domain.Media, error) {
@@ -59,7 +62,8 @@ func TestMediaServiceContinueWatchingCursorBindsUserAndFilters(t *testing.T) {
 		t.Fatalf("cross-filter cursor error=%v", err)
 	}
 }
-func (r *fakeMediaRepository) GetThumbnail(context.Context, string) (domain.ThumbnailAsset, error) {
+func (r *fakeMediaRepository) GetThumbnail(_ context.Context, _, variant string) (domain.ThumbnailAsset, error) {
+	r.variant = variant
 	if r.assetErr != nil {
 		return domain.ThumbnailAsset{}, r.assetErr
 	}
@@ -67,6 +71,23 @@ func (r *fakeMediaRepository) GetThumbnail(context.Context, string) (domain.Thum
 		return r.asset, nil
 	}
 	return domain.ThumbnailAsset{StorageKey: "thumbnails/media/cover.jpg", MIMEType: "image/jpeg"}, nil
+}
+
+func TestMediaServiceThumbnailValidatesAndForwardsVariant(t *testing.T) {
+	repository := &fakeMediaRepository{}
+	service, err := NewMediaService(repository, countingThumbnailReader{data: []byte("jpeg")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.Thumbnail(context.Background(), "media", "wide", ""); !errors.Is(err, domain.ErrInvalidRequest) {
+		t.Fatalf("invalid variant error=%v", err)
+	}
+	if _, err := service.Thumbnail(context.Background(), "media", domain.ThumbnailVariantCard, ""); err != nil {
+		t.Fatal(err)
+	}
+	if repository.variant != domain.ThumbnailVariantCard {
+		t.Fatalf("variant=%q", repository.variant)
+	}
 }
 
 type countingThumbnailReader struct {
@@ -115,6 +136,42 @@ func TestMediaServiceCursorCannotBeReusedAcrossFilters(t *testing.T) {
 	if !errors.Is(err, domain.ErrInvalidRequest) {
 		t.Fatalf("error = %v", err)
 	}
+	_, err = service.List(context.Background(), domain.MediaListRequest{Limit: 2, WatchStatus: domain.WatchStatusUnwatched, Cursor: page.NextCursor}, "user_local")
+	if !errors.Is(err, domain.ErrInvalidRequest) {
+		t.Fatalf("watch status cursor error = %v", err)
+	}
+}
+
+func TestMediaServiceValidatesWatchStatusAndUsesCursorV3(t *testing.T) {
+	repository := &fakeMediaRepository{}
+	service, err := NewMediaService(repository, countingThumbnailReader{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.List(context.Background(), domain.MediaListRequest{WatchStatus: "unknown"}, "user_local"); !errors.Is(err, domain.ErrInvalidRequest) {
+		t.Fatalf("invalid watch status error = %v", err)
+	}
+	if _, err := service.List(context.Background(), domain.MediaListRequest{WatchStatus: " watching "}, "user_local"); err != nil {
+		t.Fatal(err)
+	}
+	if repository.query.WatchStatus != domain.WatchStatusWatching {
+		t.Fatalf("watch status = %q", repository.query.WatchStatus)
+	}
+	cursor, err := encodeMediaCursor(repository.query, domain.Media{ID: "media", DiscoveredAt: time.UnixMilli(1)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	decoded, err := base64.RawURLEncoding.DecodeString(cursor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var payload mediaCursor
+	if err := json.Unmarshal(decoded, &payload); err != nil {
+		t.Fatal(err)
+	}
+	if payload.Version != 3 {
+		t.Fatalf("cursor version = %d", payload.Version)
+	}
 }
 
 func TestMediaServiceValidatesQueryAndBuildsStrongETag(t *testing.T) {
@@ -129,7 +186,7 @@ func TestMediaServiceValidatesQueryAndBuildsStrongETag(t *testing.T) {
 	if _, err := service.List(context.Background(), domain.MediaListRequest{Sort: domain.MediaSortLastPlayedAt}, "user_local"); !errors.Is(err, domain.ErrInvalidRequest) {
 		t.Fatalf("internal sort error = %v", err)
 	}
-	content, err := service.Thumbnail(context.Background(), "media", "")
+	content, err := service.Thumbnail(context.Background(), "media", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -148,7 +205,7 @@ func TestMediaServiceThumbnailNotModifiedSkipsRead(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	content, err := service.Thumbnail(context.Background(), "media", `"`+hash+`"`)
+	content, err := service.Thumbnail(context.Background(), "media", "", `"`+hash+`"`)
 	if err != nil {
 		t.Fatal(err)
 	}

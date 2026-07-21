@@ -1,0 +1,276 @@
+import 'dart:async';
+
+import 'package:flutter/foundation.dart';
+
+import '../../data/models/media_item.dart';
+import '../../data/models/api_tag.dart';
+import '../../data/models/media_filter.dart';
+import '../../data/models/media_types.dart';
+import '../../data/repositories/media_repository.dart';
+
+enum LoadState { idle, loading, ready, error }
+
+class _MediaBundle {
+  const _MediaBundle({
+    required this.items,
+    required this.continueWatching,
+    required this.tags,
+  });
+
+  final List<MediaItem> items;
+  final List<MediaItem> continueWatching;
+  final List<Tag> tags;
+}
+
+class MediaController extends ChangeNotifier {
+  MediaController(this._repository);
+
+  final MediaRepository _repository;
+  List<MediaItem> _items = const [];
+  List<MediaItem> _continueWatching = const [];
+  List<Tag> _tags = const [];
+  /// id → 最新 MediaItem，供 O(1) 查找；与 _items / continueWatching 同步维护。
+  final Map<String, MediaItem> _byId = {};
+  LoadState _loadState = LoadState.idle;
+  String? _loadError;
+  String? _detailError;
+  bool _detailLoading = false;
+  int _catalogCount = 0;
+  int _loadGeneration = 0;
+  // 连接断开后使旧服务器的 mutation 回包和排队操作全部失效。
+  int _mutationGeneration = 0;
+  final Map<String, Future<void>> _inflight = {};
+
+  List<MediaItem> get items => _items;
+  List<MediaItem> get continueWatching => _continueWatching;
+  List<Tag> get tags => _tags;
+  LoadState get loadState => _loadState;
+  String? get loadError => _loadError;
+  String? get detailError => _detailError;
+  bool get detailLoading => _detailLoading;
+
+  /// 媒体库真实总数（分页统计），供设置页展示；首页 items 仅为摘要子集。
+  int get catalogCount => _catalogCount;
+
+  MediaItem? findById(String id) => _byId[id];
+
+  /// 打开详情/播放前写入缓存，避免库页/搜索结果不在首页列表时出现「找不到媒体」。
+  void remember(MediaItem item, {bool notify = true}) {
+    _cacheAndReplaceHome(item);
+    if (notify) notifyListeners();
+  }
+
+  void rememberAll(Iterable<MediaItem> items, {bool notify = true}) {
+    var changed = false;
+    for (final item in items) {
+      final before = _byId[item.id];
+      _byId[item.id] = item;
+      if (before == null || !identical(before, item)) changed = true;
+    }
+    if (changed && _items.isNotEmpty) {
+      _items = [
+        for (final item in _items) _byId[item.id] ?? item,
+      ];
+    }
+    if (changed && notify) notifyListeners();
+  }
+
+  MediaItem byId(String id) {
+    final item = findById(id);
+    if (item == null) throw StateError('Unknown media: $id');
+    return item;
+  }
+
+  Future<void> load() => _runLoad(_loadAll);
+  Future<void> refresh() => _runLoad(_refreshAll, showLoading: false);
+
+  Future<_MediaBundle> _loadAll() async {
+    final items = await _repository.loadMedia();
+    final continueWatching = await _repository.loadContinueWatching();
+    final tags = await _repository.loadTags();
+    // 总数异步刷新，不阻塞首页首屏。
+    unawaited(refreshCatalogCount());
+    return _MediaBundle(
+      items: items,
+      continueWatching: continueWatching,
+      tags: tags,
+    );
+  }
+
+  Future<_MediaBundle> _refreshAll() async {
+    final items = await _repository.refresh();
+    final continueWatching = await _repository.loadContinueWatching();
+    final tags = await _repository.loadTags();
+    unawaited(refreshCatalogCount());
+    return _MediaBundle(
+      items: items,
+      continueWatching: continueWatching,
+      tags: tags,
+    );
+  }
+
+  Future<List<MediaItem>> search(MediaFilter filter) =>
+      _repository.search(filter);
+
+  Future<MediaListPage> searchPage(MediaFilter filter, {String? cursor}) =>
+      _repository.searchPage(filter, cursor: cursor);
+
+  Future<void> refreshCatalogCount() async {
+    try {
+      final total = await _repository.countMedia();
+      if (_catalogCount == total) return;
+      _catalogCount = total;
+      notifyListeners();
+    } on Object {
+      // 统计失败时保留旧值，设置页仍可显示已加载数量。
+    }
+  }
+
+  Future<void> loadDetail(String id) async {
+    _detailError = null;
+    _detailLoading = true;
+    notifyListeners();
+    try {
+      _cacheAndReplaceHome(await _repository.loadDetail(id));
+      _detailError = null;
+    } on Object catch (error) {
+      _detailError = error.toString();
+    } finally {
+      _detailLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> _runLoad(
+    Future<_MediaBundle> Function() request, {
+    bool showLoading = true,
+  }) async {
+    final generation = ++_loadGeneration;
+    if (showLoading) {
+      _loadState = LoadState.loading;
+      notifyListeners();
+    }
+    try {
+      final bundle = await request();
+      if (generation != _loadGeneration) return;
+      _items = bundle.items;
+      _continueWatching = bundle.continueWatching;
+      _tags = bundle.tags;
+      _rebuildIndex();
+      _loadState = LoadState.ready;
+      _loadError = null;
+    } on Object catch (error) {
+      if (generation != _loadGeneration) return;
+      _loadState = LoadState.error;
+      _loadError = error.toString();
+    }
+    notifyListeners();
+  }
+
+  Future<void> toggleFavorite(String id) {
+    return _runMutation(id, (generation) async {
+      final item = findById(id);
+      if (item == null) throw StateError('Unknown media: $id');
+      final updated = await _repository.setFavorite(id, !item.isFavorite);
+      if (generation == _mutationGeneration) _applyUserData(updated);
+    });
+  }
+
+  Future<void> saveNote(String id, String note) {
+    return _runMutation(id, (generation) async {
+      final updated = await _repository.saveNote(id, note);
+      if (generation == _mutationGeneration) _applyUserData(updated);
+    });
+  }
+
+  Future<void> updateProgress(String id, int positionMs) {
+    return _runMutation(id, (generation) async {
+      final updated = await _repository.updateProgress(id, positionMs);
+      if (generation == _mutationGeneration) _applyProgress(updated);
+    });
+  }
+
+  Future<void> _runMutation(
+    String id,
+    Future<void> Function(int generation) action,
+  ) {
+    final generation = _mutationGeneration;
+    final previous = _inflight[id] ?? Future<void>.value();
+    final next = previous.catchError((_) {}).then<void>((_) async {
+      // 队列可能在断开后才轮到此操作；此时绝不能请求新服务器。
+      if (generation != _mutationGeneration) return;
+      await action(generation);
+    });
+    _inflight[id] = next;
+    return next.whenComplete(() {
+      if (identical(_inflight[id], next)) _inflight.remove(id);
+    });
+  }
+
+  void clear() {
+    _loadGeneration++;
+    _mutationGeneration++;
+    _inflight.clear();
+	// 清除 repository 中按 id 保留的详情，避免换服后复用旧服务器数据。
+	if (_repository case SessionResettableMediaRepository resettable) {
+	  resettable.clearSessionCache();
+	}
+    _items = const [];
+    _continueWatching = const [];
+    _tags = const [];
+    _byId.clear();
+    _catalogCount = 0;
+    _loadState = LoadState.idle;
+    _loadError = null;
+    _detailError = null;
+    _detailLoading = false;
+    notifyListeners();
+  }
+
+  void _applyUserData(MediaItem updated) {
+    _cacheAndReplaceHome(updated);
+    _syncContinueWatchingItem(updated);
+    notifyListeners();
+  }
+
+  void _applyProgress(MediaItem updated) {
+    _cacheAndReplaceHome(updated);
+    final continueIndex = _continueWatching.indexWhere(
+      (item) => item.id == updated.id,
+    );
+    if (updated.watchStatus == WatchStatus.watching) {
+      if (continueIndex < 0) {
+        _continueWatching = [updated, ..._continueWatching];
+      } else {
+        _continueWatching = [..._continueWatching]..[continueIndex] = updated;
+      }
+    } else if (continueIndex >= 0) {
+      _continueWatching = [..._continueWatching]..removeAt(continueIndex);
+    }
+    notifyListeners();
+  }
+
+  void _cacheAndReplaceHome(MediaItem updated) {
+    final index = _items.indexWhere((item) => item.id == updated.id);
+    if (index >= 0) {
+      _items = [..._items]..[index] = updated;
+    }
+    _byId[updated.id] = updated;
+  }
+
+  void _syncContinueWatchingItem(MediaItem updated) {
+    final continueIndex = _continueWatching.indexWhere(
+      (item) => item.id == updated.id,
+    );
+    if (continueIndex < 0) return;
+    _continueWatching = [..._continueWatching]..[continueIndex] = updated;
+    _byId[updated.id] = updated;
+  }
+
+  void _rebuildIndex() {
+    _byId
+      ..clear()
+      ..addEntries(_continueWatching.map((item) => MapEntry(item.id, item)))
+      ..addEntries(_items.map((item) => MapEntry(item.id, item)));
+  }
+}

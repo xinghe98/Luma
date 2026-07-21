@@ -98,6 +98,9 @@ func applyStream(result *domain.ProbeResult, stream *probeStream) {
 		return
 	}
 	result.VideoCodec = stream.CodecName
+	if streamDuration := milliseconds(stream.Duration); streamDuration != nil {
+		result.DurationMS = streamDuration
+	}
 	if stream.Width > 0 {
 		result.Width = pointer(stream.Width)
 	}

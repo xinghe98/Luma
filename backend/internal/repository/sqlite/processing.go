@@ -63,9 +63,35 @@ func (r *ProcessingRepository) EnqueueThumbnail(ctx context.Context, jobID, medi
 	return tx.Commit()
 }
 
+// EnqueueCardThumbnail 创建独立的卡片缩略图补齐资产与任务。
+func (r *ProcessingRepository) EnqueueCardThumbnail(ctx context.Context, jobID, mediaID, assetID, storageKey string, now time.Time) error {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	_, err = tx.ExecContext(ctx, `INSERT INTO media_assets(
+        id, media_id, asset_type, variant, storage_key, status, generator_version, created_at_ms, updated_at_ms
+    ) VALUES (?, ?, 'thumbnail', 'card', ?, 'pending', 1, ?, ?)
+    ON CONFLICT(media_id, asset_type, variant, generator_version) DO UPDATE SET
+        storage_key=excluded.storage_key, status='pending', error_message=NULL, updated_at_ms=excluded.updated_at_ms
+        WHERE media_assets.status <> 'ready'`, assetID, mediaID, storageKey, now.UnixMilli(), now.UnixMilli())
+	if err != nil {
+		return fmt.Errorf("准备卡片缩略图资产: %w", err)
+	}
+	_, err = tx.ExecContext(ctx, `INSERT INTO jobs(
+        id, job_type, entity_id, status, max_attempts, available_at_ms, created_at_ms, updated_at_ms
+    ) VALUES (?, 'generate_card_thumbnail', ?, 'pending', 2, ?, ?, ?) ON CONFLICT DO NOTHING`,
+		jobID, mediaID, now.UnixMilli(), now.UnixMilli(), now.UnixMilli())
+	if err != nil {
+		return fmt.Errorf("创建卡片缩略图任务: %w", err)
+	}
+	return tx.Commit()
+}
+
 // Claim 原子领取指定类型的最早可运行任务，并同步媒体处理状态。
 func (r *ProcessingRepository) Claim(ctx context.Context, jobType, workerID string, now time.Time) (domain.ProcessingJob, error) {
-	if jobType != domain.JobTypeProbe && jobType != domain.JobTypeThumbnail {
+	if jobType != domain.JobTypeProbe && jobType != domain.JobTypeThumbnail && jobType != domain.JobTypeCardThumbnail {
 		return domain.ProcessingJob{}, domain.ErrNoPendingJob
 	}
 	tx, err := r.db.BeginTx(ctx, nil)
@@ -97,15 +123,19 @@ func (r *ProcessingRepository) Claim(ctx context.Context, jobType, workerID stri
 	if jobType == domain.JobTypeThumbnail {
 		status = domain.MediaStatusThumbnailing
 	}
-	_, err = tx.ExecContext(ctx, `UPDATE media_items SET status = ?, error_code = NULL,
+	if jobType != domain.JobTypeCardThumbnail {
+		_, err = tx.ExecContext(ctx, `UPDATE media_items SET status = ?, error_code = NULL,
         error_message = NULL, updated_at_ms = ? WHERE id = ? AND status <> 'missing'`,
-		status, now.UnixMilli(), job.MediaID)
-	if err != nil {
-		return domain.ProcessingJob{}, fmt.Errorf("更新媒体处理状态: %w", err)
+			status, now.UnixMilli(), job.MediaID)
+		if err != nil {
+			return domain.ProcessingJob{}, fmt.Errorf("更新媒体处理状态: %w", err)
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		return domain.ProcessingJob{}, err
 	}
+	// 后续完成或失败必须带回同一领取者，防止过期 worker 覆盖重新领取的任务。
+	job.WorkerID = workerID
 	return job, nil
 }
 
@@ -130,8 +160,9 @@ func (r *ProcessingRepository) GetMedia(ctx context.Context, id string) (domain.
 func completeJob(ctx context.Context, tx *sql.Tx, job domain.ProcessingJob, now time.Time) error {
 	result, err := tx.ExecContext(ctx, `UPDATE jobs SET status = 'completed', finished_at_ms = ?,
         locked_at_ms = NULL, locked_by = NULL, error_code = NULL, error_message = NULL, updated_at_ms = ?
-        WHERE id = ? AND job_type = ? AND entity_id = ? AND status = 'running'`,
-		now.UnixMilli(), now.UnixMilli(), job.ID, job.Type, job.MediaID)
+        WHERE id = ? AND job_type = ? AND entity_id = ? AND status = 'running'
+        AND locked_by = ? AND attempt_count = ?`,
+		now.UnixMilli(), now.UnixMilli(), job.ID, job.Type, job.MediaID, job.WorkerID, job.Attempt)
 	if err != nil {
 		return err
 	}
@@ -142,7 +173,8 @@ func cancelStaleJob(ctx context.Context, tx *sql.Tx, job domain.ProcessingJob, n
 	_, err := tx.ExecContext(ctx, `UPDATE jobs SET status = 'cancelled', finished_at_ms = ?,
 		locked_at_ms = NULL, locked_by = NULL, error_code = 'MEDIA_CHANGED',
 		error_message = '媒体文件已变化', updated_at_ms = ?
-		WHERE id = ? AND job_type = ? AND entity_id = ? AND status = 'running'`,
-		now.UnixMilli(), now.UnixMilli(), job.ID, job.Type, job.MediaID)
+		WHERE id = ? AND job_type = ? AND entity_id = ? AND status = 'running'
+		AND locked_by = ? AND attempt_count = ?`,
+		now.UnixMilli(), now.UnixMilli(), job.ID, job.Type, job.MediaID, job.WorkerID, job.Attempt)
 	return err
 }

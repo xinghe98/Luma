@@ -266,12 +266,35 @@ func TestReconcileDisplacesConflictingPathIdentity(t *testing.T) {
 	}
 }
 
-// TestInterruptRunningJobsAlignsStatus 验证中断时 jobs 与 scan_jobs 状态一致。
+// TestInterruptRunningJobsAlignsStatus 验证启动恢复只中断 running，并且不提交 missing。
 func TestInterruptRunningJobsAlignsStatus(t *testing.T) {
 	sources, scans := newStage2Repositories(t)
 	now := time.Unix(700, 0).UTC()
 	source := createTestSource(t, sources, now)
+	seed := createAndClaimScan(t, scans, source.ID, "scan_seed", now)
+	file := domain.DiscoveredFile{
+		RelativePath: "keep.mp4", Filename: "keep.mp4", MediaType: domain.MediaTypeVideo,
+		Size: 10, ModifiedAt: now, FileID: "keep-file",
+	}
+	if _, err := scans.ReconcileFile(context.Background(), seed.ID, source.ID, "media_keep", file, now); err != nil {
+		t.Fatal(err)
+	}
+	if err := scans.CompleteJob(context.Background(), seed.ID, source.ID, now); err != nil {
+		t.Fatal(err)
+	}
 	_ = createAndClaimScan(t, scans, source.ID, "scan_interrupt", now)
+	pendingSource := domain.Source{
+		ID: "source_pending", Name: "等待扫描", Type: domain.SourceTypeLocal, RootPath: "/pending",
+		Enabled: true, Status: domain.SourceStatusOnline, CreatedAt: now, UpdatedAt: now,
+	}
+	if err := sources.Create(context.Background(), pendingSource); err != nil {
+		t.Fatal(err)
+	}
+	if err := scans.CreateJob(context.Background(), domain.ScanJob{
+		ID: "scan_pending", SourceID: pendingSource.ID, CreatedAt: now, UpdatedAt: now,
+	}); err != nil {
+		t.Fatal(err)
+	}
 	if err := scans.InterruptRunningJobs(context.Background(), now.Add(time.Second)); err != nil {
 		t.Fatal(err)
 	}
@@ -288,6 +311,50 @@ func TestInterruptRunningJobsAlignsStatus(t *testing.T) {
 	}
 	if jobsStatus != domain.ScanStatusInterrupted {
 		t.Fatalf("jobs.status = %s", jobsStatus)
+	}
+	pending, err := scans.GetJob(context.Background(), "scan_pending")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pending.Status != domain.ScanStatusPending {
+		t.Fatalf("pending scan status = %s", pending.Status)
+	}
+	claimed, err := scans.ClaimNextJob(context.Background(), "worker_after_recovery", now.Add(time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if claimed.ID != "scan_pending" {
+		t.Fatalf("claimed scan = %s", claimed.ID)
+	}
+	var mediaStatus string
+	if err := scans.db.QueryRow(`SELECT status FROM media_items WHERE id = 'media_keep'`).Scan(&mediaStatus); err != nil {
+		t.Fatal(err)
+	}
+	if mediaStatus == domain.MediaStatusMissing {
+		t.Fatal("interrupted scan must not mark media missing")
+	}
+}
+
+func TestInterruptRunningJobsRejectsInconsistentStatuses(t *testing.T) {
+	sources, scans := newStage2Repositories(t)
+	now := time.Unix(750, 0).UTC()
+	source := createTestSource(t, sources, now)
+	_ = createAndClaimScan(t, scans, source.ID, "scan_inconsistent", now)
+	if _, err := scans.db.Exec(`UPDATE scan_jobs SET status = 'pending' WHERE id = 'scan_inconsistent'`); err != nil {
+		t.Fatal(err)
+	}
+	if err := scans.InterruptRunningJobs(context.Background(), now.Add(time.Second)); err == nil {
+		t.Fatal("expected inconsistent status error")
+	}
+	var jobsStatus, scanStatus string
+	if err := scans.db.QueryRow(`SELECT status FROM jobs WHERE id = 'scan_inconsistent'`).Scan(&jobsStatus); err != nil {
+		t.Fatal(err)
+	}
+	if err := scans.db.QueryRow(`SELECT status FROM scan_jobs WHERE id = 'scan_inconsistent'`).Scan(&scanStatus); err != nil {
+		t.Fatal(err)
+	}
+	if jobsStatus != domain.ScanStatusRunning || scanStatus != domain.ScanStatusPending {
+		t.Fatalf("recovery mutated inconsistent rows: jobs=%s scan_jobs=%s", jobsStatus, scanStatus)
 	}
 }
 

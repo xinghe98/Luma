@@ -76,7 +76,7 @@ func TestFFprobeProberUsesExpectedCommandAndMIME(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wantArgs := []string{"-v", "error", "-nostdin", "-print_format", "json", "-show_format", "-show_streams", resolved}
+	wantArgs := []string{"-v", "error", "-print_format", "json", "-show_format", "-show_streams", resolved}
 	if runner.name != "ffprobe-test" || !reflect.DeepEqual(runner.args, wantArgs) {
 		t.Fatalf("command = %q %#v, want %q %#v", runner.name, runner.args, "ffprobe-test", wantArgs)
 	}

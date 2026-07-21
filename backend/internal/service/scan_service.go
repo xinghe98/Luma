@@ -62,6 +62,19 @@ func (s *ScanService) Start(ctx context.Context, sourceID string) (domain.ScanJo
 	return job, nil
 }
 
+// StartIfIdle 在媒体源空闲时创建扫描任务，并报告本次是否实际入队。
+// 自动扫描调度器据此为运行中的扫描保留一次尾随重试，避免丢失文件事件。
+func (s *ScanService) StartIfIdle(ctx context.Context, sourceID string) (bool, error) {
+	_, err := s.Start(ctx, sourceID)
+	if err == nil {
+		return true, nil
+	}
+	if errors.Is(err, domain.ErrScanAlreadyRunning) {
+		return false, nil
+	}
+	return false, err
+}
+
 // Get 返回指定扫描任务。
 func (s *ScanService) Get(ctx context.Context, id string) (domain.ScanJob, error) {
 	return s.scans.GetJob(ctx, id)

@@ -70,6 +70,41 @@ func (r *ProcessingRepository) CompleteProbe(ctx context.Context, job domain.Pro
 	return true, tx.Commit()
 }
 
+// CompleteCardThumbnail 只提交卡片资产，不改变媒体和默认缩略图状态。
+func (r *ProcessingRepository) CompleteCardThumbnail(ctx context.Context, job domain.ProcessingJob, media domain.MediaInput,
+	thumbnail domain.ThumbnailResult, now time.Time) (bool, error) {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return false, err
+	}
+	defer tx.Rollback()
+	matched, err := mediaVersionMatches(ctx, tx, job, media)
+	if err != nil {
+		return false, err
+	}
+	if !matched {
+		if err := cancelStaleJob(ctx, tx, job, now); err != nil {
+			return false, err
+		}
+		return false, tx.Commit()
+	}
+	result, err := tx.ExecContext(ctx, `UPDATE media_assets SET storage_key=?, mime_type=?, width=?, height=?,
+		content_sha256=?, status='ready', error_message=NULL, updated_at_ms=?
+		WHERE media_id=? AND asset_type='thumbnail' AND variant='card' AND generator_version=1`,
+		thumbnail.StorageKey, nullableText(thumbnail.MIMEType), thumbnail.Width, thumbnail.Height,
+		nullableText(thumbnail.ContentSHA256), now.UnixMilli(), media.ID)
+	if err != nil {
+		return false, fmt.Errorf("完成卡片缩略图资产: %w", err)
+	}
+	if err := requireAffected(result, domain.ErrMediaNotFound); err != nil {
+		return false, err
+	}
+	if err := completeJob(ctx, tx, job, now); err != nil {
+		return false, err
+	}
+	return true, tx.Commit()
+}
+
 // CompleteThumbnail 仅在文件版本未变化时将默认资产和媒体标记为 ready。
 func (r *ProcessingRepository) CompleteThumbnail(ctx context.Context, job domain.ProcessingJob, media domain.MediaInput,
 	thumbnail domain.ThumbnailResult, now time.Time) (bool, error) {
@@ -99,6 +134,22 @@ func (r *ProcessingRepository) CompleteThumbnail(ctx context.Context, job domain
 	if err := requireAffected(result, domain.ErrMediaNotFound); err != nil {
 		return false, err
 	}
+	if thumbnail.Card != nil {
+		card := thumbnail.Card
+		_, err = tx.ExecContext(ctx, `INSERT INTO media_assets(
+			id, media_id, asset_type, variant, storage_key, mime_type, width, height, content_sha256,
+			status, generator_version, created_at_ms, updated_at_ms
+		) VALUES (lower(hex(randomblob(16))), ?, 'thumbnail', 'card', ?, ?, ?, ?, ?, 'ready', 1, ?, ?)
+		ON CONFLICT(media_id, asset_type, variant, generator_version) DO UPDATE SET
+			storage_key=excluded.storage_key, mime_type=excluded.mime_type, width=excluded.width,
+			height=excluded.height, content_sha256=excluded.content_sha256, status='ready',
+			error_message=NULL, updated_at_ms=excluded.updated_at_ms`, media.ID, card.StorageKey,
+			nullableText(card.MIMEType), card.Width, card.Height, nullableText(card.ContentSHA256),
+			now.UnixMilli(), now.UnixMilli())
+		if err != nil {
+			return false, fmt.Errorf("完成卡片缩略图资产: %w", err)
+		}
+	}
 	result, err = tx.ExecContext(ctx, `UPDATE media_items SET status = 'ready', indexed_at_ms = ?,
         error_code = NULL, error_message = NULL, updated_at_ms = ?
         WHERE id = ? AND file_size = ? AND file_modified_at_ms = ?`,
@@ -119,7 +170,8 @@ func mediaVersionMatches(ctx context.Context, tx *sql.Tx, job domain.ProcessingJ
 	var count int
 	err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM jobs j JOIN media_items mi ON mi.id = j.entity_id
         WHERE j.id = ? AND j.job_type = ? AND j.entity_id = ? AND j.status = 'running'
+        AND j.locked_by = ? AND j.attempt_count = ?
         AND mi.id = ? AND mi.file_size = ? AND mi.file_modified_at_ms = ? AND mi.status <> 'missing'`,
-		job.ID, job.Type, job.MediaID, media.ID, media.FileSize, media.ModifiedAtMS).Scan(&count)
+		job.ID, job.Type, job.MediaID, job.WorkerID, job.Attempt, media.ID, media.FileSize, media.ModifiedAtMS).Scan(&count)
 	return count == 1, err
 }

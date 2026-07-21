@@ -19,6 +19,16 @@ func ThumbnailStorageKey(mediaID string, width int) string {
 	return filepath.ToSlash(filepath.Join("thumbnails", mediaID, ThumbnailFileName(width)))
 }
 
+// CardThumbnailFileName 返回 16:10 卡片封面的文件名。
+func CardThumbnailFileName(width, height int) string {
+	return fmt.Sprintf("cover-card-%dx%d-v1.jpg", width, height)
+}
+
+// CardThumbnailStorageKey 返回卡片缩略图的安全存储键。
+func CardThumbnailStorageKey(mediaID string, width, height int) string {
+	return filepath.ToSlash(filepath.Join("thumbnails", mediaID, CardThumbnailFileName(width, height)))
+}
+
 // resolveInputPath 安全解析媒体输入，并拒绝相对路径和链接逃逸。
 func resolveInputPath(input domain.MediaInput) (string, error) {
 	if !filepath.IsAbs(input.RootPath) {

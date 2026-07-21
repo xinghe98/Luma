@@ -133,7 +133,7 @@ func (r *SourceRepository) SoftDelete(ctx context.Context, id string, now time.T
 	_, err = tx.ExecContext(ctx, `UPDATE jobs SET status = 'cancelled', finished_at_ms = ?,
 		error_code = 'SOURCE_DELETED', error_message = '媒体源已删除',
 		locked_at_ms = NULL, locked_by = NULL, updated_at_ms = ?
-		WHERE job_type IN ('probe_media', 'generate_thumbnail') AND status IN ('pending', 'running')
+		WHERE job_type IN ('probe_media', 'generate_thumbnail', 'generate_card_thumbnail') AND status IN ('pending', 'running')
 		AND entity_id IN (SELECT id FROM media_items WHERE source_id = ?)`, nowMS, nowMS, id)
 	if err != nil {
 		return fmt.Errorf("取消媒体处理任务: %w", err)

@@ -123,5 +123,28 @@ func (r *ProcessingRecovery) enqueueThumbnailOrphans(ctx context.Context) error 
 	if len(items) > 0 {
 		r.thumbnailSignal.Notify()
 	}
+	cardItems, err := r.repo.ListOrphans(ctx, domain.JobTypeCardThumbnail, 100)
+	if err != nil {
+		return err
+	}
+	for _, item := range cardItems {
+		jobID, err := r.ids.New("job")
+		if err != nil {
+			return err
+		}
+		assetID, err := r.ids.New("asset")
+		if err != nil {
+			return err
+		}
+		height := r.thumbnailWidth * 10 / 16
+		height -= height % 2
+		key := media.CardThumbnailStorageKey(item.ID, r.thumbnailWidth, height)
+		if err := r.repo.EnqueueCardThumbnail(ctx, jobID, item.ID, assetID, key, r.clock.Now()); err != nil {
+			return err
+		}
+	}
+	if len(cardItems) > 0 {
+		r.thumbnailSignal.Notify()
+	}
 	return nil
 }

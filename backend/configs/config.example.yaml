@@ -30,6 +30,14 @@ media:
   ffprobe_path: ffprobe
   thumbnail_width: 640
   scan_extensions: [mp4, mkv, mov, avi, webm, m4v, ts, jpg, jpeg, png, webp, gif, bmp]
+  # 自动扫描默认开启：服务端在文件变更（debounce）与定时周期触发全量扫描；
+  # 仍走既有 ScanService/ScanWorker，每源同一时间最多一条 active 任务。
+  # mode: hybrid=目录监听+定时兜底；poll=仅定时；watch=仅监听（Docker/NAS 可能漏事件）。
+  auto_scan:
+    enabled: true
+    mode: hybrid
+    interval: 30m
+    debounce: 30s
 
 # Worker 数量限制并发媒体处理对主机资源的占用。
 workers:

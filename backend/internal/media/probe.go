@@ -41,7 +41,7 @@ func (p *ffprobeProber) Probe(ctx context.Context, input domain.MediaInput) (dom
 		return domain.ProbeResult{}, err
 	}
 	output, err := p.runner.Run(ctx, p.executable,
-		"-v", "error", "-nostdin", "-print_format", "json", "-show_format", "-show_streams", path)
+		"-v", "error", "-print_format", "json", "-show_format", "-show_streams", path)
 	if err != nil {
 		return domain.ProbeResult{}, err
 	}

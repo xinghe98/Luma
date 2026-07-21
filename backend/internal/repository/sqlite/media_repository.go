@@ -37,7 +37,11 @@ const mediaSelect = `SELECT m.id, m.source_id, m.filename,
         SELECT 1 FROM media_assets a
         WHERE a.media_id = m.id AND a.asset_type = 'thumbnail'
           AND a.variant = 'default' AND a.status = 'ready'
-    )
+    ), EXISTS (
+		SELECT 1 FROM media_assets a
+		WHERE a.media_id = m.id AND a.asset_type = 'thumbnail'
+		  AND a.variant = 'card' AND a.status = 'ready'
+	)
     FROM media_items m
     JOIN sources s ON s.id = m.source_id
     LEFT JOIN media_user_data u ON u.media_id = m.id AND u.user_id = ?`
@@ -66,6 +70,14 @@ func (r *MediaRepository) List(ctx context.Context, query domain.MediaListQuery)
             WHERE mt.user_id = ? AND mt.media_id = m.id AND mt.tag_id = ?
         )`)
 		args = append(args, query.UserID, query.TagID)
+	}
+	switch query.WatchStatus {
+	case domain.WatchStatusUnwatched:
+		statement.WriteString(` AND COALESCE(u.progress_ms, 0) = 0 AND COALESCE(u.completed, 0) = 0`)
+	case domain.WatchStatusWatching:
+		statement.WriteString(` AND u.progress_ms > 0 AND u.completed = 0`)
+	case domain.WatchStatusCompleted:
+		statement.WriteString(` AND u.completed = 1`)
 	}
 	if query.ContinueWatching {
 		statement.WriteString(` AND u.progress_ms > 0 AND u.completed = 0 AND u.last_played_at_ms IS NOT NULL`)
@@ -120,7 +132,7 @@ func (r *MediaRepository) Get(ctx context.Context, id, userID string) (domain.Me
 }
 
 // GetThumbnail 返回可见媒体当前最高生成版本的 ready 默认缩略图。
-func (r *MediaRepository) GetThumbnail(ctx context.Context, mediaID string) (domain.ThumbnailAsset, error) {
+func (r *MediaRepository) GetThumbnail(ctx context.Context, mediaID, variant string) (domain.ThumbnailAsset, error) {
 	var asset domain.ThumbnailAsset
 	var updatedMS int64
 	err := r.db.QueryRowContext(ctx, `SELECT a.id, a.media_id, a.storage_key, COALESCE(a.mime_type, ''),
@@ -128,9 +140,9 @@ func (r *MediaRepository) GetThumbnail(ctx context.Context, mediaID string) (dom
         FROM media_assets a
         JOIN media_items m ON m.id = a.media_id
         JOIN sources s ON s.id = m.source_id
-        WHERE a.media_id = ? AND a.asset_type = 'thumbnail' AND a.variant = 'default' AND a.status = 'ready'
+        WHERE a.media_id = ? AND a.asset_type = 'thumbnail' AND a.variant = ? AND a.status = 'ready'
           AND m.status <> 'missing' AND s.enabled = 1 AND s.deleted_at_ms IS NULL
-        ORDER BY a.generator_version DESC, a.id DESC LIMIT 1`, mediaID).Scan(
+        ORDER BY a.generator_version DESC, a.id DESC LIMIT 1`, mediaID, variant).Scan(
 		&asset.ID, &asset.MediaID, &asset.StorageKey, &asset.MIMEType,
 		&asset.ContentSHA256, &asset.GeneratorVersion, &updatedMS)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -147,7 +159,7 @@ func (r *MediaRepository) GetThumbnail(ctx context.Context, mediaID string) (dom
 		return domain.ThumbnailAsset{}, domain.ErrThumbnailNotFound
 	}
 	if err != nil {
-		return domain.ThumbnailAsset{}, fmt.Errorf("查询默认缩略图: %w", err)
+		return domain.ThumbnailAsset{}, fmt.Errorf("查询缩略图变体: %w", err)
 	}
 	asset.UpdatedAt = time.UnixMilli(updatedMS).UTC()
 	return asset, nil
@@ -237,13 +249,13 @@ func scanMedia(row rowScanner) (domain.Media, error) {
 	var duration, width, height, frameNum, frameDen, tracks, orientation sql.NullInt64
 	var captured, indexed, lastPlayed sql.NullInt64
 	var discoveredMS int64
-	var favorite, completed, hasThumbnail int
+	var favorite, completed, hasThumbnail, hasCardThumbnail int
 	err := row.Scan(&item.ID, &item.SourceID, &item.Filename, &item.Title, &item.MediaType,
 		&item.MIMEType, &item.FileSize, &duration, &width, &height, &item.VideoCodec,
 		&item.AudioCodec, &item.Container, &item.Bitrate, &frameNum, &frameDen, &tracks,
 		&orientation, &captured, &item.Status, &discoveredMS, &indexed, &favorite, &item.ProgressMS,
 		&completed, &lastPlayed, &item.UserDataRevision,
-		&hasThumbnail)
+		&hasThumbnail, &hasCardThumbnail)
 	if err != nil {
 		return domain.Media{}, err
 	}
@@ -261,6 +273,7 @@ func scanMedia(row rowScanner) (domain.Media, error) {
 	item.Completed = completed == 1
 	item.LastPlayedAt = nullTime(lastPlayed)
 	item.HasThumbnail = hasThumbnail == 1
+	item.HasCardThumbnail = hasCardThumbnail == 1
 	return item, nil
 }
 

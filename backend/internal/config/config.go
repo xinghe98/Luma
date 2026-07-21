@@ -75,6 +75,30 @@ type MediaConfig struct {
 	ThumbnailWidth int `yaml:"thumbnail_width"`
 	// ScanExtensions 是扫描器识别的文件扩展名列表。
 	ScanExtensions []string `yaml:"scan_extensions"`
+	// AutoScan 控制服务端是否在文件变更或定时周期后自动发起全量扫描。
+	AutoScan AutoScanConfig `yaml:"auto_scan"`
+}
+
+// AutoScanMode 表示自动扫描调度策略。
+const (
+	// AutoScanModeHybrid 同时启用目录监听与定时全量兜底。
+	AutoScanModeHybrid = "hybrid"
+	// AutoScanModePoll 仅按固定间隔触发全量扫描。
+	AutoScanModePoll = "poll"
+	// AutoScanModeWatch 仅依赖文件系统事件（网络盘/Docker 挂载可能漏事件）。
+	AutoScanModeWatch = "watch"
+)
+
+// AutoScanConfig 表示自动扫描调度器配置；默认开启，可用 enabled: false 关闭。
+type AutoScanConfig struct {
+	// Enabled 为 false 时不启动自动扫描调度器。
+	Enabled bool `yaml:"enabled"`
+	// Mode 是 hybrid / poll / watch 之一。
+	Mode string `yaml:"mode"`
+	// Interval 是定时全量兜底间隔；poll 与 hybrid 模式使用。
+	Interval time.Duration `yaml:"interval"`
+	// Debounce 是文件系统事件合并窗口，避免拷贝过程中反复入队。
+	Debounce time.Duration `yaml:"debounce"`
 }
 
 // WorkersConfig 表示各类后台任务的并发和锁配置。

@@ -21,6 +21,11 @@ type Thumbnailer interface {
 	Generate(context.Context, domain.MediaInput, int64) (domain.ThumbnailResult, error)
 }
 
+// CardThumbnailer 为恢复任务提供单独补齐卡片变体的能力。
+type CardThumbnailer interface {
+	GenerateCard(context.Context, domain.MediaInput, int64) (domain.ThumbnailResult, error)
+}
+
 type ffmpegThumbnailer struct {
 	// executable 是 ffmpeg 可执行文件路径。
 	executable string
@@ -49,6 +54,25 @@ func newFFmpegThumbnailer(executable, root string, width int, runner commandRunn
 
 // Generate 先写同目录临时文件，成功后再原子替换默认封面。
 func (t *ffmpegThumbnailer) Generate(ctx context.Context, input domain.MediaInput, durationMS int64) (domain.ThumbnailResult, error) {
+	result, err := t.generate(ctx, input, durationMS, false)
+	if err != nil {
+		return domain.ThumbnailResult{}, err
+	}
+	card, err := t.GenerateCard(ctx, input, durationMS)
+	if err != nil {
+		// 卡片图是可延后补齐的展示变体；不能让已成功的默认封面和媒体处理失败。
+		return result, nil
+	}
+	result.Card = &card
+	return result, nil
+}
+
+// GenerateCard 生成 16:10 居中 cover 裁剪的卡片缩略图。
+func (t *ffmpegThumbnailer) GenerateCard(ctx context.Context, input domain.MediaInput, durationMS int64) (domain.ThumbnailResult, error) {
+	return t.generate(ctx, input, durationMS, true)
+}
+
+func (t *ffmpegThumbnailer) generate(ctx context.Context, input domain.MediaInput, durationMS int64, card bool) (domain.ThumbnailResult, error) {
 	source, err := resolveInputPath(input)
 	if err != nil {
 		return domain.ThumbnailResult{}, err
@@ -60,42 +84,85 @@ func (t *ffmpegThumbnailer) Generate(ctx context.Context, input domain.MediaInpu
 	if err := os.MkdirAll(directory, 0o755); err != nil {
 		return domain.ThumbnailResult{}, fmt.Errorf("创建缩略图目录: %w", err)
 	}
-	temporary, err := os.CreateTemp(directory, ".cover-*.jpg")
-	if err != nil {
-		return domain.ThumbnailResult{}, fmt.Errorf("创建缩略图临时文件: %w", err)
+	height := cardThumbnailHeight(t.width)
+	var lastErr error
+	for _, seek := range thumbnailSeekCandidates(input.MediaType, durationMS) {
+		temporary, err := os.CreateTemp(directory, ".cover-*.jpg")
+		if err != nil {
+			return domain.ThumbnailResult{}, fmt.Errorf("创建缩略图临时文件: %w", err)
+		}
+		temporaryPath := temporary.Name()
+		_ = temporary.Close()
+		args := thumbnailArgsAt(input.MediaType, source, temporaryPath, t.width, seek)
+		if card {
+			args = cardThumbnailArgsAt(input.MediaType, source, temporaryPath, t.width, height, seek)
+		}
+		if _, err := t.runner.Run(ctx, t.executable, args...); err != nil {
+			_ = os.Remove(temporaryPath)
+			lastErr = err
+			continue
+		}
+		file, err := os.Open(temporaryPath)
+		if err != nil {
+			_ = os.Remove(temporaryPath)
+			lastErr = fmt.Errorf("打开缩略图: %w", err)
+			continue
+		}
+		config, _, decodeErr := image.DecodeConfig(file)
+		_ = file.Close()
+		if decodeErr != nil {
+			_ = os.Remove(temporaryPath)
+			lastErr = fmt.Errorf("读取缩略图尺寸: %w", decodeErr)
+			continue
+		}
+		name := ThumbnailFileName(t.width)
+		storageKey := ThumbnailStorageKey(input.ID, t.width)
+		if card {
+			name = CardThumbnailFileName(t.width, height)
+			storageKey = CardThumbnailStorageKey(input.ID, t.width, height)
+		}
+		finalPath := filepath.Join(directory, name)
+		if err := atomicReplace(temporaryPath, finalPath); err != nil {
+			_ = os.Remove(temporaryPath)
+			return domain.ThumbnailResult{}, fmt.Errorf("替换缩略图: %w", err)
+		}
+		sum, err := fileSHA256(finalPath)
+		if err != nil {
+			return domain.ThumbnailResult{}, err
+		}
+		return domain.ThumbnailResult{
+			StorageKey:    storageKey,
+			MIMEType:      "image/jpeg",
+			ContentSHA256: sum,
+			Width:         config.Width,
+			Height:        config.Height,
+		}, nil
 	}
-	temporaryPath := temporary.Name()
-	_ = temporary.Close()
-	defer os.Remove(temporaryPath)
-	args := thumbnailArgs(input.MediaType, source, temporaryPath, t.width, durationMS)
-	if _, err := t.runner.Run(ctx, t.executable, args...); err != nil {
-		return domain.ThumbnailResult{}, err
+	if lastErr == nil {
+		lastErr = fmt.Errorf("缩略图生成失败")
 	}
-	file, err := os.Open(temporaryPath)
-	if err != nil {
-		return domain.ThumbnailResult{}, fmt.Errorf("打开缩略图: %w", err)
+	return domain.ThumbnailResult{}, lastErr
+}
+
+func cardThumbnailHeight(width int) int {
+	height := width * 10 / 16
+	if height < 2 {
+		return 2
 	}
-	config, _, decodeErr := image.DecodeConfig(file)
-	_ = file.Close()
-	if decodeErr != nil {
-		return domain.ThumbnailResult{}, fmt.Errorf("读取缩略图尺寸: %w", decodeErr)
+	return height - height%2
+}
+
+func cardThumbnailArgs(mediaType, source, output string, width, height int, durationMS int64) []string {
+	return cardThumbnailArgsAt(mediaType, source, output, width, height, seekSeconds(durationMS))
+}
+
+func cardThumbnailArgsAt(mediaType, source, output string, width, height int, seek float64) []string {
+	args := []string{"-v", "error", "-nostdin", "-y"}
+	if mediaType == domain.MediaTypeVideo {
+		args = append(args, "-ss", strconv.FormatFloat(seek, 'f', 3, 64))
 	}
-	name := ThumbnailFileName(t.width)
-	finalPath := filepath.Join(directory, name)
-	if err := atomicReplace(temporaryPath, finalPath); err != nil {
-		return domain.ThumbnailResult{}, fmt.Errorf("替换缩略图: %w", err)
-	}
-	sum, err := fileSHA256(finalPath)
-	if err != nil {
-		return domain.ThumbnailResult{}, err
-	}
-	return domain.ThumbnailResult{
-		StorageKey:    ThumbnailStorageKey(input.ID, t.width),
-		MIMEType:      "image/jpeg",
-		ContentSHA256: sum,
-		Width:         config.Width,
-		Height:        config.Height,
-	}, nil
+	filter := fmt.Sprintf("scale=%d:%d:force_original_aspect_ratio=increase,crop=%d:%d,format=yuvj420p", width, height, width, height)
+	return append(args, "-i", source, "-frames:v", "1", "-vf", filter, "-q:v", "3", "-c:v", "mjpeg", "-f", "image2", output)
 }
 
 func fileSHA256(path string) (string, error) {
@@ -112,13 +179,32 @@ func fileSHA256(path string) (string, error) {
 }
 
 func thumbnailArgs(mediaType, source, output string, width int, durationMS int64) []string {
+	return thumbnailArgsAt(mediaType, source, output, width, seekSeconds(durationMS))
+}
+
+func thumbnailArgsAt(mediaType, source, output string, width int, seek float64) []string {
 	args := []string{"-v", "error", "-nostdin", "-y"}
 	if mediaType == domain.MediaTypeVideo {
-		args = append(args, "-ss", strconv.FormatFloat(seekSeconds(durationMS), 'f', 3, 64))
+		args = append(args, "-ss", strconv.FormatFloat(seek, 'f', 3, 64))
 	}
 	filter := fmt.Sprintf("scale=%d:-2,format=yuvj420p", width)
 	args = append(args, "-i", source, "-frames:v", "1", "-vf", filter, "-q:v", "3", "-c:v", "mjpeg", "-f", "image2", output)
 	return args
+}
+
+func thumbnailSeekCandidates(mediaType string, durationMS int64) []float64 {
+	if mediaType != domain.MediaTypeVideo {
+		return []float64{0}
+	}
+	primary := seekSeconds(durationMS)
+	candidates := []float64{primary}
+	for _, fallback := range []float64{1, 0} {
+		if fallback == primary {
+			continue
+		}
+		candidates = append(candidates, fallback)
+	}
+	return candidates
 }
 
 func seekSeconds(durationMS int64) float64 {
