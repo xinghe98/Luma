@@ -13,17 +13,31 @@ class LibraryFilters {
 }
 
 class LibraryController extends ChangeNotifier {
-  LibraryController({MediaType? fixedType, MediaController? media})
-    : _media = media,
-      _fixedType = fixedType,
-      _type = fixedType {
+  LibraryController({
+    MediaType? fixedType,
+    String? fixedLibraryKind,
+    MediaController? media,
+  }) : _media = media,
+       _fixedType = fixedType,
+       _fixedLibraryKind = fixedLibraryKind,
+       _type = fixedType {
     _media?.addListener(_onMediaChanged);
+    if (media != null) {
+      final seed = filterMediaItems(
+        media.items,
+        _filter,
+      ).take(12).toList(growable: false);
+      _remoteItems = seed;
+      _visibleItems = seed;
+      _remoteIds.addAll(seed.map((item) => item.id));
+    }
   }
 
   final MediaController? _media;
 
   /// 固定类型时（如底部导航拆分的影音库/图片库），清除筛选会回到该类型。
   final MediaType? _fixedType;
+  final String? _fixedLibraryKind;
   MediaType? _type;
   WatchStatus? _status;
   bool _favoritesOnly = false;
@@ -56,16 +70,17 @@ class LibraryController extends ChangeNotifier {
 
   MediaFilter get _filter => MediaFilter(
     type: _type,
+    libraryKind: _fixedLibraryKind,
     watchStatus: _status,
     favoritesOnly: _favoritesOnly,
     sort: _sort,
   );
 
   /// 首次进入库页时拉取第一页。
-  void ensureLoaded() {
-    if (_started) return;
+  Future<void> ensureLoaded() {
+    if (_started) return Future.value();
     _started = true;
-    _reload();
+    return _reload();
   }
 
   /// [items] 仅在尚未启动远程分页时用于本地筛选（测试/兜底）。
@@ -110,21 +125,19 @@ class LibraryController extends ChangeNotifier {
     _loadingMore = true;
     try {
       final page = await media.searchPage(_filter, cursor: cursor);
-      if (generation != _requestGeneration) return;
+      if (_disposed || generation != _requestGeneration) return;
       final appended = [
         ..._remoteItems,
         ...page.items.where((item) => _remoteIds.add(item.id)),
       ];
       _remoteItems = appended;
       _nextCursor = page.nextCursor;
-      // 静默写入全局缓存，由本 controller 统一 notify，避免双倍 rebuild。
-      media.rememberAll(page.items, notify: false);
       _rebuildVisible();
       _loadingMore = false;
       notifyListeners();
     } on Object {
       // 保留已加载内容，允许用户再次滚动重试。
-      if (generation == _requestGeneration) _loadingMore = false;
+      if (!_disposed && generation == _requestGeneration) _loadingMore = false;
     }
   }
 
@@ -138,17 +151,16 @@ class LibraryController extends ChangeNotifier {
     notifyListeners();
     try {
       final page = await media.searchPage(_filter);
-      if (generation != _requestGeneration) return;
+      if (_disposed || generation != _requestGeneration) return;
       _remoteItems = page.items;
       _remoteIds
         ..clear()
         ..addAll(page.items.map((item) => item.id));
       _nextCursor = page.nextCursor;
       _loadState = LoadState.ready;
-      media.rememberAll(page.items, notify: false);
       _rebuildVisible();
     } on Object {
-      if (generation != _requestGeneration) return;
+      if (_disposed || generation != _requestGeneration) return;
       _loadState = LoadState.error;
     }
     notifyListeners();
@@ -164,9 +176,7 @@ class LibraryController extends ChangeNotifier {
     final media = _media;
     final next = media == null
         ? _remoteItems
-        : [
-            for (final item in _remoteItems) media.findById(item.id) ?? item,
-          ];
+        : [for (final item in _remoteItems) media.findById(item.id) ?? item];
     if (_sameItems(_visibleItems, next)) return false;
     _visibleItems = next;
     return true;
@@ -184,6 +194,7 @@ class LibraryController extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    _requestGeneration++;
     _media?.removeListener(_onMediaChanged);
     super.dispose();
   }

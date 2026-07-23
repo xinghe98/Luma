@@ -24,6 +24,9 @@ paths:
       responses:
         "200":
           description: 服务端运行信息
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SystemInfo" }
         "401":
           $ref: "#/components/responses/Unauthorized"
   /api/v1/sources:
@@ -145,6 +148,10 @@ paths:
           name: type
           schema: { type: string, enum: [video, image] }
         - in: query
+          name: library_kind
+          description: 严格限制视频来源用途；个人视频页使用 personal，避免混入电影和电视剧源。图片库仅按 type=image 查询。
+          schema: { type: string, enum: [personal, movies, tv] }
+        - in: query
           name: favorite
           description: true 仅返回收藏媒体；false 包含未创建用户数据的媒体。
           schema: { type: boolean }
@@ -179,6 +186,38 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/MediaPage" }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /api/v1/media/count:
+    get:
+      summary: 统计当前可见媒体数量
+      description: 使用与媒体列表相同的来源授权和筛选规则，仅返回聚合数量，不分页也不返回媒体条目。
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: query
+          name: q
+          schema: { type: string, maxLength: 200 }
+        - in: query
+          name: type
+          schema: { type: string, enum: [video, image] }
+        - in: query
+          name: library_kind
+          schema: { type: string, enum: [personal, movies, tv] }
+        - in: query
+          name: favorite
+          schema: { type: boolean }
+        - in: query
+          name: tag_id
+          schema: { type: string, maxLength: 200 }
+        - in: query
+          name: watch_status
+          schema: { type: string, enum: [unwatched, watching, completed] }
+      responses:
+        "200":
+          description: 当前用户可见媒体总数
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MediaCount" }
         "400": { $ref: "#/components/responses/InvalidRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
   /api/v1/media/continue-watching:
@@ -583,6 +622,231 @@ paths:
         "204": { description: 标签已删除 }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
+  /api/v1/catalog:
+    get:
+      summary: 查询电影和电视剧作品库
+      description: 查询前幂等整理新增或发生变化的影视文件；个人媒体不进入作品库。
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: query
+          name: kind
+          schema: { type: string, enum: [movie, series] }
+        - in: query
+          name: q
+          schema: { type: string, maxLength: 200 }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+      responses:
+        "200":
+          description: 作品级媒体列表
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/CatalogItem" } }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /api/v1/admin/users:
+    get:
+      summary: 查询用户（仅管理员）
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: 用户列表
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/AccessUser" } }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      summary: 创建成员（仅管理员）
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [name]
+              properties:
+                name: { type: string, minLength: 1, maxLength: 80 }
+                request_id:
+                  type: string
+                  maxLength: 128
+                  description: 客户端为一次创建操作生成并在网络重试时复用的不透明幂等键。
+      responses:
+        "201":
+          description: 已创建
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AccessUser" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/v1/admin/users/{id}:
+    patch:
+      summary: 修改成员名称或启用状态（仅管理员）
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                name: { type: string, minLength: 1, maxLength: 80 }
+                enabled: { type: boolean }
+      responses:
+        "200":
+          description: 已更新
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AccessUser" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/v1/admin/users/{id}/tokens:
+    get:
+      summary: 查询成员令牌元数据（仅管理员）
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: 不包含令牌明文
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/AccessToken" } }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      summary: 签发成员令牌（仅管理员，明文只返回一次）
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [name]
+              properties:
+                name: { type: string, minLength: 1, maxLength: 80 }
+                expires_at: { type: [string, "null"], format: date-time }
+                request_id:
+                  type: string
+                  maxLength: 128
+                  description: 客户端为一次签发操作生成并在网络重试时复用的不透明幂等键。
+      responses:
+        "201":
+          description: 已签发；token 字段不会再次返回
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/IssuedAccessToken" }
+        "409":
+          description: 令牌已创建但服务重启后无法安全重放一次性明文；不得以新 request_id 自动重试。
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/v1/admin/tokens/{id}:
+    delete:
+      summary: 吊销成员令牌（仅管理员）
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string } }
+      responses:
+        "204": { description: 已吊销 }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/v1/admin/users/{id}/sources:
+    get:
+      summary: 查询成员可访问的媒体源（仅管理员）
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: 来源 ID 列表
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [source_ids]
+                properties:
+                  source_ids: { type: array, items: { type: string } }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/v1/admin/users/{id}/sources/{sourceId}:
+    parameters:
+      - { in: path, name: id, required: true, schema: { type: string } }
+      - { in: path, name: sourceId, required: true, schema: { type: string } }
+    put:
+      summary: 授予媒体源访问权（仅管理员）
+      security: [{ bearerAuth: [] }]
+      responses:
+        "204": { description: 已授权 }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    delete:
+      summary: 移除媒体源访问权（仅管理员）
+      security: [{ bearerAuth: [] }]
+      responses:
+        "204": { description: 已移除 }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/v1/catalog/issues:
+    get:
+      summary: 查询待人工整理的影视文件
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: 未能可靠识别的文件
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/CatalogIssue" } }
+  /api/v1/catalog/media/{id}:
+    patch:
+      summary: 人工修正或忽略文件的作品归属
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/MediaID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateCatalogMatch" }
+      responses:
+        "204": { description: 整理结果已锁定保存 }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "404": { $ref: "#/components/responses/MediaNotFound" }
+  /api/v1/catalog/{id}:
+    get:
+      summary: 查询作品详情及剧集选集列表
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: 作品详情
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CatalogItem" }
+        "404": { $ref: "#/components/responses/NotFound" }
 components:
   securitySchemes:
     bearerAuth:
@@ -598,6 +862,54 @@ components:
           const: ok
         version:
           type: string
+    SystemInfo:
+      type: object
+      required: [version, platform, architecture, database, user, capabilities]
+      properties:
+        version: { type: string }
+        platform: { type: string }
+        architecture: { type: string }
+        database: { type: string }
+        user:
+          type: object
+          required: [id, name, role]
+          properties:
+            id: { type: string }
+            name: { type: string }
+            role: { type: string, enum: [admin, member] }
+        capabilities:
+          type: array
+          items: { type: string }
+    AccessUser:
+      type: object
+      required: [id, name, role, enabled, created_at, updated_at]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        role: { type: string, enum: [admin, member] }
+        enabled: { type: boolean }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    AccessToken:
+      type: object
+      required: [id, user_id, name, token_prefix, expires_at, revoked_at, created_at]
+      properties:
+        id: { type: string }
+        user_id: { type: string }
+        name: { type: string }
+        token_prefix: { type: string }
+        expires_at: { type: [string, "null"], format: date-time }
+        revoked_at: { type: [string, "null"], format: date-time }
+        created_at: { type: string, format: date-time }
+    IssuedAccessToken:
+      allOf:
+        - $ref: "#/components/schemas/AccessToken"
+        - type: object
+          required: [token]
+          properties:
+            token:
+              type: string
+              description: 仅在签发响应中出现一次的明文令牌。
     Error:
       type: object
       required: [error]
@@ -616,6 +928,7 @@ components:
       properties:
         name: { type: string, minLength: 1, maxLength: 200 }
         root_path: { type: string, minLength: 1 }
+        library_kind: { type: string, enum: [personal, movies, tv], default: personal }
     UpdateSource:
       type: object
       additionalProperties: false
@@ -624,13 +937,15 @@ components:
         name: { type: string, minLength: 1, maxLength: 200 }
         root_path: { type: string, minLength: 1 }
         enabled: { type: boolean }
+        library_kind: { type: string, enum: [personal, movies, tv] }
     Source:
       type: object
-      required: [id, name, type, enabled, status, created_at, updated_at]
+      required: [id, name, type, library_kind, enabled, status, created_at, updated_at]
       properties:
         id: { type: string }
         name: { type: string }
         type: { type: string, const: local }
+        library_kind: { type: string, enum: [personal, movies, tv] }
         enabled: { type: boolean }
         status: { type: string, enum: [online, offline, degraded, disabled] }
         last_scan_id: { type: string }
@@ -677,14 +992,21 @@ components:
         next_cursor:
           type: [string, "null"]
           description: 下一页的不透明游标；没有下一页时为 null。
+    MediaCount:
+      type: object
+      additionalProperties: false
+      required: [count]
+      properties:
+        count: { type: integer, minimum: 0 }
     MediaSummary:
       type: object
-      required: [id, title, filename, media_type, duration_ms, width, height, thumbnail_url, card_thumbnail_url, stream_url, original_url, favorite, progress_ms, completed, last_played_at, user_data_revision, status, created_at]
+      required: [id, title, filename, media_type, library_kind, duration_ms, width, height, thumbnail_url, card_thumbnail_url, stream_url, original_url, favorite, progress_ms, completed, last_played_at, user_data_revision, status, created_at]
       properties:
         id: { type: string }
         title: { type: string, description: 按 custom_title、detected_title、filename 顺序计算的展示标题。 }
         filename: { type: string }
         media_type: { type: string, enum: [video, image] }
+        library_kind: { type: string, enum: [personal, movies, tv] }
         duration_ms: { type: [integer, "null"], format: int64, minimum: 0 }
         width: { type: [integer, "null"], minimum: 1 }
         height: { type: [integer, "null"], minimum: 1 }
@@ -726,6 +1048,65 @@ components:
             orientation: { type: [integer, "null"] }
             captured_at: { type: [string, "null"], format: date-time }
             indexed_at: { type: [string, "null"], format: date-time }
+    CatalogEpisode:
+      type: object
+      required: [id, season_number, episode_number, title, media_id, duration_ms, resolution, progress_ms, completed, thumbnail_url]
+      properties:
+        id: { type: string }
+        season_number: { type: integer, minimum: 0 }
+        episode_number: { type: integer, minimum: 1 }
+        title: { type: string }
+        media_id: { type: string }
+        duration_ms: { type: [integer, "null"], format: int64, minimum: 0 }
+        resolution: { type: string, description: 视频宽高，尚未探测时为空字符串。 }
+        progress_ms: { type: integer, format: int64, minimum: 0 }
+        completed: { type: boolean }
+        thumbnail_url: { type: string }
+    CatalogItem:
+      type: object
+      required: [id, source_id, kind, title, year, match_status, media_count, episode_count, completed_count, playable_media_id, thumbnail_url, poster_url, duration_ms, resolution, progress_ms, completed, updated_at]
+      properties:
+        id: { type: string }
+        source_id: { type: string }
+        kind: { type: string, enum: [movie, series] }
+        title: { type: string }
+        year: { type: [integer, "null"] }
+        match_status: { type: string, enum: [matched, needs_review] }
+        media_count: { type: integer, minimum: 1 }
+        episode_count: { type: integer, minimum: 0 }
+        completed_count: { type: integer, minimum: 0 }
+        playable_media_id: { type: string }
+        thumbnail_url: { type: string }
+        poster_url:
+          type: string
+          description: 优先使用作品目录 poster/folder/cover 图片，否则回退到代表视频帧。
+        duration_ms: { type: [integer, "null"], format: int64, minimum: 0 }
+        resolution: { type: string, description: 当前可播放视频的宽高，尚未探测时为空字符串。 }
+        progress_ms: { type: integer, format: int64, minimum: 0 }
+        completed: { type: boolean }
+        updated_at: { type: string, format: date-time }
+        episodes: { type: array, items: { $ref: "#/components/schemas/CatalogEpisode" } }
+    CatalogIssue:
+      type: object
+      required: [media_id, filename, source_id, library_kind, suggested_title, season_number, episode_number]
+      properties:
+        media_id: { type: string }
+        filename: { type: string }
+        source_id: { type: string }
+        library_kind: { type: string, enum: [movies, tv] }
+        suggested_title: { type: string }
+        season_number: { type: [integer, "null"], minimum: 0 }
+        episode_number: { type: [integer, "null"], minimum: 1 }
+    UpdateCatalogMatch:
+      type: object
+      additionalProperties: false
+      properties:
+        kind: { type: string, enum: [movie, series] }
+        title: { type: string, minLength: 1, maxLength: 200 }
+        year: { type: [integer, "null"], minimum: 1800, maximum: 3000 }
+        season_number: { type: [integer, "null"], minimum: 0 }
+        episode_number: { type: [integer, "null"], minimum: 1 }
+        ignored: { type: boolean }
     Tag:
       type: object
       additionalProperties: false
@@ -809,6 +1190,11 @@ components:
           schema: { $ref: "#/components/schemas/Error" }
     ForbiddenPath:
       description: 媒体源路径不在白名单中
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Forbidden:
+      description: 当前身份没有执行该管理操作的权限
       content:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }

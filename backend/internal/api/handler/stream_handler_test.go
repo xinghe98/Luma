@@ -27,14 +27,14 @@ type closeTrackingStreamUseCase struct {
 	reader *closeTrackingStream
 }
 
-func (u closeTrackingStreamUseCase) Open(context.Context, string) (domain.StreamContent, error) {
+func (u closeTrackingStreamUseCase) Open(context.Context, string, string) (domain.StreamContent, error) {
 	return domain.StreamContent{
 		Name: "clip.mp4", MIMEType: "video/mp4", ETag: `W/"5-1"`, Size: 5,
 		ModifiedAt: time.Unix(1, 0).UTC(), Reader: u.reader,
 	}, nil
 }
 
-func (u closeTrackingStreamUseCase) OpenOriginal(context.Context, string) (domain.StreamContent, error) {
+func (u closeTrackingStreamUseCase) OpenOriginal(context.Context, string, string) (domain.StreamContent, error) {
 	return domain.StreamContent{
 		Name: "photo.jpg", MIMEType: "image/jpeg", ETag: `W/"5-1"`, Size: 5,
 		ModifiedAt: time.Unix(1, 0).UTC(), Reader: u.reader,

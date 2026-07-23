@@ -93,7 +93,7 @@ func TestMediaRepositoryStreamLocationVisibility(t *testing.T) {
 		domain.MediaStatusReady, domain.MediaStatusFailed,
 	} {
 		insertMedia(t, repository, status, "source_on", status+".mp4", domain.MediaTypeVideo, status, 1000, nil)
-		location, err := repository.GetStreamLocation(context.Background(), status)
+		location, err := repository.GetStreamLocation(context.Background(), status, "user_local")
 		if err != nil {
 			t.Fatalf("status=%s error=%v", status, err)
 		}
@@ -102,7 +102,7 @@ func TestMediaRepositoryStreamLocationVisibility(t *testing.T) {
 		}
 	}
 	insertMedia(t, repository, "image", "source_on", "photo.jpg", domain.MediaTypeImage, domain.MediaStatusReady, 1000, nil)
-	image, err := repository.GetStreamLocation(context.Background(), "image")
+	image, err := repository.GetStreamLocation(context.Background(), "image", "user_local")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -116,7 +116,7 @@ func TestMediaRepositoryStreamLocationVisibility(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, id := range []string{"missing", "disabled", "deleted", "unknown"} {
-		if _, err := repository.GetStreamLocation(context.Background(), id); !errors.Is(err, domain.ErrMediaNotFound) {
+		if _, err := repository.GetStreamLocation(context.Background(), id, "user_local"); !errors.Is(err, domain.ErrMediaNotFound) {
 			t.Fatalf("id=%s error=%v", id, err)
 		}
 	}
@@ -152,7 +152,7 @@ func TestMediaRepositorySearchUserDataAndThumbnail(t *testing.T) {
 	if len(items) != 1 || items[0].Title != "自定义标题" || !items[0].Favorite || items[0].ProgressMS != 321 || !items[0].HasThumbnail {
 		t.Fatalf("unexpected media: %#v", items)
 	}
-	asset, err := repository.GetThumbnail(context.Background(), "media_1", domain.ThumbnailVariantDefault)
+	asset, err := repository.GetThumbnail(context.Background(), "media_1", domain.ThumbnailVariantDefault, "user_local")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -308,7 +308,7 @@ func TestMediaRepositoryStableSortFiltersAndHasThumbnail(t *testing.T) {
 		t.Fatalf("file_size filter = %#v", sizeItems)
 	}
 
-	asset, err := repository.GetThumbnail(context.Background(), "media_ready", domain.ThumbnailVariantDefault)
+	asset, err := repository.GetThumbnail(context.Background(), "media_ready", domain.ThumbnailVariantDefault, "user_local")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -17,6 +17,10 @@ extension LumaSnackBar on BuildContext {
   ) async {
     final nextFavorite = !item.isFavorite;
     try {
+      // Paged library/search entries are intentionally not retained globally.
+      // Pin only the item being mutated so the controller can serialize and
+      // merge this update without growing with every loaded page.
+      media.remember(item, notify: false);
       await media.toggleFavorite(item.id);
       if (!mounted) return;
       showLumaSnack(nextFavorite ? '已加入收藏' : '已取消收藏');

@@ -42,8 +42,8 @@ class ScanStatusCard extends StatelessWidget {
                       ? Icons.check_circle_outline_rounded
                       : Icons.error_outline_rounded,
                   color: error == null
-                      ? LumaColors.success
-                      : LumaColors.warning,
+                      ? context.luma.success
+                      : context.luma.warning,
                 ),
               const SizedBox(width: LumaSpacing.sm),
               Expanded(
@@ -56,8 +56,9 @@ class ScanStatusCard extends StatelessWidget {
                           : error == null
                           ? '媒体库已就绪'
                           : '扫描失败',
+                      style: Theme.of(context).textTheme.titleSmall,
                     ),
-                    const SizedBox(height: 2),
+                    const SizedBox(height: LumaSpacing.xxs),
                     Text(
                       scanning
                           ? '已完成 $percent% · 轻触查看状态'
@@ -72,7 +73,7 @@ class ScanStatusCard extends StatelessWidget {
               if (scanning)
                 Text(
                   '$percent%',
-                  style: TextStyle(
+                  style: Theme.of(context).textTheme.labelLarge?.copyWith(
                     color: Theme.of(context).colorScheme.primary,
                   ),
                 ),

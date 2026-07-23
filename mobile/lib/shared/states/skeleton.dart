@@ -65,9 +65,10 @@ class _SkeletonPulseState extends State<_SkeletonPulse>
 
   @override
   Widget build(BuildContext context) => FadeTransition(
-    opacity: Tween(begin: 0.45, end: 1.0).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
-    ),
+    opacity: Tween(
+      begin: 0.45,
+      end: 1.0,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut)),
     child: widget.child,
   );
 }
@@ -108,7 +109,7 @@ class MediaGridSkeleton extends StatelessWidget {
               ),
               SizedBox(height: LumaSpacing.xs),
               FractionallySizedBox(widthFactor: 0.72, child: SkeletonBox()),
-              SizedBox(height: 6),
+              SizedBox(height: LumaSpacing.xs),
               FractionallySizedBox(
                 widthFactor: 0.45,
                 child: SkeletonBox(height: 11),
@@ -122,6 +123,62 @@ class MediaGridSkeleton extends StatelessWidget {
   }
 }
 
+/// 与影视库 2:3 海报墙相同密度的加载骨架。
+class PosterGridSkeleton extends StatelessWidget {
+  const PosterGridSkeleton({super.key, this.items = 10});
+
+  final int items;
+
+  @override
+  Widget build(BuildContext context) => _SkeletonPulse(
+    child: LayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.maxWidth;
+        final columns = width < 360
+            ? 2
+            : width < 620
+            ? 3
+            : width < 900
+            ? 5
+            : width < 1240
+            ? 6
+            : 8;
+        return GridView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: items,
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: columns,
+            crossAxisSpacing: LumaSpacing.md,
+            mainAxisSpacing: LumaSpacing.lg,
+            childAspectRatio: 0.59,
+          ),
+          itemBuilder: (_, _) => const Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: SizedBox.expand(
+                  child: SkeletonBox(
+                    height: double.infinity,
+                    radius: LumaRadii.large,
+                  ),
+                ),
+              ),
+              SizedBox(height: LumaSpacing.xs),
+              FractionallySizedBox(widthFactor: 0.82, child: SkeletonBox()),
+              SizedBox(height: LumaSpacing.xs),
+              FractionallySizedBox(
+                widthFactor: 0.52,
+                child: SkeletonBox(height: 11),
+              ),
+            ],
+          ),
+        );
+      },
+    ),
+  );
+}
+
 /// 首页加载时的分区骨架（横向卡片 + 网格）。
 class HomeFeedSkeleton extends StatelessWidget {
   const HomeFeedSkeleton({super.key});
@@ -130,28 +187,28 @@ class HomeFeedSkeleton extends StatelessWidget {
   Widget build(BuildContext context) {
     return const _SkeletonPulse(
       child: Padding(
-        padding: EdgeInsets.symmetric(horizontal: 20),
+        padding: EdgeInsets.symmetric(horizontal: LumaLayout.pagePaddingH),
         child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(height: LumaSpacing.lg),
-          SkeletonBox(width: 110, height: 20),
-          SizedBox(height: LumaSpacing.md),
-          Row(
-            children: [
-              _HorizontalCardSkeleton(),
-              SizedBox(width: LumaSpacing.md),
-              _HorizontalCardSkeleton(),
-              SizedBox(width: LumaSpacing.md),
-              _HorizontalCardSkeleton(),
-            ],
-          ),
-          SizedBox(height: LumaSpacing.xl),
-          SkeletonBox(width: 90, height: 20),
-          SizedBox(height: LumaSpacing.md),
-          MediaGridSkeleton(items: 4, animate: false),
-        ],
-      ),
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(height: LumaSpacing.lg),
+            SkeletonBox(width: 110, height: 20),
+            SizedBox(height: LumaSpacing.md),
+            Row(
+              children: [
+                _HorizontalCardSkeleton(),
+                SizedBox(width: LumaSpacing.md),
+                _HorizontalCardSkeleton(),
+                SizedBox(width: LumaSpacing.md),
+                _HorizontalCardSkeleton(),
+              ],
+            ),
+            SizedBox(height: LumaSpacing.xl),
+            SkeletonBox(width: 90, height: 20),
+            SizedBox(height: LumaSpacing.md),
+            MediaGridSkeleton(items: 4, animate: false),
+          ],
+        ),
       ),
     );
   }

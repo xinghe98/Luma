@@ -29,6 +29,10 @@ var allMigrations = []migration{
 	{version: 6, name: "006_media_asset_content_hash", sql: migrations.MediaAssetContentHash},
 	{version: 7, name: "007_stage6_user_data", sql: migrations.Stage6UserData},
 	{version: 8, name: "008_card_thumbnail_jobs", sql: migrations.CardThumbnailJobs},
+	{version: 9, name: "009_catalog", sql: migrations.Catalog},
+	{version: 10, name: "010_access_control", sql: migrations.AccessControl},
+	{version: 11, name: "011_image_library", sql: migrations.ImageLibrary},
+	{version: 12, name: "012_access_idempotency", sql: migrations.AccessIdempotency},
 }
 
 // migrate 在单个事务中幂等应用数据库迁移并确保默认用户存在。
@@ -62,9 +66,9 @@ func migrate(ctx context.Context, db *sql.DB, now time.Time) error {
 			return fmt.Errorf("record migration %s: %w", item.name, err)
 		}
 	}
-	if _, err := tx.ExecContext(ctx, `INSERT INTO users(id, name, created_at_ms, updated_at_ms)
-        VALUES ('user_local', 'Local User', ?, ?)
-        ON CONFLICT(id) DO NOTHING`, nowMS, nowMS); err != nil {
+	if _, err := tx.ExecContext(ctx, `INSERT INTO users(id, name, role, enabled, created_at_ms, updated_at_ms)
+		VALUES ('user_local', 'Local User', 'admin', 1, ?, ?)
+		ON CONFLICT(id) DO NOTHING`, nowMS, nowMS); err != nil {
 		return fmt.Errorf("ensure default user: %w", err)
 	}
 	if err := tx.Commit(); err != nil {

@@ -18,7 +18,7 @@ class _ConnectionPageState extends State<ConnectionPage> {
   final _host = TextEditingController();
   final _port = TextEditingController(text: '8080');
   final _token = TextEditingController();
-  String _scheme = 'https';
+  static const _connectionScheme = 'http';
 
   @override
   void dispose() {
@@ -28,19 +28,19 @@ class _ConnectionPageState extends State<ConnectionPage> {
     super.dispose();
   }
 
-  /// 由用户选择协议，避免把 HTTPS 历史服务器无声降级为 HTTP。
+  /// 内置服务器仅提供 HTTP，连接页无需让用户选择协议。
   String get _serverAddress {
     final host = _host.text.trim();
     final port = _port.text.trim();
     if (host.isEmpty) return '';
-    if (port.isEmpty) return '$_scheme://$host';
-    return '$_scheme://$host:$port';
+    if (port.isEmpty) return '$_connectionScheme://$host';
+    return '$_connectionScheme://$host:$port';
   }
 
   @override
   Widget build(BuildContext context) {
-    final controller = AppScope.of(context).connection;
-    final restoring = AppScope.of(context).restoring.value;
+    final dependencies = AppScope.of(context);
+    final controller = dependencies.connection;
     return Scaffold(
       body: SafeArea(
         child: Center(
@@ -51,52 +51,58 @@ class _ConnectionPageState extends State<ConnectionPage> {
                 maxWidth: LumaLayout.formMaxWidth,
               ),
               child: ListenableBuilder(
-                listenable: controller,
-                builder: (context, _) => Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    const Align(
-                      alignment: Alignment.centerLeft,
-                      child: BrandMark(),
-                    ),
-                    const SizedBox(height: LumaSpacing.xxl),
-                    Text(
-                      '连接你的轻影服务器',
-                      style: Theme.of(context).textTheme.headlineLarge,
-                    ),
-                    const SizedBox(height: LumaSpacing.sm),
-                    Text(
-                      '连接家庭服务器后，你的影像仍然只属于自己的网络。',
-                      style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                        height: 1.5,
+                listenable: Listenable.merge([
+                  controller,
+                  dependencies.restoring,
+                ]),
+                builder: (context, _) {
+                  final restoring = dependencies.restoring.value;
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const Align(
+                        alignment: Alignment.centerLeft,
+                        child: BrandMark(
+                          variant: BrandMarkVariant.horizontal,
+                          height: 36,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: LumaSpacing.xl),
-                    ConnectionForm(
-                      controller: controller,
-                      hostController: _host,
-                      portController: _port,
-                      tokenController: _token,
-                      scheme: _scheme,
-                      enabled: !restoring,
-                      onSchemeChanged: (value) => setState(() => _scheme = value),
-                      onConnect: () {
-                        FocusScope.of(context).unfocus();
-                        controller.connect(_serverAddress, _token.text);
-                      },
-                    ),
-                    if (restoring) ...[
+                      const SizedBox(height: LumaSpacing.xxl),
+                      Text(
+                        '连接你的轻影服务器',
+                        style: Theme.of(context).textTheme.headlineLarge,
+                      ),
                       const SizedBox(height: LumaSpacing.sm),
-                      const Text('正在恢复已保存的服务器连接…'),
+                      Text(
+                        '连接家庭服务器后，你的影像仍然只属于自己的网络。',
+                        style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                      const SizedBox(height: LumaSpacing.xl),
+                      ConnectionForm(
+                        controller: controller,
+                        hostController: _host,
+                        portController: _port,
+                        tokenController: _token,
+                        enabled: !restoring,
+                        onConnect: () {
+                          FocusScope.of(context).unfocus();
+                          controller.connect(_serverAddress, _token.text);
+                        },
+                      ),
+                      if (restoring) ...[
+                        const SizedBox(height: LumaSpacing.sm),
+                        const Text('正在恢复已保存的服务器连接…'),
+                      ],
+                      const SizedBox(height: LumaSpacing.lg),
+                      RecentServers(
+                        enabled: !restoring && !controller.isLoading,
+                        onSelect: _selectServer,
+                      ),
                     ],
-                    const SizedBox(height: LumaSpacing.lg),
-                    RecentServers(
-                      enabled: !controller.isLoading,
-                      onSelect: _selectServer,
-                    ),
-                  ],
-                ),
+                  );
+                },
               ),
             ),
           ),
@@ -108,7 +114,6 @@ class _ConnectionPageState extends State<ConnectionPage> {
   void _selectServer(RecentServer server) {
     final parsed = _parseAddress(server.address);
     setState(() {
-      _scheme = parsed.scheme;
       _host.value = TextEditingValue(
         text: parsed.host,
         selection: TextSelection.collapsed(offset: parsed.host.length),
@@ -121,19 +126,16 @@ class _ConnectionPageState extends State<ConnectionPage> {
     context.showLumaSnack('已填入 ${server.name}');
   }
 
-  static ({String scheme, String host, String port}) _parseAddress(String address) {
+  static ({String host, String port}) _parseAddress(String address) {
     final uri = Uri.tryParse(address.trim());
     if (uri != null && uri.host.isNotEmpty) {
-      final port = uri.hasPort
-          ? '${uri.port}'
-          : (uri.scheme == 'https' ? '443' : '80');
-      return (scheme: uri.scheme, host: uri.host, port: port);
+      return (host: uri.host, port: uri.hasPort ? '${uri.port}' : '8080');
     }
     final bare = address.trim().replaceFirst(RegExp(r'^https?://'), '');
     final parts = bare.split(':');
     if (parts.length >= 2) {
-      return (scheme: 'http', host: parts.first, port: parts.sublist(1).join(':'));
+      return (host: parts.first, port: parts.sublist(1).join(':'));
     }
-    return (scheme: 'http', host: bare, port: '8080');
+    return (host: bare, port: '8080');
   }
 }

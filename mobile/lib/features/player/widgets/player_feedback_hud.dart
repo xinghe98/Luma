@@ -16,19 +16,18 @@ class PlayerFeedbackHud extends StatelessWidget {
       builder: (context, _) {
         final presentation = _presentation();
         final reduceMotion = MediaQuery.disableAnimationsOf(context);
+        final extras = context.luma;
         return IgnorePointer(
           child: AnimatedOpacity(
             opacity: interaction.hudVisible ? 1 : 0,
-            duration: reduceMotion
-                ? Duration.zero
-                : const Duration(milliseconds: 180),
-            curve: Curves.easeOutQuart,
+            duration: reduceMotion ? Duration.zero : LumaMotion.fast,
+            curve: LumaMotion.standard,
             child: Center(
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 280),
                 child: DecoratedBox(
                   decoration: BoxDecoration(
-                    color: LumaColors.ink.withAlpha(235),
+                    color: extras.playerInk.withAlpha(235),
                     borderRadius: BorderRadius.circular(LumaRadii.medium),
                   ),
                   child: Padding(
@@ -39,21 +38,24 @@ class PlayerFeedbackHud extends StatelessWidget {
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(presentation.icon, color: Colors.white, size: 28),
+                        Icon(
+                          presentation.icon,
+                          color: extras.onPlayerInk,
+                          size: 28,
+                        ),
                         const SizedBox(height: LumaSpacing.xs),
                         Text(
                           presentation.title,
                           textAlign: TextAlign.center,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w600,
-                          ),
+                          style: Theme.of(context).textTheme.titleSmall
+                              ?.copyWith(color: extras.onPlayerInk),
                         ),
                         if (presentation.subtitle != null) ...[
                           const SizedBox(height: LumaSpacing.xxs),
                           Text(
                             presentation.subtitle!,
-                            style: const TextStyle(color: Colors.white70),
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(color: extras.onPlayerInkMuted),
                           ),
                         ],
                         if (presentation.progress != null) ...[
@@ -63,8 +65,12 @@ class PlayerFeedbackHud extends StatelessWidget {
                             child: LinearProgressIndicator(
                               value: presentation.progress!.clamp(0, 1),
                               minHeight: 4,
-                              borderRadius: BorderRadius.circular(4),
-                              backgroundColor: Colors.white24,
+                              borderRadius: BorderRadius.circular(
+                                LumaRadii.badge,
+                              ),
+                              backgroundColor: extras.onPlayerInk.withValues(
+                                alpha: 0.24,
+                              ),
                               color: LumaColors.mist,
                             ),
                           ),

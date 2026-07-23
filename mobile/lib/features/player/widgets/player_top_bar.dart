@@ -1,31 +1,58 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/theme.dart';
+
 class PlayerTopBar extends StatelessWidget {
-  const PlayerTopBar({super.key, required this.title, required this.onBack});
+  const PlayerTopBar({
+    super.key,
+    required this.title,
+    required this.resolution,
+    required this.onBack,
+  });
 
   final String title;
+  final String resolution;
   final VoidCallback onBack;
 
   @override
   Widget build(BuildContext context) {
+    final onInk = context.luma.onPlayerInk;
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      padding: const EdgeInsets.symmetric(
+        horizontal: LumaSpacing.sm,
+        vertical: LumaSpacing.xxs,
+      ),
       child: Row(
         children: [
           IconButton(
             tooltip: '返回',
             onPressed: onBack,
-            icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
+            icon: Icon(Icons.arrow_back_rounded, color: onInk),
           ),
-          const SizedBox(width: 6),
+          const SizedBox(width: LumaSpacing.xs),
           Expanded(
-            child: Text(
-              title,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(
-                context,
-              ).textTheme.titleMedium?.copyWith(color: Colors.white),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleMedium?.copyWith(color: onInk),
+                ),
+                if (resolution.isNotEmpty)
+                  Text(
+                    resolution,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                      color: onInk.withValues(alpha: 0.72),
+                    ),
+                  ),
+              ],
             ),
           ),
         ],

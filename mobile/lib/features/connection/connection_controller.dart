@@ -29,9 +29,11 @@ class ConnectionController extends ChangeNotifier {
   ConnectionPhase _phase = ConnectionPhase.idle;
   String? _message;
   int _operation = 0;
+  bool _disposed = false;
 
   ConnectionPhase get phase => _phase;
   String? get message => _message;
+
   /// 成功提示停留期间同样锁定表单，避免延迟提交与下一次连接交错。
   bool get isLoading =>
       _phase == ConnectionPhase.loading || _phase == ConnectionPhase.success;
@@ -42,14 +44,14 @@ class ConnectionController extends ChangeNotifier {
     _message = null;
     notifyListeners();
     final result = await _service.test(address, token);
-    if (operation != _operation) return;
+    if (_disposed || operation != _operation) return;
     switch (result) {
       case ConnectionResult.success:
         _phase = ConnectionPhase.success;
         _message = '连接成功，正在同步媒体库';
         notifyListeners();
         await Future<void>.delayed(successDelay);
-        if (operation != _operation) return;
+        if (_disposed || operation != _operation) return;
         _session.connect(
           _service.connectedProfile ??
               ServerProfile(
@@ -59,10 +61,10 @@ class ConnectionController extends ChangeNotifier {
                 hostName: Uri.parse(address).host,
               ),
         );
-        unawaited(_loadConnectedData());
+        unawaited(_loadConnectedData(operation));
       case ConnectionResult.invalidAddress:
         _phase = ConnectionPhase.failure;
-        _message = '请输入完整的 http:// 或 https:// 服务器地址';
+        _message = '请输入有效的服务器地址';
       case ConnectionResult.unauthorized:
         _phase = ConnectionPhase.failure;
         _message = '访问令牌无效，请检查后重试';
@@ -76,18 +78,18 @@ class ConnectionController extends ChangeNotifier {
   Future<bool> restore(String address, String token) async {
     final operation = ++_operation;
     final result = await _service.test(address, token);
-    if (operation != _operation) return false;
+    if (_disposed || operation != _operation) return false;
     if (result != ConnectionResult.success) return false;
     final profile = _service.connectedProfile;
     if (profile == null) return false;
     _session.connect(profile);
-    await _media.load();
-    await _onConnected?.call();
+    unawaited(_loadConnectedData(operation));
     return true;
   }
 
-  Future<void> _loadConnectedData() async {
+  Future<void> _loadConnectedData(int operation) async {
     await _media.load();
+    if (_disposed || operation != _operation) return;
     await _onConnected?.call();
   }
 
@@ -96,5 +98,12 @@ class ConnectionController extends ChangeNotifier {
     _phase = ConnectionPhase.idle;
     _message = null;
     notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    _operation++;
+    super.dispose();
   }
 }

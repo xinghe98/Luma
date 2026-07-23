@@ -16,24 +16,32 @@ class HomeHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Center(
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: LumaLayout.contentMaxWidth),
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 20, 20, 10),
+          padding: const EdgeInsets.fromLTRB(
+            LumaLayout.pagePaddingH,
+            LumaSpacing.lg,
+            LumaLayout.pagePaddingH,
+            LumaSpacing.sm,
+          ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
                 children: [
                   Expanded(
-                    // 搜索按钮保留在手势区域外，双击品牌或空白处才会回顶。
                     child: GestureDetector(
                       behavior: HitTestBehavior.translucent,
                       onDoubleTap: onScrollToTop,
                       child: const Align(
                         alignment: Alignment.centerLeft,
-                        child: BrandMark(),
+                        child: BrandMark(
+                          variant: BrandMarkVariant.symbol,
+                          height: 40,
+                        ),
                       ),
                     ),
                   ),
@@ -47,13 +55,13 @@ class HomeHeader extends StatelessWidget {
               const SizedBox(height: LumaSpacing.xl),
               Text(
                 '${greetingForHour(DateTime.now().hour)}，欢迎回来',
-                style: Theme.of(context).textTheme.headlineLarge,
+                style: theme.textTheme.headlineLarge,
               ),
               const SizedBox(height: LumaSpacing.xs),
               Text(
                 '在熟悉的影像里，继续今天的片刻。',
-                style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                style: theme.textTheme.bodyLarge?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
                 ),
               ),
               const SizedBox(height: LumaSpacing.lg),

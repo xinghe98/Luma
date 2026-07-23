@@ -13,8 +13,8 @@ import (
 
 // StreamUseCase 定义原始媒体 Handler 所需的业务能力。
 type StreamUseCase interface {
-	Open(context.Context, string) (domain.StreamContent, error)
-	OpenOriginal(context.Context, string) (domain.StreamContent, error)
+	Open(context.Context, string, string) (domain.StreamContent, error)
+	OpenOriginal(context.Context, string, string) (domain.StreamContent, error)
 }
 
 // StreamHandler 将原始媒体内容适配为支持 Range 的 HTTP 响应。
@@ -33,13 +33,13 @@ func NewStreamHandler(service StreamUseCase) (*StreamHandler, error) {
 
 // Stream 处理 GET 和 HEAD /api/v1/media/:id/stream。
 func (h *StreamHandler) Stream(c *gin.Context) {
-	content, err := h.service.Open(c.Request.Context(), c.Param("id"))
+	content, err := h.service.Open(c.Request.Context(), c.Param("id"), c.GetString("user_id"))
 	h.serve(c, content, err)
 }
 
 // Original 处理 GET 和 HEAD /api/v1/media/:id/original。
 func (h *StreamHandler) Original(c *gin.Context) {
-	content, err := h.service.OpenOriginal(c.Request.Context(), c.Param("id"))
+	content, err := h.service.OpenOriginal(c.Request.Context(), c.Param("id"), c.GetString("user_id"))
 	h.serve(c, content, err)
 }
 

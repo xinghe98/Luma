@@ -12,7 +12,7 @@ enum AppDestination {
     selectedIcon: Icons.photo_library_rounded,
   ),
   videos(
-    label: '影音库',
+    label: '影视库',
     icon: Icons.movie_outlined,
     selectedIcon: Icons.movie_rounded,
   ),

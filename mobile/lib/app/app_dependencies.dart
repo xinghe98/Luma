@@ -5,12 +5,18 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../data/api/api_client.dart';
 import '../data/api/api_session.dart';
 import '../data/api/api_session_interceptor.dart';
+import '../data/repositories/access_repository.dart';
+import '../data/repositories/api_access_repository.dart';
 import '../data/repositories/api_media_repository.dart';
+import '../data/repositories/api_catalog_repository.dart';
 import '../data/repositories/api_scan_repository.dart';
 import '../data/repositories/api_source_repository.dart';
 import '../data/repositories/media_repository.dart';
+import '../data/repositories/catalog_repository.dart';
+import '../data/repositories/source_repository.dart';
 import '../data/services/api_connection_service.dart';
 import '../data/services/connection_service.dart';
+import '../data/storage/credential_store.dart';
 import '../data/storage/secure_credential_store.dart';
 import '../data/storage/secure_server_alias_store.dart';
 import '../data/storage/server_alias_store.dart';
@@ -26,12 +32,18 @@ class AppDependencies {
     ApiSession? apiSession,
     SettingsController? settingsController,
     Dio? dio,
-    SecureCredentialStore? credentialStore,
+    CredentialStore? credentialStore,
     ServerAliasStore? aliasStore,
+    CatalogRepository? catalogRepository,
+    SourceRepository? sourceRepository,
+    AccessRepository? accessRepository,
   }) : media = MediaController(mediaRepository),
        session = SessionController(),
        settings = settingsController ?? SettingsController(),
        apiSession = apiSession ?? ApiSession(),
+       catalog = catalogRepository ?? const EmptyCatalogRepository(),
+       access = accessRepository ?? const UnavailableAccessRepository(),
+       sources = sourceRepository,
        _connectionService = connectionService,
        _credentialStore = credentialStore,
        _aliasStore = aliasStore,
@@ -67,8 +79,8 @@ class AppDependencies {
       client: client,
       apiSession: apiSession,
       credentialStore: credentials,
-      sourceRepository: sources,
       aliasStore: aliases,
+      sourceRepository: sources,
     );
     return AppDependencies(
       mediaRepository: ApiMediaRepository(client, sources),
@@ -80,6 +92,9 @@ class AppDependencies {
       dio: dio,
       credentialStore: credentials,
       aliasStore: aliases,
+      catalogRepository: ApiCatalogRepository(client),
+      sourceRepository: sources,
+      accessRepository: ApiAccessRepository(client),
     );
   }
 
@@ -94,34 +109,49 @@ class AppDependencies {
   final SessionController session;
   final SettingsController settings;
   final ApiSession apiSession;
+  final CatalogRepository catalog;
+  final AccessRepository access;
+  final SourceRepository? sources;
   final ConnectionService _connectionService;
-  final SecureCredentialStore? _credentialStore;
+  final CredentialStore? _credentialStore;
   final ServerAliasStore? _aliasStore;
   final Dio? _dio;
   late final ConnectionController connection;
+
   /// 恢复旧会话期间禁止新的连接尝试，避免两个请求改写同一 ApiSession。
   final ValueNotifier<bool> restoring = ValueNotifier(false);
+  int _restoreOperation = 0;
 
   Future<bool> restoreSession() async {
     final store = _credentialStore;
     if (store == null) return false;
+    final operation = ++_restoreOperation;
     restoring.value = true;
     try {
       final saved = await store.read();
-      if (saved == null || saved.token == null) return false;
+      if (operation != _restoreOperation ||
+          saved == null ||
+          saved.token == null) {
+        return false;
+      }
       final restored = await connection.restore(saved.origin, saved.token!);
-      return restored;
+      return operation == _restoreOperation && restored;
     } finally {
-      restoring.value = false;
+      if (operation == _restoreOperation) restoring.value = false;
     }
   }
 
   Future<void> disconnect() async {
-    await _connectionService.disconnect();
+    _restoreOperation++;
+    restoring.value = false;
     session.disconnect();
     media.clear();
+    if (sources case SessionResettableSourceRepository resettable) {
+      resettable.clearSessionCache();
+    }
     settings.resetConnection();
     connection.reset();
+    await _connectionService.disconnect();
   }
 
   Future<void> updateServerAlias(String value) async {

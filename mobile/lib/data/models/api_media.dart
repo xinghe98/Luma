@@ -7,6 +7,7 @@ class MediaSummary {
     required this.title,
     required this.filename,
     required this.mediaType,
+    required this.libraryKind,
     required this.durationMs,
     required this.width,
     required this.height,
@@ -27,6 +28,7 @@ class MediaSummary {
   final String title;
   final String filename;
   final MediaType mediaType;
+  final String libraryKind;
   final int? durationMs;
   final int? width;
   final int? height;
@@ -49,6 +51,7 @@ final class MediaDetail extends MediaSummary {
     required super.title,
     required super.filename,
     required super.mediaType,
+    required super.libraryKind,
     required super.durationMs,
     required super.width,
     required super.height,

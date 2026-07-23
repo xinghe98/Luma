@@ -4,6 +4,7 @@ import '../api/api_exception.dart';
 import '../api/api_session.dart';
 import '../decoders/system_info_decoder.dart';
 import '../models/server_profile.dart';
+import '../repositories/api_source_repository.dart';
 import '../repositories/source_repository.dart';
 import '../storage/credential_store.dart';
 import '../storage/server_alias_store.dart';
@@ -14,20 +15,22 @@ final class ApiConnectionService implements ConnectionService {
     required ApiClient client,
     required ApiSession apiSession,
     required CredentialStore credentialStore,
-    required SourceRepository sourceRepository,
     required ServerAliasStore aliasStore,
+    SourceRepository? sourceRepository,
   }) : _client = client,
        _apiSession = apiSession,
        _credentialStore = credentialStore,
-       _sourceRepository = sourceRepository,
-       _aliasStore = aliasStore;
+       _aliasStore = aliasStore,
+       _sourceRepository = sourceRepository;
 
   final ApiClient _client;
   final ApiSession _apiSession;
   final CredentialStore _credentialStore;
-  final SourceRepository _sourceRepository;
   final ServerAliasStore _aliasStore;
+  final SourceRepository? _sourceRepository;
   final SystemInfoDecoder _systemDecoder = const SystemInfoDecoder();
+  int _operation = 0;
+  Future<void> _credentialQueue = Future<void>.value();
 
   @override
   ServerProfile? connectedProfile;
@@ -35,6 +38,7 @@ final class ApiConnectionService implements ConnectionService {
   @override
   /// Verifies both public health and authenticated API access before saving.
   Future<ConnectionResult> test(String address, String token) async {
+    final operation = ++_operation;
     final uri = Uri.tryParse(address.trim());
     if (uri == null ||
         !uri.hasScheme ||
@@ -44,18 +48,17 @@ final class ApiConnectionService implements ConnectionService {
     }
     if (token.trim().isEmpty) return ConnectionResult.unauthorized;
 
-    final previousOrigin = _apiSession.origin;
-    final previousToken = _apiSession.token;
     final origin = normalizeOrigin(uri);
-    _apiSession.update(origin: origin, token: token.trim());
+    final candidate = ApiSession(origin: origin, token: token.trim());
+    final probe = _client.isolatedFor(candidate);
     try {
-      await _client.getHealth();
-      final system = _systemDecoder.decode(await _client.getSystemInfo());
-      final sources = await _sourceRepository.list(refresh: true);
-      final alias = await _aliasStore.read(_apiSession.origin);
-      connectedProfile = ServerProfile(
+      await probe.getHealth();
+      final system = _systemDecoder.decode(await probe.getSystemInfo());
+      final sources = await ApiSourceRepository(probe).list(refresh: true);
+      final alias = await _aliasStore.read(origin);
+      final profile = ServerProfile(
         name: alias?.trim().isNotEmpty == true ? alias!.trim() : uri.host,
-        address: _apiSession.origin,
+        address: origin,
         token: token.trim(),
         hostName: uri.host,
         sourceCount: sources.length,
@@ -63,27 +66,58 @@ final class ApiConnectionService implements ConnectionService {
         platform: system.platform,
         architecture: system.architecture,
         database: system.database,
+        userRole: system.userRole,
+        capabilities: system.capabilities,
       );
-      await _credentialStore.write(
-        StoredCredentials(origin: _apiSession.origin, token: token.trim()),
+      if (operation != _operation) return ConnectionResult.unreachable;
+      _apiSession.update(origin: origin, token: token.trim());
+      if (_sourceRepository case SessionSeedableSourceRepository cache) {
+        cache.seedSessionCache(sources);
+      }
+      connectedProfile = profile;
+      await _enqueueCredentialWrite(
+        operation,
+        StoredCredentials(origin: origin, token: token.trim()),
       );
+      if (operation != _operation) return ConnectionResult.unreachable;
       return ConnectionResult.success;
     } on ApiException catch (error) {
-      _apiSession.update(origin: previousOrigin, token: previousToken);
+      if (operation != _operation) return ConnectionResult.unreachable;
       return error.statusCode == 401
           ? ConnectionResult.unauthorized
           : ConnectionResult.unreachable;
     } on Object {
-      _apiSession.update(origin: previousOrigin, token: previousToken);
       return ConnectionResult.unreachable;
+    } finally {
+      probe.close();
     }
   }
 
   @override
   Future<void> disconnect() async {
+    final operation = ++_operation;
     connectedProfile = null;
     _apiSession.clear();
-    await _credentialStore.clear();
+    await _enqueueCredential(() async {
+      if (operation != _operation) return;
+      await _credentialStore.clear();
+    });
+  }
+
+  Future<void> _enqueueCredentialWrite(
+    int operation,
+    StoredCredentials credentials,
+  ) => _enqueueCredential(() async {
+    if (operation != _operation) return;
+    await _credentialStore.write(credentials);
+  });
+
+  Future<void> _enqueueCredential(Future<void> Function() action) {
+    final next = _credentialQueue.catchError((_) {}).then<void>((_) => action());
+    // Keep the serialization chain usable after a storage failure while still
+    // returning that failure to the operation that triggered it.
+    _credentialQueue = next.catchError((_) {});
+    return next;
   }
 
   /// Keeps non-root path prefixes (e.g. `/luma`) and only strips trailing slash.

@@ -33,11 +33,15 @@ class MasonryMediaSliver extends StatelessWidget {
       delegate: SliverChildBuilderDelegate(
         (context, index) {
           final item = items[index];
+          final heroTag = 'photos-${item.id}';
           return MasonryMediaTile(
             key: ValueKey(item.id),
             item: item,
-            onTap: () => onTap(item),
-            onLongPress: onLongPress == null ? null : () => onLongPress!(item),
+            heroTag: heroTag,
+            onTap: () => onTap(item, heroTag: heroTag),
+            onLongPress: onLongPress == null
+                ? null
+                : () => onLongPress!(item, heroTag: heroTag),
             onFavorite: onFavorite == null ? null : () => onFavorite!(item),
           );
         },

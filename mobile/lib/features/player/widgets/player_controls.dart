@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/theme.dart';
 import '../player_controller.dart';
 import 'player_bottom_toolbar.dart';
 import 'player_center_controls.dart';
@@ -24,7 +25,7 @@ class PlayerControls extends StatelessWidget {
       return Align(
         alignment: Alignment.centerLeft,
         child: Padding(
-          padding: const EdgeInsets.all(18),
+          padding: const EdgeInsets.all(LumaSpacing.md),
           child: FilledButton.icon(
             onPressed: () => controller.setLocked(false),
             icon: const Icon(Icons.lock_rounded),
@@ -35,12 +36,21 @@ class PlayerControls extends StatelessWidget {
     }
     return Column(
       children: [
-        PlayerTopBar(title: controller.item.title, onBack: onBack),
+        PlayerTopBar(
+          title: controller.item.title,
+          resolution: controller.item.resolution,
+          onBack: onBack,
+        ),
         const Spacer(),
         PlayerCenterControls(controller: controller),
         const Spacer(),
         Padding(
-          padding: const EdgeInsets.fromLTRB(24, 0, 24, 16),
+          padding: const EdgeInsets.fromLTRB(
+            LumaSpacing.lg,
+            0,
+            LumaSpacing.lg,
+            LumaSpacing.md,
+          ),
           child: Column(
             children: [
               PlayerTimeline(controller: controller),

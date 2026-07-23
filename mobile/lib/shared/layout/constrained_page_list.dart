@@ -9,7 +9,12 @@ class ConstrainedPageList extends StatelessWidget {
     this.scrollKey,
     this.controller,
     this.physics,
-    this.padding = const EdgeInsets.fromLTRB(20, 8, 20, 32),
+    this.padding = const EdgeInsets.fromLTRB(
+      LumaLayout.pagePaddingH,
+      LumaSpacing.xs,
+      LumaLayout.pagePaddingH,
+      LumaLayout.pagePaddingBottom,
+    ),
   });
 
   final List<Widget> children;

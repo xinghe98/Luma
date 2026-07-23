@@ -32,9 +32,15 @@ func TestOpenAPIIsValidYAML(t *testing.T) {
 	for _, path := range []string{
 		"/api/v1/media/continue-watching", "/api/v1/media/{id}/user-data",
 		"/api/v1/media/{id}/progress", "/api/v1/tags", "/api/v1/tags/{id}",
+		"/api/v1/media/count",
 	} {
 		if paths[path] == nil {
 			t.Fatalf("阶段 6 OpenAPI path 缺失: %s", path)
+		}
+	}
+	for _, path := range []string{"/api/v1/catalog", "/api/v1/catalog/issues", "/api/v1/catalog/media/{id}", "/api/v1/catalog/{id}"} {
+		if paths[path] == nil {
+			t.Fatalf("作品库 OpenAPI path 缺失: %s", path)
 		}
 	}
 	components, ok := document["components"].(map[string]any)
@@ -84,9 +90,14 @@ func TestOpenAPIIsValidYAML(t *testing.T) {
 	if !ok || !getOK || !parametersOK || !hasQueryParameter(parameters, "watch_status") {
 		t.Fatal("GET /api/v1/media watch_status 参数契约缺失")
 	}
-	for _, schema := range []string{"Tag", "MediaUserData", "UpdateMediaUserData", "UpdateProgress"} {
+	for _, schema := range []string{"Tag", "MediaUserData", "UpdateMediaUserData", "UpdateProgress", "MediaCount"} {
 		if schemas[schema] == nil {
 			t.Fatalf("阶段 6 schema 缺失: %s", schema)
+		}
+	}
+	for _, schema := range []string{"CatalogItem", "CatalogEpisode", "CatalogIssue", "UpdateCatalogMatch"} {
+		if schemas[schema] == nil {
+			t.Fatalf("作品库 schema 缺失: %s", schema)
 		}
 	}
 }

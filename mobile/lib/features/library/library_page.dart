@@ -23,11 +23,17 @@ class LibraryPage extends StatefulWidget {
     required this.onOpenMedia,
     required this.onOpenSearch,
     this.onLongPressMedia,
+    this.fixedLibraryKind,
+    this.embedded = false,
   });
 
   final MediaType type;
   final MediaOpenCallback onOpenMedia;
   final VoidCallback onOpenSearch;
+  final String? fixedLibraryKind;
+
+  /// 嵌入影视库分页时仅渲染内容和局部工具栏，避免嵌套 Scaffold/AppBar。
+  final bool embedded;
 
   /// 图片库长按进详情等；影音库可不传。
   final MediaOpenCallback? onLongPressMedia;
@@ -54,7 +60,11 @@ class _LibraryPageState extends State<LibraryPage>
   void didChangeDependencies() {
     super.didChangeDependencies();
     final media = AppScope.of(context).media;
-    _controller ??= LibraryController(fixedType: widget.type, media: media);
+    _controller ??= LibraryController(
+      fixedType: widget.type,
+      fixedLibraryKind: widget.fixedLibraryKind,
+      media: media,
+    );
     _controller!.ensureLoaded();
   }
 
@@ -93,6 +103,168 @@ class _LibraryPageState extends State<LibraryPage>
         final loadState = controller.loadState;
         final showInitialSkeleton =
             loadState == LoadState.loading && items.isEmpty;
+        final body = RefreshIndicator(
+          onRefresh: controller.refresh,
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(
+                maxWidth: LumaLayout.contentMaxWidth,
+              ),
+              child: CustomScrollView(
+                key: PageStorageKey(
+                  'library-scroll-${widget.type.name}-${widget.fixedLibraryKind ?? 'all'}',
+                ),
+                controller: _scroll,
+                // 只预构建约半屏内容，控制快速滑动时的并发解码和纹理峰值。
+                cacheExtent: 320,
+                physics: const AlwaysScrollableScrollPhysics(),
+                slivers: [
+                  if (controller.isRefreshing)
+                    const SliverToBoxAdapter(
+                      child: LinearProgressIndicator(minHeight: 2),
+                    ),
+                  SliverPadding(
+                    padding: const EdgeInsets.fromLTRB(
+                      LumaLayout.pagePaddingH,
+                      LumaSpacing.xs,
+                      LumaLayout.pagePaddingH,
+                      0,
+                    ),
+                    sliver: SliverToBoxAdapter(
+                      child: Row(
+                        children: [
+                          Text(
+                            controller.hasMore
+                                ? '已加载 ${items.length} 个项目'
+                                : '${items.length} 个项目',
+                            style: Theme.of(context).textTheme.bodyMedium
+                                ?.copyWith(
+                                  color: Theme.of(
+                                    context,
+                                  ).colorScheme.onSurfaceVariant,
+                                ),
+                          ),
+                          const Spacer(),
+                          if (controller.hasExtraFilters)
+                            TextButton.icon(
+                              onPressed: controller.clearFilters,
+                              icon: const Icon(Icons.close_rounded, size: 18),
+                              label: const Text('清除筛选'),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  if (showInitialSkeleton)
+                    const SliverPadding(
+                      padding: EdgeInsets.fromLTRB(
+                        LumaLayout.pagePaddingH,
+                        LumaSpacing.sm,
+                        LumaLayout.pagePaddingH,
+                        LumaSpacing.xl,
+                      ),
+                      sliver: SliverToBoxAdapter(
+                        child: MediaGridSkeleton(items: 8),
+                      ),
+                    )
+                  else if (loadState == LoadState.error && items.isEmpty)
+                    SliverFillRemaining(
+                      hasScrollBody: false,
+                      child: ErrorState(onRetry: controller.refresh),
+                    )
+                  else if (items.isEmpty)
+                    SliverFillRemaining(
+                      hasScrollBody: false,
+                      child: EmptyState(
+                        title: widget.fixedLibraryKind == 'personal'
+                            ? '还没有个人视频'
+                            : isVideo
+                            ? '影音库还没有内容'
+                            : '图片库还没有内容',
+                        message: '尝试清除筛选条件，或等待服务器扫描完成。',
+                        icon: Icons.filter_alt_off_outlined,
+                        action: OutlinedButton(
+                          onPressed: () =>
+                              controller.clearFilters(includeType: true),
+                          child: const Text('清除筛选条件'),
+                        ),
+                      ),
+                    )
+                  else ...[
+                    if (isVideo)
+                      SliverPadding(
+                        padding: const EdgeInsets.fromLTRB(
+                          LumaLayout.pagePaddingH,
+                          LumaSpacing.sm,
+                          LumaLayout.pagePaddingH,
+                          LumaSpacing.xs,
+                        ),
+                        sliver: ResponsiveMediaSliverGrid(
+                          items: items,
+                          heroTagPrefix: 'videos',
+                          onTap: widget.onOpenMedia,
+                          onFavorite: (item) =>
+                              context.toggleFavoriteWithFeedback(media, item),
+                        ),
+                      )
+                    else
+                      SliverPadding(
+                        padding: const EdgeInsets.fromLTRB(
+                          LumaSpacing.sm,
+                          LumaSpacing.xs,
+                          LumaSpacing.sm,
+                          LumaSpacing.xs,
+                        ),
+                        sliver: MasonryMediaSliver(
+                          items: items,
+                          onTap: widget.onOpenMedia,
+                          onLongPress: widget.onLongPressMedia,
+                          onFavorite: (item) =>
+                              context.toggleFavoriteWithFeedback(media, item),
+                        ),
+                      ),
+                    if (controller.isLoadingMore || controller.hasMore)
+                      const SliverToBoxAdapter(
+                        child: Padding(
+                          padding: EdgeInsets.fromLTRB(
+                            LumaLayout.pagePaddingH,
+                            LumaSpacing.xs,
+                            LumaLayout.pagePaddingH,
+                            LumaSpacing.xl,
+                          ),
+                          child: Center(
+                            child: SizedBox(
+                              width: 28,
+                              height: 28,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                          ),
+                        ),
+                      )
+                    else
+                      const SliverToBoxAdapter(
+                        child: SizedBox(height: LumaSpacing.xl),
+                      ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        );
+        if (widget.embedded) {
+          return Column(
+            children: [
+              SizedBox(
+                height: LumaLayout.buttonHeight,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: _actions(),
+                ),
+              ),
+              Expanded(child: body),
+            ],
+          );
+        }
         return Scaffold(
           appBar: AppBar(
             title: ScrollToTopAppBarTitle(
@@ -101,128 +273,19 @@ class _LibraryPageState extends State<LibraryPage>
             ),
             actions: _actions(),
           ),
-          body: RefreshIndicator(
-            onRefresh: controller.refresh,
-            child: Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(
-                  maxWidth: LumaLayout.contentMaxWidth,
-                ),
-                child: CustomScrollView(
-                  key: PageStorageKey('library-scroll-${widget.type.name}'),
-                  controller: _scroll,
-                  // 只预构建约半屏内容，控制快速滑动时的并发解码和纹理峰值。
-                  cacheExtent: 320,
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  slivers: [
-                    if (controller.isRefreshing)
-                      const SliverToBoxAdapter(
-                        child: LinearProgressIndicator(minHeight: 2),
-                      ),
-                    SliverPadding(
-                      padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
-                      sliver: SliverToBoxAdapter(
-                        child: Row(
-                          children: [
-                            Text(
-                              controller.hasMore
-                                  ? '已加载 ${items.length} 个项目'
-                                  : '${items.length} 个项目',
-                            ),
-                            const Spacer(),
-                            if (controller.hasExtraFilters)
-                              TextButton.icon(
-                                onPressed: controller.clearFilters,
-                                icon: const Icon(Icons.close_rounded, size: 18),
-                                label: const Text('清除筛选'),
-                              ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    if (showInitialSkeleton)
-                      const SliverPadding(
-                        padding: EdgeInsets.fromLTRB(20, 12, 20, 32),
-                        sliver: SliverToBoxAdapter(
-                          child: MediaGridSkeleton(items: 8),
-                        ),
-                      )
-                    else if (loadState == LoadState.error && items.isEmpty)
-                      SliverFillRemaining(
-                        hasScrollBody: false,
-                        child: ErrorState(onRetry: controller.refresh),
-                      )
-                    else if (items.isEmpty)
-                      SliverFillRemaining(
-                        hasScrollBody: false,
-                        child: EmptyState(
-                          title: isVideo ? '影音库还没有内容' : '图片库还没有内容',
-                          message: '尝试清除筛选条件，或等待服务器扫描完成。',
-                          icon: Icons.filter_alt_off_outlined,
-                          action: OutlinedButton(
-                            onPressed: () =>
-                                controller.clearFilters(includeType: true),
-                            child: const Text('清除筛选条件'),
-                          ),
-                        ),
-                      )
-                    else ...[
-                      if (isVideo)
-                        SliverPadding(
-                          padding: const EdgeInsets.fromLTRB(20, 12, 20, 8),
-                          sliver: ResponsiveMediaSliverGrid(
-                            items: items,
-                            heroTagPrefix: 'videos',
-                            onTap: widget.onOpenMedia,
-                            onFavorite: (item) =>
-                                context.toggleFavoriteWithFeedback(media, item),
-                          ),
-                        )
-                      else
-                        SliverPadding(
-                          padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
-                          sliver: MasonryMediaSliver(
-                            items: items,
-                            onTap: widget.onOpenMedia,
-                            onLongPress: widget.onLongPressMedia,
-                            onFavorite: (item) =>
-                                context.toggleFavoriteWithFeedback(media, item),
-                          ),
-                        ),
-                      if (controller.isLoadingMore || controller.hasMore)
-                        const SliverToBoxAdapter(
-                          child: Padding(
-                            padding: EdgeInsets.fromLTRB(20, 8, 20, 32),
-                            child: Center(
-                              child: SizedBox(
-                                width: 28,
-                                height: 28,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                ),
-                              ),
-                            ),
-                          ),
-                        )
-                      else
-                        const SliverToBoxAdapter(child: SizedBox(height: 32)),
-                    ],
-                  ],
-                ),
-              ),
-            ),
-          ),
+          body: body,
         );
       },
     );
   }
 
   List<Widget> _actions() => [
-    IconButton(
-      tooltip: '搜索',
-      onPressed: widget.onOpenSearch,
-      icon: const Icon(Icons.search_rounded),
-    ),
+    if (!widget.embedded)
+      IconButton(
+        tooltip: '搜索',
+        onPressed: widget.onOpenSearch,
+        icon: const Icon(Icons.search_rounded),
+      ),
     if (widget.type == MediaType.video)
       IconButton(
         tooltip: '筛选',

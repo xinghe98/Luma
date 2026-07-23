@@ -16,7 +16,7 @@ import (
 
 // StreamRepository 定义原始媒体服务所需的内容定位查询。
 type StreamRepository interface {
-	GetStreamLocation(context.Context, string) (domain.StreamLocation, error)
+	GetStreamLocation(context.Context, string, string) (domain.StreamLocation, error)
 }
 
 // ContentOpener 定义原始媒体服务所需的安全内容打开能力。
@@ -41,22 +41,22 @@ func NewStreamService(repository StreamRepository, opener ContentOpener) (*Strea
 }
 
 // Open 返回可交给 http.ServeContent 的原始视频。
-func (s *StreamService) Open(ctx context.Context, id string) (domain.StreamContent, error) {
-	return s.open(ctx, id, domain.MediaTypeVideo, streamMIMEType)
+func (s *StreamService) Open(ctx context.Context, id, userID string) (domain.StreamContent, error) {
+	return s.open(ctx, id, userID, domain.MediaTypeVideo, streamMIMEType)
 }
 
 // OpenOriginal 返回可交给 http.ServeContent 的原始图片。
-func (s *StreamService) OpenOriginal(ctx context.Context, id string) (domain.StreamContent, error) {
-	return s.open(ctx, id, domain.MediaTypeImage, imageMIMEType)
+func (s *StreamService) OpenOriginal(ctx context.Context, id, userID string) (domain.StreamContent, error) {
+	return s.open(ctx, id, userID, domain.MediaTypeImage, imageMIMEType)
 }
 
 type contentMIMEType func(string, string, domain.StreamReader) (string, error)
 
-func (s *StreamService) open(ctx context.Context, id, expectedMediaType string, resolveMIME contentMIMEType) (domain.StreamContent, error) {
-	if strings.TrimSpace(id) == "" {
+func (s *StreamService) open(ctx context.Context, id, userID, expectedMediaType string, resolveMIME contentMIMEType) (domain.StreamContent, error) {
+	if strings.TrimSpace(id) == "" || strings.TrimSpace(userID) == "" {
 		return domain.StreamContent{}, fmt.Errorf("%w: 媒体 ID 无效", domain.ErrInvalidRequest)
 	}
-	location, err := s.repository.GetStreamLocation(ctx, id)
+	location, err := s.repository.GetStreamLocation(ctx, id, userID)
 	if err != nil {
 		return domain.StreamContent{}, err
 	}

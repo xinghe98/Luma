@@ -13,6 +13,7 @@ import 'package:luma/data/models/media_item.dart';
 import 'package:luma/data/models/server_profile.dart';
 import 'package:luma/data/models/api_scan.dart';
 import 'package:luma/data/repositories/scan_repository.dart';
+import 'package:luma/data/storage/credential_store.dart';
 import 'package:luma/data/storage/server_alias_store.dart';
 import 'package:luma/data/services/connection_service.dart';
 import 'package:luma/features/connection/connection_controller.dart';
@@ -38,6 +39,62 @@ void main() {
     expect(media.items.length, 32);
   });
 
+  test(
+    'restored connection cancels stale background sync after reset',
+    () async {
+      final repository = _BlockingMediaRepository();
+      final media = MediaController(repository);
+      final session = SessionController();
+      var syncCalls = 0;
+      final controller = ConnectionController(
+        connectionService: _ImmediateConnectionService(),
+        sessionController: session,
+        mediaController: media,
+        onConnected: () async {
+          syncCalls++;
+        },
+      );
+
+      expect(
+        await controller.restore('http://server.local', 'test-token'),
+        isTrue,
+      );
+      expect(session.isConnected, isTrue);
+      await repository.loadStarted.future;
+      controller.reset();
+      repository.release.complete();
+      await Future<void>.delayed(Duration.zero);
+
+      expect(syncCalls, 0);
+    },
+  );
+
+  test('disconnect invalidates an in-flight saved-session restore', () async {
+    final credentials = _PendingCredentialStore();
+    final dependencies = AppDependencies(
+      mediaRepository: MockMediaRepository(),
+      connectionService: _ImmediateConnectionService(),
+      credentialStore: credentials,
+    );
+    addTearDown(dependencies.dispose);
+
+    final restore = dependencies.restoreSession();
+    await credentials.readStarted.future;
+    expect(dependencies.restoring.value, isTrue);
+
+    await dependencies.disconnect();
+    expect(dependencies.restoring.value, isFalse);
+
+    credentials.complete(
+      const StoredCredentials(
+        origin: 'http://server.local:8080',
+        token: 'test-token',
+      ),
+    );
+    expect(await restore, isFalse);
+    expect(dependencies.restoring.value, isFalse);
+  });
+
   test('library controller combines and clears filters', () async {
     final media = MediaController(MockMediaRepository());
     await media.load();
@@ -53,6 +110,26 @@ void main() {
     controller.clearFilters(includeType: true);
     expect(controller.visibleItems(media.items).length, 32);
   });
+
+  test(
+    'library controller seeds a bounded first frame from home cache',
+    () async {
+      final media = MediaController(MockMediaRepository());
+      await media.load();
+      final controller = LibraryController(
+        fixedType: MediaType.video,
+        media: media,
+      );
+
+      final loading = controller.ensureLoaded();
+      final firstFrame = controller.visibleItems();
+      expect(firstFrame, isNotEmpty);
+      expect(firstFrame.length, lessThanOrEqualTo(12));
+      expect(firstFrame.every((item) => item.type == MediaType.video), isTrue);
+      await loading;
+      controller.dispose();
+    },
+  );
 
   test('search controller records terms and clears criteria', () {
     final media = MediaController(MockMediaRepository());
@@ -107,6 +184,21 @@ void main() {
     expect(notifications, greaterThan(0));
     await media.updateProgress(item.id, item.duration.inMilliseconds);
     expect(media.continueWatching.any((entry) => entry.id == item.id), isFalse);
+  });
+
+  test('catalog count is single-flight and stale responses cannot repopulate', () async {
+    final repository = _BlockingCountMediaRepository();
+    final media = MediaController(repository);
+    final first = media.refreshCatalogCount();
+    final second = media.refreshCatalogCount();
+    expect(repository.countCalls, 1);
+
+    media.clear();
+    repository.completeCount(99);
+    await Future.wait([first, second]);
+
+    expect(media.catalogCount, 0);
+    media.dispose();
   });
 
   test('media controller findById is null-safe', () async {
@@ -398,6 +490,50 @@ class _MemoryAliasStore implements ServerAliasStore {
   Future<void> write(String origin, String alias) async {
     values[origin] = alias;
   }
+}
+
+class _BlockingMediaRepository extends MockMediaRepository {
+  final loadStarted = Completer<void>();
+  final release = Completer<void>();
+
+  @override
+  Future<List<MediaItem>> loadMedia() async {
+    loadStarted.complete();
+    await release.future;
+    return const [];
+  }
+}
+
+class _BlockingCountMediaRepository extends MockMediaRepository {
+  final _count = Completer<int>();
+  var countCalls = 0;
+
+  @override
+  Future<int> countMedia({MediaType? type}) {
+    countCalls++;
+    return _count.future;
+  }
+
+  void completeCount(int value) => _count.complete(value);
+}
+
+class _PendingCredentialStore implements CredentialStore {
+  final readStarted = Completer<void>();
+  final _result = Completer<StoredCredentials?>();
+
+  @override
+  Future<void> clear() async {}
+
+  void complete(StoredCredentials? value) => _result.complete(value);
+
+  @override
+  Future<StoredCredentials?> read() {
+    if (!readStarted.isCompleted) readStarted.complete();
+    return _result.future;
+  }
+
+  @override
+  Future<void> write(StoredCredentials credentials) async {}
 }
 
 class _ImmediateConnectionService implements ConnectionService {

@@ -31,10 +31,10 @@ class LumaApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
-        listenable: Listenable.merge([
-          dependencies.session,
-          dependencies.settings,
-          dependencies.restoring,
+      listenable: Listenable.merge([
+        dependencies.session,
+        dependencies.settings,
+        dependencies.restoring,
       ]),
       builder: (context, _) => AppScope(
         dependencies: dependencies,

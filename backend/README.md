@@ -1,6 +1,6 @@
 # 本地媒体管理服务端 V1 架构与开发方案
 
-> 当前实现状态：阶段 1 至阶段 6 的后端能力已落地。现已包含项目基建、增量扫描、元数据与缩略图、媒体查询、视频 Direct Play、图片原图浏览，以及收藏、标题、笔记、标签、播放进度和继续观看。用户数据写入使用 revision 乐观锁，用户数据与标签关系在同一事务中更新。
+> 当前实现状态：阶段 1 至阶段 6 及首版影视作品层已落地。现已包含项目基建、增量扫描、元数据与缩略图、媒体查询、视频 Direct Play、图片原图浏览、电影/剧集聚合，以及收藏、标题、笔记、标签、播放进度和继续观看。用户数据写入使用 revision 乐观锁，用户数据与标签关系在同一事务中更新。
 
 ## 快速开始
 
@@ -24,6 +24,52 @@ Copy-Item configs/config.example.yaml configs/config.yaml
 开发脚本优先使用 `PATH` 中已安装的 `air`；如果本机尚未安装，则自动通过 `go run github.com/air-verse/air@v1.62.0` 使用固定版本。修改 `cmd`、`internal`、`configs`、`migrations` 或 `api` 下的 Go、YAML、SQL 文件后，Air 会重新构建并重启 API 服务。临时二进制和 Air 日志位于 `.cache/air`，退出时自动清理。生产环境仍直接运行构建后的 `luma-server`，不使用 Air。
 
 服务首次启动会在 `data/secrets/api_token` 生成 API Token。`GET /health` 无需认证，其余 `/api/v1` 接口需发送 `Authorization: Bearer <token>`。本地示例媒体目录是 `data/media`，服务端只读它；SQLite、Token 和衍生数据写入独立的 `data` 子目录。
+
+### 多用户、Token 与媒体源授权
+
+根 Token 对应内置 `user_local` 管理员，保留全部管理权限。不要把根 Token 发给成员；通过 `luma-admin` 创建成员，为成员显式授权一个或多个媒体源，再为每台设备签发独立 Token。成员无授权时默认看不到任何来源，越权访问媒体 ID、缩略图或流地址也统一按不存在处理。
+
+日常签发优先使用封装好的脚本。它们会自动构建缺失的 `dist/luma-admin(.exe)`，并组合执行创建成员、来源授权和 Token 签发：
+
+```powershell
+.\scripts\issue-family-token.ps1 `
+  -Name 'Alice' `
+  -SourceId 'source_movies','source_family' `
+  -TokenName 'Alice 手机' `
+  -ExpiresAt '2027-01-01T00:00:00Z'
+```
+
+```bash
+sh ./scripts/issue-family-token.sh \
+  --name 'Alice' \
+  --source source_movies \
+  --source source_family \
+  --token-name 'Alice 手机' \
+  --expires 2027-01-01T00:00:00Z
+```
+
+使用已有成员时，以 PowerShell 的 `-UserId USER_ID` 或 Shell 的 `--user-id USER_ID` 替代姓名参数。通过 `-Server` / `--server`、`-AdminTokenFile` / `--admin-token-file` 可覆盖默认的回环地址和 `data/secrets/api_token`。最终 JSON 中的 `issued_token.token` 只显示一次；如果授权中途失败，错误会列出已经完成的来源，使用 `UserId` 重试即可，重复授权是幂等的。
+
+```bash
+go build -o dist/luma-admin ./cmd/admin
+
+dist/luma-admin -token-file data/secrets/api_token sources list
+dist/luma-admin -token-file data/secrets/api_token users list
+dist/luma-admin -token-file data/secrets/api_token users create -name "Alice"
+dist/luma-admin -token-file data/secrets/api_token grants add -user USER_ID -source SOURCE_ID
+dist/luma-admin -token-file data/secrets/api_token grants list -user USER_ID
+dist/luma-admin -token-file data/secrets/api_token tokens create -user USER_ID -name "Alice phone"
+dist/luma-admin -token-file data/secrets/api_token tokens list -user USER_ID
+dist/luma-admin -token-file data/secrets/api_token tokens revoke -id TOKEN_ID
+dist/luma-admin -token-file data/secrets/api_token grants remove -user USER_ID -source SOURCE_ID
+dist/luma-admin -token-file data/secrets/api_token users update -id USER_ID -enabled=false
+```
+
+也可通过 `LUMA_ADMIN_TOKEN` 或 `LUMA_ADMIN_TOKEN_FILE` 提供管理员凭据。所有全局参数必须写在 `users`、`tokens`、`grants` 之前。`tokens create` 可加 `-expires 2027-01-01T00:00:00Z`；返回 JSON 的 `token` 明文只显示一次，数据库仅保存摘要。管理员 API 位于 `/api/v1/admin/*`，完整请求体和响应见 `api/openapi.yaml`。
+
+远程管理必须使用 HTTPS。CLI 会拒绝对非回环主机使用明文 HTTP，除非显式传入 `-allow-insecure`。吊销 Token 后下一次请求立即失效；禁用用户会同时使该用户的全部 Token 失效。`allowed_roots` 支持 YAML 列表中的多个本地盘符或 UNC 根目录，但它只负责路径白名单，成员可见性以 `source_grants` 为准。
+
+根 Token 轮换必须在服务停止时进行。使用 `openssl rand -hex 32`（Linux）或 PowerShell 7 的 `[Convert]::ToHexString([Security.Cryptography.RandomNumberGenerator]::GetBytes(32)).ToLowerInvariant()` 生成至少 32 字符且不含空白的新值，覆盖 `api_token_file` 后限制文件权限并重启。不要用 UUID、时间戳、用户名或手工密码作为 Token。
 
 ### 自动扫描
 
@@ -70,7 +116,7 @@ docker compose up --build
 curl -X POST http://127.0.0.1:8080/api/v1/sources \
   -H "Authorization: Bearer ${TOKEN}" \
   -H "Content-Type: application/json" \
-  -d '{"name":"本地媒体","root_path":"/media"}'
+  -d '{"name":"本地媒体","root_path":"/media","library_kind":"personal"}'
 
 curl -X POST http://127.0.0.1:8080/api/v1/sources/{source_id}/scan \
   -H "Authorization: Bearer ${TOKEN}"
@@ -78,6 +124,17 @@ curl -X POST http://127.0.0.1:8080/api/v1/sources/{source_id}/scan \
 curl http://127.0.0.1:8080/api/v1/scan-jobs/{scan_id} \
   -H "Authorization: Bearer ${TOKEN}"
 ```
+
+`library_kind` 仅指定目录中视频的用途，可取 `personal`、`movies` 或 `tv`，为空时默认为 `personal`。目录及其子目录中的图片会自动出现在图片库，并继续按媒体源授权控制可见性。旧版 `photos` 来源会在升级时迁为 `personal`。电影源推荐 `片名 (年份)/视频文件`，电视剧源推荐 `剧名/Season 01/剧名.S01E01.mkv`。作品库端点为：
+
+```text
+GET   /api/v1/catalog?kind=movie|series
+GET   /api/v1/catalog/{id}
+GET   /api/v1/catalog/issues
+PATCH /api/v1/catalog/media/{media_id}
+```
+
+作品整理只写入 SQLite 索引，不移动或修改原始文件。人工匹配和忽略状态会锁定保存；重新扫描只重算未锁定且发生变化的文件。
 
 ### 媒体查询
 
@@ -1759,6 +1816,8 @@ Windows 发布包：
 ```text
 luma-server-windows-amd64.zip
 ├── luma-server.exe
+├── luma-admin.exe
+├── issue-family-token.ps1
 ├── config.example.yaml
 ├── install-service.ps1
 ├── uninstall-service.ps1

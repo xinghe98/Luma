@@ -47,6 +47,8 @@ type ScanWorker struct {
 	signal *Signal
 	// probeSignal 发送媒体探测任务唤醒通知。
 	probeSignal *Signal
+	// catalogSignal 发送完整扫描提交后的作品整理通知。
+	catalogSignal *Signal
 	// logger 记录不向 API 暴露的详细扫描错误。
 	logger *slog.Logger
 	// workerID 是写入任务锁的本进程 Worker 标识。
@@ -65,10 +67,11 @@ func NewScanWorker(
 	clock WorkerClock,
 	signal *Signal,
 	probeSignal *Signal,
+	catalogSignal *Signal,
 	logger *slog.Logger,
 ) (*ScanWorker, error) {
 	if sources == nil || scans == nil || processing == nil || factory == nil || fileScanner == nil || hasher == nil ||
-		ids == nil || clock == nil || signal == nil || probeSignal == nil || logger == nil {
+		ids == nil || clock == nil || signal == nil || probeSignal == nil || catalogSignal == nil || logger == nil {
 		return nil, errors.New("扫描 Worker 依赖不能为空")
 	}
 	workerID, err := ids.New("scanworker")
@@ -77,7 +80,7 @@ func NewScanWorker(
 	}
 	return &ScanWorker{
 		sources: sources, scans: scans, processing: processing, factory: factory, scanner: fileScanner,
-		hasher: hasher, ids: ids, clock: clock, signal: signal, probeSignal: probeSignal,
+		hasher: hasher, ids: ids, clock: clock, signal: signal, probeSignal: probeSignal, catalogSignal: catalogSignal,
 		logger: logger, workerID: workerID,
 	}, nil
 }

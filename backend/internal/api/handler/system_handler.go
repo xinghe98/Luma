@@ -7,6 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/xinghe98/Luma/backend/internal/api/middleware"
 	"github.com/xinghe98/Luma/backend/internal/api/response"
 	"github.com/xinghe98/Luma/backend/internal/domain"
 )
@@ -38,10 +39,17 @@ func (h *SystemHandler) Info(c *gin.Context) {
 		response.Error(c, http.StatusInternalServerError, "INTERNAL_ERROR", "internal server error", nil)
 		return
 	}
+	principal := middleware.Principal(c)
+	capabilities := []string{"media.read", "user_data.write"}
+	if principal.IsAdmin() {
+		capabilities = append(capabilities, "sources.manage", "scans.manage", "catalog.manage", "users.manage")
+	}
 	c.JSON(http.StatusOK, gin.H{
 		"version":      info.Version,
 		"platform":     info.Platform,
 		"architecture": info.Architecture,
 		"database":     info.Database,
+		"user":         gin.H{"id": principal.UserID, "name": principal.Name, "role": principal.Role},
+		"capabilities": capabilities,
 	})
 }

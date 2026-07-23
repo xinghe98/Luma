@@ -78,6 +78,7 @@ func mediaFilterHash(query domain.MediaListQuery) string {
 		Search string `json:"search"`
 		// MediaType 是媒体类型筛选值。
 		MediaType        string `json:"media_type"`
+		LibraryKind      string `json:"library_kind"`
 		Favorite         *bool  `json:"favorite"`
 		TagID            string `json:"tag_id"`
 		WatchStatus      string `json:"watch_status"`
@@ -86,7 +87,7 @@ func mediaFilterHash(query domain.MediaListQuery) string {
 		Sort string `json:"sort"`
 		// Order 是排序方向。
 		Order string `json:"order"`
-	}{query.UserID, query.Search, query.MediaType, query.Favorite, query.TagID, query.WatchStatus, query.ContinueWatching, query.Sort, query.Order})
+	}{query.UserID, query.Search, query.MediaType, query.LibraryKind, query.Favorite, query.TagID, query.WatchStatus, query.ContinueWatching, query.Sort, query.Order})
 	sum := sha256.Sum256(value)
 	return hex.EncodeToString(sum[:])
 }

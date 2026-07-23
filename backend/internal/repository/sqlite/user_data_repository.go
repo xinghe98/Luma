@@ -31,7 +31,7 @@ type userDataQuerier interface {
 
 // Get 返回可见媒体的当前用户数据；没有记录时返回 revision=0 的默认值。
 func (r *UserDataRepository) Get(ctx context.Context, userID, mediaID string) (domain.MediaUserData, error) {
-	if err := requireVisibleMedia(ctx, r.db, mediaID); err != nil {
+	if err := requireVisibleMedia(ctx, r.db, userID, mediaID); err != nil {
 		return domain.MediaUserData{}, err
 	}
 	return readUserData(ctx, r.db, userID, mediaID)
@@ -44,7 +44,7 @@ func (r *UserDataRepository) Update(ctx context.Context, command domain.UpdateUs
 		return domain.MediaUserData{}, fmt.Errorf("开始用户数据事务: %w", err)
 	}
 	defer tx.Rollback()
-	if err := requireVisibleMedia(ctx, tx, command.MediaID); err != nil {
+	if err := requireVisibleMedia(ctx, tx, command.UserID, command.MediaID); err != nil {
 		return domain.MediaUserData{}, err
 	}
 	current, err := readUserDataRecord(ctx, tx, command.UserID, command.MediaID)
@@ -128,10 +128,10 @@ func (r *UserDataRepository) UpdateProgress(ctx context.Context, command domain.
 		return domain.MediaUserData{}, fmt.Errorf("开始进度事务: %w", err)
 	}
 	defer tx.Rollback()
-	if err := requireVisibleMedia(ctx, tx, command.MediaID); err != nil {
+	if err := requireVisibleMedia(ctx, tx, command.UserID, command.MediaID); err != nil {
 		return domain.MediaUserData{}, err
 	}
-	mediaType, durationMS, err := readPlayableDuration(ctx, tx, command.MediaID)
+	mediaType, durationMS, err := readPlayableDuration(ctx, tx, command.UserID, command.MediaID)
 	if err != nil {
 		return domain.MediaUserData{}, err
 	}
@@ -188,12 +188,13 @@ func (r *UserDataRepository) UpdateProgress(ctx context.Context, command domain.
 	return result, nil
 }
 
-func requireVisibleMedia(ctx context.Context, query userDataQuerier, mediaID string) error {
+func requireVisibleMedia(ctx context.Context, query userDataQuerier, userID, mediaID string) error {
 	var exists int
 	err := query.QueryRowContext(ctx, `SELECT EXISTS(
         SELECT 1 FROM media_items m JOIN sources s ON s.id = m.source_id
         WHERE m.id = ? AND m.status <> 'missing' AND s.enabled = 1 AND s.deleted_at_ms IS NULL
-    )`, mediaID).Scan(&exists)
+		AND EXISTS (SELECT 1 FROM source_grants g WHERE g.source_id = s.id AND g.user_id = ?)
+    )`, mediaID, userID).Scan(&exists)
 	if err != nil {
 		return fmt.Errorf("检查媒体可见性: %w", err)
 	}
@@ -203,12 +204,13 @@ func requireVisibleMedia(ctx context.Context, query userDataQuerier, mediaID str
 	return nil
 }
 
-func readPlayableDuration(ctx context.Context, query userDataQuerier, mediaID string) (string, *int64, error) {
+func readPlayableDuration(ctx context.Context, query userDataQuerier, userID, mediaID string) (string, *int64, error) {
 	var mediaType string
 	var duration sql.NullInt64
 	err := query.QueryRowContext(ctx, `SELECT m.media_type, m.duration_ms
         FROM media_items m JOIN sources s ON s.id = m.source_id
-        WHERE m.id = ? AND m.status <> 'missing' AND s.enabled = 1 AND s.deleted_at_ms IS NULL`, mediaID).Scan(&mediaType, &duration)
+        WHERE m.id = ? AND m.status <> 'missing' AND s.enabled = 1 AND s.deleted_at_ms IS NULL
+		AND EXISTS (SELECT 1 FROM source_grants g WHERE g.source_id = s.id AND g.user_id = ?)`, mediaID, userID).Scan(&mediaType, &duration)
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", nil, domain.ErrMediaNotFound
 	}

@@ -58,6 +58,19 @@ func (s *MediaService) List(ctx context.Context, request domain.MediaListRequest
 	return result, nil
 }
 
+// Count returns the number of media records visible to the current user.
+// It deliberately shares List's normalization and authorization constraints,
+// while avoiding the client-side full-pagination loop previously used by the
+// settings screen.
+func (s *MediaService) Count(ctx context.Context, request domain.MediaListRequest, userID string) (int, error) {
+	query, err := normalizeMediaQuery(request, userID)
+	if err != nil {
+		return 0, err
+	}
+	query.After = nil
+	return s.repository.Count(ctx, query)
+}
+
 // Get 返回可见媒体详情。
 func (s *MediaService) Get(ctx context.Context, id, userID string) (domain.Media, error) {
 	if strings.TrimSpace(id) == "" || userID == "" {
@@ -67,8 +80,8 @@ func (s *MediaService) Get(ctx context.Context, id, userID string) (domain.Media
 }
 
 // Thumbnail 返回默认缩略图内容或 304 短路径结果。
-func (s *MediaService) Thumbnail(ctx context.Context, id, variant, ifNoneMatch string) (domain.ThumbnailContent, error) {
-	if strings.TrimSpace(id) == "" {
+func (s *MediaService) Thumbnail(ctx context.Context, id, variant, ifNoneMatch, userID string) (domain.ThumbnailContent, error) {
+	if strings.TrimSpace(id) == "" || strings.TrimSpace(userID) == "" {
 		return domain.ThumbnailContent{}, fmt.Errorf("%w: 媒体 ID 无效", domain.ErrInvalidRequest)
 	}
 	if variant == "" {
@@ -77,7 +90,7 @@ func (s *MediaService) Thumbnail(ctx context.Context, id, variant, ifNoneMatch s
 	if variant != domain.ThumbnailVariantDefault && variant != domain.ThumbnailVariantCard {
 		return domain.ThumbnailContent{}, fmt.Errorf("%w: variant 必须是 default 或 card", domain.ErrInvalidRequest)
 	}
-	asset, err := s.repository.GetThumbnail(ctx, id, variant)
+	asset, err := s.repository.GetThumbnail(ctx, id, variant, userID)
 	if err != nil {
 		return domain.ThumbnailContent{}, err
 	}
@@ -124,7 +137,8 @@ func etagMatches(header, etag string) bool {
 func normalizeMediaQuery(request domain.MediaListRequest, userID string) (domain.MediaListQuery, error) {
 	query := domain.MediaListQuery{
 		UserID: userID, Search: strings.TrimSpace(request.Query), MediaType: strings.TrimSpace(request.MediaType),
-		Favorite: request.Favorite, TagID: strings.TrimSpace(request.TagID), WatchStatus: strings.TrimSpace(request.WatchStatus),
+		LibraryKind: strings.TrimSpace(request.LibraryKind),
+		Favorite:    request.Favorite, TagID: strings.TrimSpace(request.TagID), WatchStatus: strings.TrimSpace(request.WatchStatus),
 		ContinueWatching: request.ContinueWatching,
 		Sort:             strings.TrimSpace(request.Sort), Order: strings.TrimSpace(request.Order), Limit: request.Limit,
 	}
@@ -136,6 +150,11 @@ func normalizeMediaQuery(request domain.MediaListRequest, userID string) (domain
 	}
 	if query.MediaType != "" && query.MediaType != domain.MediaTypeVideo && query.MediaType != domain.MediaTypeImage {
 		return query, fmt.Errorf("%w: type 必须是 video 或 image", domain.ErrInvalidRequest)
+	}
+	switch query.LibraryKind {
+	case "", domain.LibraryKindPersonal, domain.LibraryKindMovies, domain.LibraryKindTV:
+	default:
+		return query, fmt.Errorf("%w: library_kind 必须是 personal、movies 或 tv", domain.ErrInvalidRequest)
 	}
 	if len(query.TagID) > 200 {
 		return query, fmt.Errorf("%w: tag_id 无效", domain.ErrInvalidRequest)

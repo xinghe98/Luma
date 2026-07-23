@@ -27,7 +27,7 @@ func NewSourceRepository(db *sql.DB) (*SourceRepository, error) {
 
 // List 返回全部媒体源，并按创建时间和 ID 稳定排序。
 func (r *SourceRepository) List(ctx context.Context) ([]domain.Source, error) {
-	rows, err := r.db.QueryContext(ctx, `SELECT id, name, source_type, root_path, enabled, status,
+	rows, err := r.db.QueryContext(ctx, `SELECT id, name, source_type, library_kind, root_path, enabled, status,
         COALESCE(last_scan_id, ''), last_seen_at_ms, created_at_ms, updated_at_ms
         FROM sources WHERE deleted_at_ms IS NULL ORDER BY created_at_ms, id`)
 	if err != nil {
@@ -48,9 +48,30 @@ func (r *SourceRepository) List(ctx context.Context) ([]domain.Source, error) {
 	return sources, nil
 }
 
+// ListVisible 返回当前用户获准访问的来源，仍不向 API 暴露 root_path。
+func (r *SourceRepository) ListVisible(ctx context.Context, userID string) ([]domain.Source, error) {
+	rows, err := r.db.QueryContext(ctx, `SELECT s.id, s.name, s.source_type, s.library_kind, s.root_path,
+		s.enabled, s.status, COALESCE(s.last_scan_id, ''), s.last_seen_at_ms, s.created_at_ms, s.updated_at_ms
+		FROM sources s JOIN source_grants g ON g.source_id = s.id
+		WHERE g.user_id = ? AND s.deleted_at_ms IS NULL ORDER BY s.created_at_ms, s.id`, userID)
+	if err != nil {
+		return nil, fmt.Errorf("查询可见媒体源: %w", err)
+	}
+	defer rows.Close()
+	sources := []domain.Source{}
+	for rows.Next() {
+		source, err := scanSource(rows)
+		if err != nil {
+			return nil, err
+		}
+		sources = append(sources, source)
+	}
+	return sources, rows.Err()
+}
+
 // Get 根据 ID 返回媒体源。
 func (r *SourceRepository) Get(ctx context.Context, id string) (domain.Source, error) {
-	row := r.db.QueryRowContext(ctx, `SELECT id, name, source_type, root_path, enabled, status,
+	row := r.db.QueryRowContext(ctx, `SELECT id, name, source_type, library_kind, root_path, enabled, status,
         COALESCE(last_scan_id, ''), last_seen_at_ms, created_at_ms, updated_at_ms
         FROM sources WHERE id = ? AND deleted_at_ms IS NULL`, id)
 	source, err := scanSource(row)
@@ -62,9 +83,12 @@ func (r *SourceRepository) Get(ctx context.Context, id string) (domain.Source, e
 
 // Create 插入一个经过业务校验的媒体源。
 func (r *SourceRepository) Create(ctx context.Context, source domain.Source) error {
+	if source.LibraryKind == "" {
+		source.LibraryKind = domain.LibraryKindPersonal
+	}
 	_, err := r.db.ExecContext(ctx, `INSERT INTO sources(
-        id, name, source_type, root_path, enabled, status, created_at_ms, updated_at_ms
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, source.ID, source.Name, source.Type,
+        id, name, source_type, library_kind, root_path, enabled, status, created_at_ms, updated_at_ms
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, source.ID, source.Name, source.Type, source.LibraryKind,
 		source.RootPath, boolInt(source.Enabled), source.Status,
 		source.CreatedAt.UnixMilli(), source.UpdatedAt.UnixMilli())
 	if err != nil {
@@ -78,8 +102,8 @@ func (r *SourceRepository) Create(ctx context.Context, source domain.Source) err
 
 // Update 保存媒体源的可修改字段。
 func (r *SourceRepository) Update(ctx context.Context, source domain.Source) error {
-	result, err := r.db.ExecContext(ctx, `UPDATE sources SET name = ?, root_path = ?, enabled = ?, status = ?, updated_at_ms = ?
-        WHERE id = ? AND deleted_at_ms IS NULL`, source.Name, source.RootPath,
+	result, err := r.db.ExecContext(ctx, `UPDATE sources SET name = ?, library_kind = ?, root_path = ?, enabled = ?, status = ?, updated_at_ms = ?
+		WHERE id = ? AND deleted_at_ms IS NULL`, source.Name, source.LibraryKind, source.RootPath,
 		boolInt(source.Enabled), source.Status, source.UpdatedAt.UnixMilli(), source.ID)
 	if err != nil {
 		if isUniqueConstraint(err) {
@@ -153,7 +177,7 @@ func scanSource(row rowScanner) (domain.Source, error) {
 	var enabled int
 	var lastSeen sql.NullInt64
 	var createdMS, updatedMS int64
-	err := row.Scan(&source.ID, &source.Name, &source.Type, &source.RootPath, &enabled,
+	err := row.Scan(&source.ID, &source.Name, &source.Type, &source.LibraryKind, &source.RootPath, &enabled,
 		&source.Status, &source.LastScanID, &lastSeen, &createdMS, &updatedMS)
 	if err != nil {
 		return domain.Source{}, err

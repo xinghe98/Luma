@@ -13,6 +13,10 @@ colors:
   warning: "#D9A05B"
   light-primary: "#426D70"
   dark-primary: "#A8CACA"
+  light-secondary: "#866629"
+  light-surface-container: "#E8ECEB"
+  light-surface-container-high: "#DDE3E2"
+  on-ink: "#F3F5F4"
 typography:
   headline:
     fontFamily: "system-ui, sans-serif"
@@ -59,6 +63,16 @@ components:
     textColor: "{colors.paper}"
     rounded: "{rounded.md}"
     padding: "12px 16px"
+layout:
+  page-padding-h: "20px"
+  page-padding-bottom: "40px"
+  button-height: "52px"
+  navigation-bar-height: "68px"
+  min-tap-target: "48px"
+brand:
+  connection: "horizontal wordmark (color light / white dark)"
+  navigation-home: "symbol (color light / white dark)"
+  about: "horizontal wordmark"
 ---
 
 # Design System: 轻影 Luma

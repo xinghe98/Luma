@@ -33,8 +33,8 @@ class PlaybackProgress extends StatelessWidget {
           const SizedBox(height: LumaSpacing.xs),
           LinearProgressIndicator(
             value: item.progress,
-            minHeight: 5,
-            borderRadius: BorderRadius.circular(3),
+            minHeight: 4,
+            borderRadius: BorderRadius.circular(LumaRadii.badge),
           ),
         ],
       ),

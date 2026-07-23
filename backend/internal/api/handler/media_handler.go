@@ -17,8 +17,33 @@ import (
 // MediaUseCase 定义媒体 API Handler 所需的业务能力。
 type MediaUseCase interface {
 	List(context.Context, domain.MediaListRequest, string) (domain.MediaPage, error)
+	Count(context.Context, domain.MediaListRequest, string) (int, error)
 	Get(context.Context, string, string) (domain.Media, error)
-	Thumbnail(context.Context, string, string, string) (domain.ThumbnailContent, error)
+	Thumbnail(context.Context, string, string, string, string) (domain.ThumbnailContent, error)
+}
+
+// Count handles GET /api/v1/media/count. It intentionally accepts the same
+// filter set as List, but never accepts a cursor or expands into media rows.
+func (h *MediaHandler) Count(c *gin.Context) {
+	var favorite *bool
+	if raw, exists := c.GetQuery("favorite"); exists {
+		value, err := strconv.ParseBool(raw)
+		if err != nil || (raw != "true" && raw != "false") {
+			response.Error(c, http.StatusBadRequest, "INVALID_REQUEST", "favorite 必须是 true 或 false", nil)
+			return
+		}
+		favorite = &value
+	}
+	total, err := h.service.Count(c.Request.Context(), domain.MediaListRequest{
+		Query: c.Query("q"), MediaType: c.Query("type"), Favorite: favorite,
+		TagID: c.Query("tag_id"), WatchStatus: c.Query("watch_status"),
+		LibraryKind: c.Query("library_kind"),
+	}, c.GetString("user_id"))
+	if err != nil {
+		response.FromError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"count": total})
 }
 
 // MediaHandler 将媒体查询业务适配为 Gin API。
@@ -45,6 +70,8 @@ type mediaSummaryJSON struct {
 	Filename string `json:"filename"`
 	// MediaType 是媒体类型。
 	MediaType string `json:"media_type"`
+	// LibraryKind 是来源的内容组织类型。
+	LibraryKind string `json:"library_kind"`
 	// DurationMS 是媒体时长（毫秒）。
 	DurationMS *int64 `json:"duration_ms"`
 	// Width 是媒体宽度（像素）。
@@ -125,6 +152,7 @@ func (h *MediaHandler) List(c *gin.Context) {
 		Query: c.Query("q"), MediaType: c.Query("type"), Sort: c.Query("sort"),
 		Order: c.Query("order"), Cursor: c.Query("cursor"), Limit: limit,
 		Favorite: favorite, TagID: c.Query("tag_id"), WatchStatus: c.Query("watch_status"),
+		LibraryKind: c.Query("library_kind"),
 	}, c.GetString("user_id"))
 	if err != nil {
 		response.FromError(c, err)
@@ -177,7 +205,7 @@ func (h *MediaHandler) Get(c *gin.Context) {
 
 // Thumbnail 处理 GET /api/v1/media/:id/thumbnail。
 func (h *MediaHandler) Thumbnail(c *gin.Context) {
-	content, err := h.service.Thumbnail(c.Request.Context(), c.Param("id"), c.Query("variant"), c.GetHeader("If-None-Match"))
+	content, err := h.service.Thumbnail(c.Request.Context(), c.Param("id"), c.Query("variant"), c.GetHeader("If-None-Match"), c.GetString("user_id"))
 	if err != nil {
 		response.FromError(c, err)
 		return
@@ -195,7 +223,8 @@ func presentMediaSummary(item domain.Media) mediaSummaryJSON {
 	escaped := url.PathEscape(item.ID)
 	summary := mediaSummaryJSON{
 		ID: item.ID, Title: item.Title, Filename: item.Filename, MediaType: item.MediaType,
-		DurationMS: item.DurationMS, Width: item.Width, Height: item.Height,
+		LibraryKind: item.LibraryKind,
+		DurationMS:  item.DurationMS, Width: item.Width, Height: item.Height,
 		Favorite: item.Favorite, ProgressMS: item.ProgressMS, Completed: item.Completed,
 		UserDataRevision: item.UserDataRevision, Status: item.Status,
 		CreatedAt: item.DiscoveredAt.UTC().Format(time.RFC3339Nano),

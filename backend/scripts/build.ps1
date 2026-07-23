@@ -12,6 +12,8 @@ try {
     $env:CGO_ENABLED = '0'
     & go build -trimpath -ldflags "-s -w -X main.version=$Version" -o (Join-Path $DistDir 'luma-server.exe') ./cmd/server
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    & go build -trimpath -ldflags '-s -w' -o (Join-Path $DistDir 'luma-admin.exe') ./cmd/admin
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 }
 finally {
     $env:CGO_ENABLED = $PreviousCGOEnabled

@@ -26,9 +26,11 @@ class MediaController extends ChangeNotifier {
   MediaController(this._repository);
 
   final MediaRepository _repository;
+  static const _maxRememberedItems = 512;
   List<MediaItem> _items = const [];
   List<MediaItem> _continueWatching = const [];
   List<Tag> _tags = const [];
+
   /// id → 最新 MediaItem，供 O(1) 查找；与 _items / continueWatching 同步维护。
   final Map<String, MediaItem> _byId = {};
   LoadState _loadState = LoadState.idle;
@@ -37,9 +39,12 @@ class MediaController extends ChangeNotifier {
   bool _detailLoading = false;
   int _catalogCount = 0;
   int _loadGeneration = 0;
+  int _sessionGeneration = 0;
   // 连接断开后使旧服务器的 mutation 回包和排队操作全部失效。
   int _mutationGeneration = 0;
   final Map<String, Future<void>> _inflight = {};
+  Future<void>? _catalogCountRequest;
+  bool _disposed = false;
 
   List<MediaItem> get items => _items;
   List<MediaItem> get continueWatching => _continueWatching;
@@ -64,14 +69,15 @@ class MediaController extends ChangeNotifier {
     var changed = false;
     for (final item in items) {
       final before = _byId[item.id];
-      _byId[item.id] = item;
+      _byId
+        ..remove(item.id)
+        ..[item.id] = item;
       if (before == null || !identical(before, item)) changed = true;
     }
     if (changed && _items.isNotEmpty) {
-      _items = [
-        for (final item in _items) _byId[item.id] ?? item,
-      ];
+      _items = [for (final item in _items) _byId[item.id] ?? item];
     }
+    if (changed) _trimRememberedItems();
     if (changed && notify) notifyListeners();
   }
 
@@ -116,8 +122,23 @@ class MediaController extends ChangeNotifier {
       _repository.searchPage(filter, cursor: cursor);
 
   Future<void> refreshCatalogCount() async {
+    final pending = _catalogCountRequest;
+    if (pending != null) return pending;
+    final sessionGeneration = _sessionGeneration;
+    late final Future<void> request;
+    request = _refreshCatalogCount(sessionGeneration).whenComplete(() {
+      if (identical(_catalogCountRequest, request)) {
+        _catalogCountRequest = null;
+      }
+    });
+    _catalogCountRequest = request;
+    return request;
+  }
+
+  Future<void> _refreshCatalogCount(int sessionGeneration) async {
     try {
       final total = await _repository.countMedia();
+      if (_disposed || sessionGeneration != _sessionGeneration) return;
       if (_catalogCount == total) return;
       _catalogCount = total;
       notifyListeners();
@@ -127,17 +148,23 @@ class MediaController extends ChangeNotifier {
   }
 
   Future<void> loadDetail(String id) async {
+    final sessionGeneration = _sessionGeneration;
     _detailError = null;
     _detailLoading = true;
     notifyListeners();
     try {
-      _cacheAndReplaceHome(await _repository.loadDetail(id));
+      final item = await _repository.loadDetail(id);
+      if (_disposed || sessionGeneration != _sessionGeneration) return;
+      _cacheAndReplaceHome(item);
       _detailError = null;
     } on Object catch (error) {
+      if (_disposed || sessionGeneration != _sessionGeneration) return;
       _detailError = error.toString();
     } finally {
-      _detailLoading = false;
-      notifyListeners();
+      if (!_disposed && sessionGeneration == _sessionGeneration) {
+        _detailLoading = false;
+        notifyListeners();
+      }
     }
   }
 
@@ -209,12 +236,17 @@ class MediaController extends ChangeNotifier {
 
   void clear() {
     _loadGeneration++;
+    _sessionGeneration++;
     _mutationGeneration++;
     _inflight.clear();
-	// 清除 repository 中按 id 保留的详情，避免换服后复用旧服务器数据。
-	if (_repository case SessionResettableMediaRepository resettable) {
-	  resettable.clearSessionCache();
-	}
+    // An old-server count must not suppress the first count request after a
+    // reconnect. Its completion callback checks identity before clearing a
+    // newer in-flight request.
+    _catalogCountRequest = null;
+    // 清除 repository 中按 id 保留的详情，避免换服后复用旧服务器数据。
+    if (_repository case SessionResettableMediaRepository resettable) {
+      resettable.clearSessionCache();
+    }
     _items = const [];
     _continueWatching = const [];
     _tags = const [];
@@ -225,6 +257,15 @@ class MediaController extends ChangeNotifier {
     _detailError = null;
     _detailLoading = false;
     notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    _loadGeneration++;
+    _sessionGeneration++;
+    _mutationGeneration++;
+    super.dispose();
   }
 
   void _applyUserData(MediaItem updated) {
@@ -255,7 +296,10 @@ class MediaController extends ChangeNotifier {
     if (index >= 0) {
       _items = [..._items]..[index] = updated;
     }
-    _byId[updated.id] = updated;
+    _byId
+      ..remove(updated.id)
+      ..[updated.id] = updated;
+    _trimRememberedItems();
   }
 
   void _syncContinueWatchingItem(MediaItem updated) {
@@ -264,7 +308,10 @@ class MediaController extends ChangeNotifier {
     );
     if (continueIndex < 0) return;
     _continueWatching = [..._continueWatching]..[continueIndex] = updated;
-    _byId[updated.id] = updated;
+    _byId
+      ..remove(updated.id)
+      ..[updated.id] = updated;
+    _trimRememberedItems();
   }
 
   void _rebuildIndex() {
@@ -272,5 +319,24 @@ class MediaController extends ChangeNotifier {
       ..clear()
       ..addEntries(_continueWatching.map((item) => MapEntry(item.id, item)))
       ..addEntries(_items.map((item) => MapEntry(item.id, item)));
+  }
+
+  void _trimRememberedItems() {
+    if (_byId.length <= _maxRememberedItems) return;
+    final visible = {
+      for (final item in _items) item.id,
+      for (final item in _continueWatching) item.id,
+    };
+    while (_byId.length > _maxRememberedItems) {
+      String? discard;
+      for (final id in _byId.keys) {
+        if (!visible.contains(id)) {
+          discard = id;
+          break;
+        }
+      }
+      if (discard == null) return;
+      _byId.remove(discard);
+    }
   }
 }

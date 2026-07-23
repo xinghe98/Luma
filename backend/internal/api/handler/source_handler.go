@@ -16,7 +16,7 @@ import (
 // SourceUseCase 定义媒体源 Handler 所需的业务能力。
 type SourceUseCase interface {
 	// List 返回全部媒体源。
-	List(context.Context) ([]domain.Source, error)
+	ListVisible(context.Context, string) ([]domain.Source, error)
 	// Create 创建本地媒体源。
 	Create(context.Context, domain.CreateSourceCommand) (domain.Source, error)
 	// Update 部分更新媒体源。
@@ -44,7 +44,8 @@ type createSourceRequest struct {
 	// Name 是用户可见名称。
 	Name string `json:"name"`
 	// RootPath 是仅在请求中接收且永不返回的真实目录。
-	RootPath string `json:"root_path"`
+	RootPath    string `json:"root_path"`
+	LibraryKind string `json:"library_kind"`
 }
 
 // updateSourceRequest 表示媒体源部分更新请求体。
@@ -54,7 +55,8 @@ type updateSourceRequest struct {
 	// RootPath 非空时重新校验并更新真实目录。
 	RootPath *string `json:"root_path"`
 	// Enabled 非空时启用或禁用媒体源。
-	Enabled *bool `json:"enabled"`
+	Enabled     *bool   `json:"enabled"`
+	LibraryKind *string `json:"library_kind"`
 }
 
 // sourceResponse 是媒体源 API 响应，对应 sources 表公开字段（不含 root_path）。
@@ -64,7 +66,8 @@ type sourceResponse struct {
 	// Name 对应 sources.name。
 	Name string `json:"name"`
 	// Type 对应 sources.source_type。
-	Type string `json:"type"`
+	Type        string `json:"type"`
+	LibraryKind string `json:"library_kind"`
 	// Enabled 对应 sources.enabled。
 	Enabled bool `json:"enabled"`
 	// Status 对应 sources.status。
@@ -81,7 +84,7 @@ type sourceResponse struct {
 
 // List 处理 GET /api/v1/sources 请求。
 func (h *SourceHandler) List(c *gin.Context) {
-	sources, err := h.service.List(c.Request.Context())
+	sources, err := h.service.ListVisible(c.Request.Context(), c.GetString("user_id"))
 	if err != nil {
 		response.FromError(c, err)
 		return
@@ -100,7 +103,7 @@ func (h *SourceHandler) Create(c *gin.Context) {
 		response.Error(c, http.StatusBadRequest, "INVALID_REQUEST", err.Error(), nil)
 		return
 	}
-	source, err := h.service.Create(c.Request.Context(), domain.CreateSourceCommand{Name: request.Name, RootPath: request.RootPath})
+	source, err := h.service.Create(c.Request.Context(), domain.CreateSourceCommand{Name: request.Name, RootPath: request.RootPath, LibraryKind: request.LibraryKind})
 	if err != nil {
 		response.FromError(c, err)
 		return
@@ -115,12 +118,12 @@ func (h *SourceHandler) Update(c *gin.Context) {
 		response.Error(c, http.StatusBadRequest, "INVALID_REQUEST", err.Error(), nil)
 		return
 	}
-	if request.Name == nil && request.RootPath == nil && request.Enabled == nil {
+	if request.Name == nil && request.RootPath == nil && request.Enabled == nil && request.LibraryKind == nil {
 		response.Error(c, http.StatusBadRequest, "INVALID_REQUEST", "至少提供一个可更新字段", nil)
 		return
 	}
 	source, err := h.service.Update(c.Request.Context(), domain.UpdateSourceCommand{
-		ID: c.Param("id"), Name: request.Name, RootPath: request.RootPath, Enabled: request.Enabled,
+		ID: c.Param("id"), Name: request.Name, RootPath: request.RootPath, Enabled: request.Enabled, LibraryKind: request.LibraryKind,
 	})
 	if err != nil {
 		response.FromError(c, err)
@@ -141,7 +144,7 @@ func (h *SourceHandler) Delete(c *gin.Context) {
 // presentSource 将领域媒体源转换为不含真实根路径的 API DTO。
 func presentSource(source domain.Source) sourceResponse {
 	result := sourceResponse{
-		ID: source.ID, Name: source.Name, Type: source.Type, Enabled: source.Enabled,
+		ID: source.ID, Name: source.Name, Type: source.Type, LibraryKind: source.LibraryKind, Enabled: source.Enabled,
 		Status: source.Status, LastScanID: source.LastScanID,
 		CreatedAt: source.CreatedAt.UTC().Format(time.RFC3339Nano),
 		UpdatedAt: source.UpdatedAt.UTC().Format(time.RFC3339Nano),

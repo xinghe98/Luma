@@ -4,6 +4,7 @@ final class Source {
     required this.id,
     required this.name,
     required this.type,
+    required this.libraryKind,
     required this.enabled,
     required this.status,
     required this.lastScanId,
@@ -15,6 +16,7 @@ final class Source {
   final String id;
   final String name;
   final String type;
+  final String libraryKind;
   final bool enabled;
   final String status;
   final String? lastScanId;

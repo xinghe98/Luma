@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 
 import '../../app/app_scope.dart';
+import '../../core/theme.dart';
 import '../../shared/media/media_artwork.dart';
 import 'player_controller.dart';
 import 'player_device_controls.dart';
@@ -97,25 +98,26 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
   Widget build(BuildContext context) {
     final controller = _controller;
     final interaction = _interaction;
+    final extras = context.luma;
     if (controller == null || interaction == null) {
       return Scaffold(
-        backgroundColor: Colors.black,
+        backgroundColor: extras.playerInk,
         appBar: AppBar(
-          backgroundColor: Colors.black,
-          foregroundColor: Colors.white,
+          backgroundColor: extras.playerInk,
+          foregroundColor: extras.onPlayerInk,
         ),
         body: Center(
           child: Padding(
-            padding: const EdgeInsets.all(24),
+            padding: const EdgeInsets.all(LumaSpacing.lg),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Text(
+                Text(
                   '找不到该媒体，可能已被移除或尚未加载。',
                   textAlign: TextAlign.center,
-                  style: TextStyle(color: Colors.white70),
+                  style: TextStyle(color: extras.onPlayerInkMuted),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: LumaSpacing.md),
                 FilledButton(
                   onPressed: () => Navigator.of(context).maybePop(),
                   child: const Text('返回'),
@@ -126,69 +128,181 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
         ),
       );
     }
+    return Scaffold(
+      backgroundColor: extras.playerInk,
+      body: ListenableBuilder(
+        listenable: controller,
+        child: _PlayerScene(
+          controller: controller,
+          interaction: interaction,
+          onBack: () => Navigator.pop(context),
+          onRotate: _systemUi.canRotate
+              ? () => unawaited(_systemUi.rotate())
+              : null,
+        ),
+        builder: (context, child) => PopScope(
+          canPop: !controller.locked,
+          onPopInvokedWithResult: (didPop, _) {
+            if (!didPop && controller.locked) controller.showLockHint();
+          },
+          child: child!,
+        ),
+      ),
+    );
+  }
+}
+
+/// Keeps the native video texture stable while position updates arrive several
+/// times per second. Only initialization/error/buffering transitions rebuild
+/// this subtree; controls still listen to the live player state separately.
+class _PlayerScene extends StatelessWidget {
+  const _PlayerScene({
+    required this.controller,
+    required this.interaction,
+    required this.onBack,
+    required this.onRotate,
+  });
+
+  final PlayerController controller;
+  final PlayerInteractionController interaction;
+  final VoidCallback onBack;
+  final VoidCallback? onRotate;
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        RepaintBoundary(child: _PlayerVideoSurface(controller: controller)),
+        PlayerGestureLayer(interaction: interaction),
+        PlayerFeedbackHud(interaction: interaction),
+        _PlayerDynamicOverlay(
+          controller: controller,
+          onBack: onBack,
+          onRotate: onRotate,
+        ),
+      ],
+    );
+  }
+}
+
+class _PlayerVideoSurface extends StatefulWidget {
+  const _PlayerVideoSurface({required this.controller});
+
+  final PlayerController controller;
+
+  @override
+  State<_PlayerVideoSurface> createState() => _PlayerVideoSurfaceState();
+}
+
+class _PlayerVideoSurfaceState extends State<_PlayerVideoSurface> {
+  bool _initialized = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.controller.addListener(_sync);
+    _sync();
+  }
+
+  @override
+  void didUpdateWidget(covariant _PlayerVideoSurface oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller == widget.controller) return;
+    oldWidget.controller.removeListener(_sync);
+    widget.controller.addListener(_sync);
+    _sync();
+  }
+
+  @override
+  void dispose() {
+    widget.controller.removeListener(_sync);
+    super.dispose();
+  }
+
+  void _sync() {
+    final initialized = widget.controller.initialized;
+    final error = widget.controller.error;
+    if (_initialized == initialized && _error == error) return;
+    if (mounted) {
+      setState(() {
+        _initialized = initialized;
+        _error = error;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final video = widget.controller.videoController;
+    if (_initialized && video != null) {
+      return Center(
+        child: AspectRatio(
+          aspectRatio: video.value.aspectRatio,
+          child: VideoPlayer(video),
+        ),
+      );
+    }
+    return MediaArtwork(item: widget.controller.item, borderRadius: 0);
+  }
+}
+
+class _PlayerDynamicOverlay extends StatelessWidget {
+  const _PlayerDynamicOverlay({
+    required this.controller,
+    required this.onBack,
+    required this.onRotate,
+  });
+
+  final PlayerController controller;
+  final VoidCallback onBack;
+  final VoidCallback? onRotate;
+
+  @override
+  Widget build(BuildContext context) {
+    final extras = context.luma;
     return ListenableBuilder(
       listenable: controller,
-      builder: (context, _) => PopScope(
-        canPop: !controller.locked,
-        onPopInvokedWithResult: (didPop, _) {
-          if (!didPop && controller.locked) controller.showLockHint();
-        },
-        child: Scaffold(
-          backgroundColor: Colors.black,
-          body: Stack(
-            fit: StackFit.expand,
-            children: [
-              if (controller.initialized)
-                Center(
-                  child: AspectRatio(
-                    aspectRatio: controller.videoController!.value.aspectRatio,
-                    child: VideoPlayer(controller.videoController!),
-                  ),
-                )
-              else
-                MediaArtwork(item: controller.item, borderRadius: 0),
-              _PlayerShade(visible: controller.controlsVisible),
-              PlayerGestureLayer(interaction: interaction),
-              PlayerFeedbackHud(interaction: interaction),
-              if (controller.error != null)
-                Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: Text(
-                      controller.error!,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(color: Colors.white70),
-                    ),
-                  ),
-                )
-              else if (!controller.initialized || controller.buffering)
-                const IgnorePointer(
-                  child: Center(
-                    child: CircularProgressIndicator(color: Colors.white),
-                  ),
-                ),
-              AnimatedOpacity(
-                opacity: controller.controlsVisible ? 1 : 0,
-                duration: MediaQuery.disableAnimationsOf(context)
-                    ? Duration.zero
-                    : const Duration(milliseconds: 180),
-                curve: Curves.easeOutQuart,
-                child: IgnorePointer(
-                  ignoring: !controller.controlsVisible,
-                  child: SafeArea(
-                    child: PlayerControls(
-                      controller: controller,
-                      onBack: () => Navigator.pop(context),
-                      onRotate: _systemUi.canRotate
-                          ? () => unawaited(_systemUi.rotate())
-                          : null,
-                    ),
-                  ),
+      builder: (context, _) => Stack(
+        fit: StackFit.expand,
+        children: [
+          IgnorePointer(
+            child: _PlayerShade(visible: controller.controlsVisible),
+          ),
+          if (controller.error != null)
+            Center(
+              child: Padding(
+                padding: const EdgeInsets.all(LumaSpacing.lg),
+                child: Text(
+                  controller.error!,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: extras.onPlayerInkMuted),
                 ),
               ),
-            ],
+            )
+          else if (!controller.initialized || controller.buffering)
+            IgnorePointer(
+              child: Center(
+                child: CircularProgressIndicator(color: extras.onPlayerInk),
+              ),
+            ),
+          AnimatedOpacity(
+            opacity: controller.controlsVisible ? 1 : 0,
+            duration: LumaMotion.forContext(context, LumaMotion.fast),
+            curve: LumaMotion.standard,
+            child: IgnorePointer(
+              ignoring: !controller.controlsVisible,
+              child: SafeArea(
+                child: PlayerControls(
+                  controller: controller,
+                  onBack: onBack,
+                  onRotate: onRotate,
+                ),
+              ),
+            ),
           ),
-        ),
+        ],
       ),
     );
   }
@@ -200,41 +314,45 @@ class _PlayerShade extends StatelessWidget {
   final bool visible;
 
   @override
-  Widget build(BuildContext context) => Stack(
-    fit: StackFit.expand,
-    children: [
-      DecoratedBox(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              Colors.black.withAlpha(30),
-              Colors.transparent,
-              Colors.black.withAlpha(50),
-            ],
-            stops: const [0, 0.48, 1],
-          ),
-        ),
-      ),
-      AnimatedOpacity(
-        opacity: visible ? 1 : 0,
-        duration: const Duration(milliseconds: 220),
-        child: DecoratedBox(
+  Widget build(BuildContext context) {
+    final ink = context.luma.playerInk;
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        DecoratedBox(
           decoration: BoxDecoration(
             gradient: LinearGradient(
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
               colors: [
-                Colors.black.withAlpha(130),
+                ink.withAlpha(30),
                 Colors.transparent,
-                Colors.black.withAlpha(190),
+                ink.withAlpha(50),
               ],
               stops: const [0, 0.48, 1],
             ),
           ),
         ),
-      ),
-    ],
-  );
+        AnimatedOpacity(
+          opacity: visible ? 1 : 0,
+          duration: LumaMotion.forContext(context, LumaMotion.normal),
+          curve: LumaMotion.standard,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  ink.withAlpha(130),
+                  Colors.transparent,
+                  ink.withAlpha(190),
+                ],
+                stops: const [0, 0.48, 1],
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
 }

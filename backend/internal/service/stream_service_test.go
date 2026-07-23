@@ -24,7 +24,7 @@ type fakeStreamRepository struct {
 	err error
 }
 
-func (r fakeStreamRepository) GetStreamLocation(context.Context, string) (domain.StreamLocation, error) {
+func (r fakeStreamRepository) GetStreamLocation(context.Context, string, string) (domain.StreamLocation, error) {
 	return r.location, r.err
 }
 
@@ -58,7 +58,7 @@ func TestStreamServiceOpensVideoAndBuildsMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	content, err := service.Open(context.Background(), "media")
+	content, err := service.Open(context.Background(), "media", "user_local")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -97,7 +97,7 @@ func TestStreamServiceRejectsImagesAndUnavailableContent(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if _, err := service.Open(context.Background(), "media"); !errors.Is(err, test.want) {
+			if _, err := service.Open(context.Background(), "media", "user_local"); !errors.Is(err, test.want) {
 				t.Fatalf("error = %v, want %v", err, test.want)
 			}
 		})
@@ -113,7 +113,7 @@ func TestStreamServiceOpensOriginalImageAndRejectsVideo(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	content, err := service.OpenOriginal(context.Background(), "image")
+	content, err := service.OpenOriginal(context.Background(), "image", "user_local")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -128,7 +128,7 @@ func TestStreamServiceOpensOriginalImageAndRejectsVideo(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := videoService.OpenOriginal(context.Background(), "video"); !errors.Is(err, domain.ErrMediaNotFound) {
+	if _, err := videoService.OpenOriginal(context.Background(), "video", "user_local"); !errors.Is(err, domain.ErrMediaNotFound) {
 		t.Fatalf("error = %v, want %v", err, domain.ErrMediaNotFound)
 	}
 }
@@ -147,7 +147,7 @@ func TestStreamServiceUsesSupportedImageMIMETypes(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			content, err := service.OpenOriginal(context.Background(), "image")
+			content, err := service.OpenOriginal(context.Background(), "image", "user_local")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -167,7 +167,7 @@ func TestStreamServiceDetectsMIMEAndRewindsReader(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	content, err := service.Open(context.Background(), "media")
+	content, err := service.Open(context.Background(), "media", "user_local")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -195,7 +195,7 @@ func TestStreamServiceUsesStableContainerMIMETypes(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			content, err := service.Open(context.Background(), "media")
+			content, err := service.Open(context.Background(), "media", "user_local")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -229,7 +229,7 @@ type realFileStreamRepository struct {
 	root string
 }
 
-func (r realFileStreamRepository) GetStreamLocation(context.Context, string) (domain.StreamLocation, error) {
+func (r realFileStreamRepository) GetStreamLocation(context.Context, string, string) (domain.StreamLocation, error) {
 	return domain.StreamLocation{
 		ID: "media_real", Filename: "clip.mp4", MediaType: domain.MediaTypeVideo, MIMEType: "video/mp4",
 		SourceType: domain.SourceTypeLocal, RootPath: r.root, RelativePath: "clip.mp4",
@@ -255,7 +255,7 @@ func TestStreamServiceRealFileRangeMatchesSnapshot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	content, err := service.Open(context.Background(), "media_real")
+	content, err := service.Open(context.Background(), "media_real", "user_local")
 	if err != nil {
 		t.Fatal(err)
 	}

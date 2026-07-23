@@ -13,7 +13,7 @@ import (
 )
 
 func (b *bootstrap) buildWorkers(database *sql.DB, sources *dbrepo.SourceRepository, scans *dbrepo.ScanRepository,
-	localFactory *storage.LocalFactory, ids platform.SecureIDGenerator, clock platform.RealClock) (*jobs.Group, *jobs.Signal, error) {
+	localFactory *storage.LocalFactory, ids platform.SecureIDGenerator, clock platform.RealClock, catalogSignal *jobs.Signal) (*jobs.Group, *jobs.Signal, error) {
 	processing, err := dbrepo.NewProcessingRepository(database)
 	if err != nil {
 		return nil, nil, fmt.Errorf("创建媒体处理 Repository: %w", err)
@@ -36,7 +36,7 @@ func (b *bootstrap) buildWorkers(database *sql.DB, sources *dbrepo.SourceReposit
 	var runners []jobs.Runner
 	for range b.config.Workers.Scan {
 		scanWorker, err := jobs.NewScanWorker(sources, scans, processing, localFactory, localScanner,
-			scanner.SHA256QuickHasher{}, ids, clock, scanSignal, probeSignal, b.logger)
+			scanner.SHA256QuickHasher{}, ids, clock, scanSignal, probeSignal, catalogSignal, b.logger)
 		if err != nil {
 			return nil, nil, fmt.Errorf("创建扫描 Worker: %w", err)
 		}

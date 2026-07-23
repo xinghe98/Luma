@@ -35,6 +35,16 @@ func Error(c *gin.Context, status int, code, message string, details any) {
 // FromError 将领域错误映射为稳定 HTTP 状态码和统一错误码。
 func FromError(c *gin.Context, err error) {
 	switch {
+	case errors.Is(err, domain.ErrUnauthorized):
+		Error(c, http.StatusUnauthorized, "UNAUTHORIZED", "valid bearer token required", nil)
+	case errors.Is(err, domain.ErrForbidden):
+		Error(c, http.StatusForbidden, "FORBIDDEN", "没有执行此操作的权限", nil)
+	case errors.Is(err, domain.ErrUserNotFound):
+		Error(c, http.StatusNotFound, "USER_NOT_FOUND", "用户不存在", nil)
+	case errors.Is(err, domain.ErrTokenNotFound):
+		Error(c, http.StatusNotFound, "TOKEN_NOT_FOUND", "访问令牌不存在", nil)
+	case errors.Is(err, domain.ErrIdempotencySecretUnavailable):
+		Error(c, http.StatusConflict, "IDEMPOTENCY_SECRET_UNAVAILABLE", "令牌已创建，但明文无法安全重放；请在成员详情中吊销后重新签发", nil)
 	case errors.Is(err, domain.ErrInvalidRequest):
 		Error(c, http.StatusBadRequest, "INVALID_REQUEST", err.Error(), nil)
 	case errors.Is(err, domain.ErrForbiddenPath):
@@ -65,6 +75,8 @@ func FromError(c *gin.Context, err error) {
 		Error(c, http.StatusConflict, "MEDIA_DURATION_UNAVAILABLE", "媒体时长暂不可用", nil)
 	case errors.Is(err, domain.ErrMediaNotPlayable):
 		Error(c, http.StatusUnprocessableEntity, "MEDIA_NOT_PLAYABLE", "媒体不支持播放进度", nil)
+	case errors.Is(err, domain.ErrCatalogNotFound):
+		Error(c, http.StatusNotFound, "CATALOG_NOT_FOUND", "作品不存在", nil)
 	default:
 		Error(c, http.StatusInternalServerError, "INTERNAL_ERROR", "internal server error", nil)
 	}

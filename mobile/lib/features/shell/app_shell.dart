@@ -2,11 +2,15 @@ import 'package:flutter/material.dart';
 
 import '../../app/app_scope.dart';
 import '../../data/models/media_item.dart';
+import '../../data/models/api_catalog.dart';
 import '../../data/models/media_types.dart';
 import '../details/dialogs/image_preview_dialog.dart';
 import '../details/media_detail_page.dart';
+import '../catalog/catalog_detail_page.dart';
+import '../catalog/catalog_page.dart';
 import '../home/home_page.dart';
 import '../library/library_page.dart';
+import '../player/player_page.dart';
 import '../search/search_page.dart';
 import '../settings/settings_page.dart';
 import 'app_destination.dart';
@@ -22,6 +26,7 @@ class AppShell extends StatefulWidget {
 
 class _AppShellState extends State<AppShell> {
   final _controller = ShellController();
+
   /// 按需创建 Tab 页，避免 IndexedStack 首帧同时构建全部库网格。
   final Map<AppDestination, Widget> _pages = {};
   var _didWarmSearch = false;
@@ -82,9 +87,9 @@ class _AppShellState extends State<AppShell> {
       onLongPressMedia: _openDetails,
       onOpenSearch: () => _controller.select(AppDestination.search),
     ),
-    AppDestination.videos => LibraryPage(
-      type: MediaType.video,
-      onOpenMedia: _openDetails,
+    AppDestination.videos => CatalogPage(
+      onOpenCatalog: _openCatalog,
+      onOpenPersonalMedia: _openDetails,
       onOpenSearch: () => _controller.select(AppDestination.search),
     ),
     AppDestination.search => SearchPage(onOpenMedia: _openDetails),
@@ -106,7 +111,31 @@ class _AppShellState extends State<AppShell> {
     showImagePreviewDialog(
       context,
       item,
+      heroTag: heroTag,
       onOpenDetails: () => _openDetails(item, heroTag: heroTag),
+    );
+  }
+
+  void _openCatalog(CatalogItem item) {
+    final dependencies = AppScope.of(context);
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => CatalogDetailPage(
+          catalogId: item.id,
+          repository: dependencies.catalog,
+          onOpenMedia: _openPlayerById,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openPlayerById(String mediaId) async {
+    final media = AppScope.of(context).media;
+    await media.loadDetail(mediaId);
+    if (!mounted) return;
+    if (media.findById(mediaId) == null) return;
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(builder: (_) => PlayerPage(mediaId: mediaId)),
     );
   }
 }

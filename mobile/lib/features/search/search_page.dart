@@ -70,7 +70,12 @@ class _SearchPageState extends State<SearchPage>
                 cacheExtent: 480,
                 slivers: [
                   SliverPadding(
-                    padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+                    padding: const EdgeInsets.fromLTRB(
+                      LumaLayout.pagePaddingH,
+                      LumaSpacing.xs,
+                      LumaLayout.pagePaddingH,
+                      0,
+                    ),
                     sliver: SliverList(
                       delegate: SliverChildListDelegate.fixed([
                         SearchInput(
@@ -95,7 +100,12 @@ class _SearchPageState extends State<SearchPage>
                     ),
                   ),
                   SliverPadding(
-                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 32),
+                    padding: const EdgeInsets.fromLTRB(
+                      LumaLayout.pagePaddingH,
+                      0,
+                      LumaLayout.pagePaddingH,
+                      LumaSpacing.xl,
+                    ),
                     sliver: SliverMainAxisGroup(
                       slivers: results.buildSlivers(),
                     ),

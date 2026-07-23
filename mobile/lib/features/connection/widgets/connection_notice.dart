@@ -18,13 +18,15 @@ class ConnectionNotice extends StatelessWidget {
     final success = phase == ConnectionPhase.success;
     final failure = phase == ConnectionPhase.failure;
     final color = success
-        ? LumaColors.success
+        ? context.luma.success
         : failure
         ? Theme.of(context).colorScheme.error
         : Theme.of(context).colorScheme.primary;
-    return Padding(
-      padding: const EdgeInsets.only(top: LumaSpacing.sm),
-      child: Row(
+    return Semantics(
+      liveRegion: true,
+      child: Padding(
+        padding: const EdgeInsets.only(top: LumaSpacing.sm),
+        child: Row(
         children: [
           Icon(
             success
@@ -37,9 +39,15 @@ class ConnectionNotice extends StatelessWidget {
           ),
           const SizedBox(width: LumaSpacing.xs),
           Expanded(
-            child: Text(message, style: TextStyle(color: color)),
+            child: Text(
+              message,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: color,
+              ),
+            ),
           ),
         ],
+        ),
       ),
     );
   }

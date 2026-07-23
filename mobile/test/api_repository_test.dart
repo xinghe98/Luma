@@ -12,6 +12,9 @@ import 'package:luma/data/models/api_source.dart';
 import 'package:luma/data/models/media_filter.dart';
 import 'package:luma/data/models/media_types.dart';
 import 'package:luma/data/services/api_connection_service.dart';
+import 'package:luma/data/services/connection_service.dart';
+import 'package:luma/data/storage/credential_store.dart';
+import 'package:luma/data/storage/server_alias_store.dart';
 
 void main() {
   test(
@@ -223,6 +226,75 @@ void main() {
       'http://host:8080',
     );
   });
+
+  test('media count uses one authenticated aggregate request', () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    addTearDown(() => server.close(force: true));
+    var requests = 0;
+    server.listen((request) async {
+      requests++;
+      expect(request.uri.path, '/custom/media/count');
+      expect(
+        request.headers.value(HttpHeaders.authorizationHeader),
+        'Bearer count-token',
+      );
+      await _json(request.response, {'count': 321});
+    });
+    final session = ApiSession(
+      origin: 'http://${server.address.host}:${server.port}',
+      token: 'count-token',
+    );
+    final dio = Dio()..interceptors.add(ApiSessionInterceptor(session));
+    addTearDown(dio.close);
+    final repository = ApiMediaRepository(
+      ApiClient(dio, apiPrefix: '/custom/'),
+      _TestSourceRepository(),
+    );
+
+    expect(await repository.countMedia(), 321);
+    expect(requests, 1);
+  });
+
+  test('failed connection probe leaves the active session untouched', () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    addTearDown(() => server.close(force: true));
+    server.listen((request) async {
+      expect(
+        request.headers.value(HttpHeaders.authorizationHeader),
+        'Bearer candidate-token',
+      );
+      await _json(
+        request.response,
+        {
+          'error': {'code': 'UNAVAILABLE', 'message': 'offline'},
+        },
+        status: HttpStatus.serviceUnavailable,
+      );
+    });
+    final active = ApiSession(
+      origin: 'http://active.example.test',
+      token: 'active-token',
+    );
+    final dio = Dio()..interceptors.add(ApiSessionInterceptor(active));
+    addTearDown(dio.close);
+    final credentials = _MemoryCredentialStore();
+    final service = ApiConnectionService(
+      client: ApiClient(dio, apiPrefix: '/custom/'),
+      apiSession: active,
+      credentialStore: credentials,
+      aliasStore: const _MemoryAliasStore(),
+    );
+
+    final result = await service.test(
+      'http://${server.address.host}:${server.port}',
+      'candidate-token',
+    );
+
+    expect(result, ConnectionResult.unreachable);
+    expect(active.origin, 'http://active.example.test');
+    expect(active.token, 'active-token');
+    expect(credentials.writes, isEmpty);
+  });
 }
 
 final class _TestSourceRepository implements SourceRepository {
@@ -230,6 +302,7 @@ final class _TestSourceRepository implements SourceRepository {
     id: 'source-1',
     name: 'Main Library',
     type: 'local',
+    libraryKind: 'personal',
     enabled: true,
     status: 'online',
     lastScanId: null,
@@ -243,6 +316,34 @@ final class _TestSourceRepository implements SourceRepository {
 
   @override
   Future<List<Source>> list({bool refresh = false}) async => [source];
+}
+
+final class _MemoryCredentialStore implements CredentialStore {
+  final writes = <StoredCredentials>[];
+
+  @override
+  Future<void> clear() async {}
+
+  @override
+  Future<StoredCredentials?> read() async => null;
+
+  @override
+  Future<void> write(StoredCredentials credentials) async {
+    writes.add(credentials);
+  }
+}
+
+final class _MemoryAliasStore implements ServerAliasStore {
+  const _MemoryAliasStore();
+
+  @override
+  Future<void> clear(String origin) async {}
+
+  @override
+  Future<String?> read(String origin) async => null;
+
+  @override
+  Future<void> write(String origin, String alias) async {}
 }
 
 Future<void> _json(

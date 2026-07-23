@@ -11,26 +11,40 @@ class SurfaceCard extends StatelessWidget {
     this.padding = const EdgeInsets.all(LumaSpacing.md),
     this.radius = LumaRadii.medium,
     this.onTap,
+    this.outlined = false,
   });
 
   final Widget child;
   final EdgeInsetsGeometry padding;
   final double radius;
   final VoidCallback? onTap;
+  final bool outlined;
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     final borderRadius = BorderRadius.circular(radius);
+    final color =
+        Theme.of(context).cardTheme.color ?? scheme.surfaceContainer;
+
+    final content = Padding(padding: padding, child: child);
+
     return Material(
-      color:
-          Theme.of(context).cardTheme.color ??
-          Theme.of(context).colorScheme.surfaceContainer,
+      color: color,
       borderRadius: borderRadius,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: borderRadius,
-        child: Padding(padding: padding, child: child),
-      ),
+      shape: outlined
+          ? RoundedRectangleBorder(
+              borderRadius: borderRadius,
+              side: BorderSide(color: scheme.outlineVariant.withAlpha(90)),
+            )
+          : null,
+      child: onTap == null
+          ? content
+          : InkWell(
+              onTap: onTap,
+              borderRadius: borderRadius,
+              child: content,
+            ),
     );
   }
 }

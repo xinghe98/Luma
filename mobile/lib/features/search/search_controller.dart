@@ -114,14 +114,14 @@ class SearchController extends ChangeNotifier {
     try {
       // 与媒体库共用分页 API，搜索首屏只取一页，避免输入一次就拉完整个库。
       final results = await _media.searchPage(filter);
-      if (version != _requestVersion) return;
+      if (_disposed || version != _requestVersion) return;
       _results = results.items;
       _loadState = LoadState.ready;
     } on Object {
-      if (version != _requestVersion) return;
+      if (_disposed || version != _requestVersion) return;
       _loadState = LoadState.error;
     }
-    notifyListeners();
+    if (!_disposed) notifyListeners();
   }
 
   void retry() => _scheduleSearch(immediate: true);
@@ -137,6 +137,7 @@ class SearchController extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    _requestVersion++;
     _debounce?.cancel();
     _media.removeListener(_onMediaChanged);
     super.dispose();

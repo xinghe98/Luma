@@ -10,6 +10,7 @@ final class SourceDecoder {
       id: requiredValue(json, 'id'),
       name: requiredValue(json, 'name'),
       type: requiredValue(json, 'type'),
+      libraryKind: optionalValue(json, 'library_kind') ?? 'personal',
       enabled: requiredValue(json, 'enabled'),
       status: requiredValue(json, 'status'),
       lastScanId: optionalValue(json, 'last_scan_id'),

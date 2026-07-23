@@ -39,4 +39,16 @@ var (
 	ErrMediaDurationUnavailable = errors.New("media duration unavailable")
 	// ErrMediaNotPlayable 表示目标媒体不支持播放进度。
 	ErrMediaNotPlayable = errors.New("media not playable")
+	// ErrCatalogNotFound 表示作品或待整理文件不存在。
+	ErrCatalogNotFound = errors.New("catalog item not found")
+	// ErrUnauthorized 表示凭据无效、过期、撤销或所属用户被禁用。
+	ErrUnauthorized = errors.New("unauthorized")
+	// ErrForbidden 表示身份有效但没有执行管理操作的权限。
+	ErrForbidden = errors.New("forbidden")
+	// ErrUserNotFound 表示成员不存在。
+	ErrUserNotFound = errors.New("user not found")
+	// ErrTokenNotFound 表示成员令牌不存在。
+	ErrTokenNotFound = errors.New("token not found")
+	// ErrIdempotencySecretUnavailable 表示令牌已创建，但服务重启后无法安全重放一次性明文。
+	ErrIdempotencySecretUnavailable = errors.New("idempotency secret unavailable")
 )

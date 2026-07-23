@@ -9,3 +9,4 @@ VERSION=${VERSION:-dev}
 mkdir -p "$PROJECT_DIR/dist"
 cd "$PROJECT_DIR"
 CGO_ENABLED=${CGO_ENABLED:-0} go build -trimpath -ldflags "-s -w -X main.version=$VERSION" -o "$PROJECT_DIR/dist/luma-server" ./cmd/server
+CGO_ENABLED=${CGO_ENABLED:-0} go build -trimpath -ldflags "-s -w" -o "$PROJECT_DIR/dist/luma-admin" ./cmd/admin

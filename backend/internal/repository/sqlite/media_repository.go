@@ -25,7 +25,7 @@ func NewMediaRepository(db *sql.DB) (*MediaRepository, error) {
 	return &MediaRepository{db: db}, nil
 }
 
-const mediaSelect = `SELECT m.id, m.source_id, m.filename,
+const mediaSelect = `SELECT m.id, m.source_id, s.library_kind, m.filename,
     COALESCE(NULLIF(u.custom_title, ''), NULLIF(m.detected_title, ''), m.filename),
     m.media_type, COALESCE(m.mime_type, ''), m.file_size, m.duration_ms, m.width, m.height,
     COALESCE(m.video_codec, ''), COALESCE(m.audio_codec, ''), COALESCE(m.container, ''),
@@ -52,6 +52,8 @@ func (r *MediaRepository) List(ctx context.Context, query domain.MediaListQuery)
 	statement.WriteString(mediaSelect)
 	statement.WriteString(` WHERE s.enabled = 1 AND s.deleted_at_ms IS NULL AND m.status <> 'missing'`)
 	args := []any{query.UserID}
+	statement.WriteString(` AND EXISTS (SELECT 1 FROM source_grants g WHERE g.source_id = s.id AND g.user_id = ?)`)
+	args = append(args, query.UserID)
 	if query.Search != "" {
 		statement.WriteString(` AND instr(lower(m.filename), lower(?)) > 0`)
 		args = append(args, query.Search)
@@ -59,6 +61,10 @@ func (r *MediaRepository) List(ctx context.Context, query domain.MediaListQuery)
 	if query.MediaType != "" {
 		statement.WriteString(` AND m.media_type = ?`)
 		args = append(args, query.MediaType)
+	}
+	if query.LibraryKind != "" {
+		statement.WriteString(` AND s.library_kind = ?`)
+		args = append(args, query.LibraryKind)
 	}
 	if query.Favorite != nil {
 		statement.WriteString(` AND COALESCE(u.favorite, 0) = ?`)
@@ -117,10 +123,64 @@ func (r *MediaRepository) List(ctx context.Context, query domain.MediaListQuery)
 	return items, nil
 }
 
+// Count returns the number of media records matching the same visibility and
+// filter rules as List.  Keeping this in SQLite avoids transferring every
+// page merely to show a settings summary.
+func (r *MediaRepository) Count(ctx context.Context, query domain.MediaListQuery) (int, error) {
+	var statement strings.Builder
+	statement.WriteString(`SELECT COUNT(*) FROM media_items m
+		JOIN sources s ON s.id = m.source_id
+		LEFT JOIN media_user_data u ON u.media_id = m.id AND u.user_id = ?
+		WHERE s.enabled = 1 AND s.deleted_at_ms IS NULL AND m.status <> 'missing'`)
+	args := []any{query.UserID}
+	statement.WriteString(` AND EXISTS (SELECT 1 FROM source_grants g WHERE g.source_id = s.id AND g.user_id = ?)`)
+	args = append(args, query.UserID)
+	if query.Search != "" {
+		statement.WriteString(` AND instr(lower(m.filename), lower(?)) > 0`)
+		args = append(args, query.Search)
+	}
+	if query.MediaType != "" {
+		statement.WriteString(` AND m.media_type = ?`)
+		args = append(args, query.MediaType)
+	}
+	if query.LibraryKind != "" {
+		statement.WriteString(` AND s.library_kind = ?`)
+		args = append(args, query.LibraryKind)
+	}
+	if query.Favorite != nil {
+		statement.WriteString(` AND COALESCE(u.favorite, 0) = ?`)
+		args = append(args, boolInt(*query.Favorite))
+	}
+	if query.TagID != "" {
+		statement.WriteString(` AND EXISTS (
+			SELECT 1 FROM media_tags mt
+			WHERE mt.user_id = ? AND mt.media_id = m.id AND mt.tag_id = ?
+		)`)
+		args = append(args, query.UserID, query.TagID)
+	}
+	switch query.WatchStatus {
+	case domain.WatchStatusUnwatched:
+		statement.WriteString(` AND COALESCE(u.progress_ms, 0) = 0 AND COALESCE(u.completed, 0) = 0`)
+	case domain.WatchStatusWatching:
+		statement.WriteString(` AND u.progress_ms > 0 AND u.completed = 0`)
+	case domain.WatchStatusCompleted:
+		statement.WriteString(` AND u.completed = 1`)
+	}
+	if query.ContinueWatching {
+		statement.WriteString(` AND u.progress_ms > 0 AND u.completed = 0 AND u.last_played_at_ms IS NOT NULL`)
+	}
+	var total int
+	if err := r.db.QueryRowContext(ctx, statement.String(), args...).Scan(&total); err != nil {
+		return 0, fmt.Errorf("统计媒体列表: %w", err)
+	}
+	return total, nil
+}
+
 // Get 返回可见媒体详情。
 func (r *MediaRepository) Get(ctx context.Context, id, userID string) (domain.Media, error) {
 	row := r.db.QueryRowContext(ctx, mediaSelect+` WHERE m.id = ? AND s.enabled = 1
-        AND s.deleted_at_ms IS NULL AND m.status <> 'missing'`, userID, id)
+		AND s.deleted_at_ms IS NULL AND m.status <> 'missing'
+		AND EXISTS (SELECT 1 FROM source_grants g WHERE g.source_id = s.id AND g.user_id = ?)`, userID, id, userID)
 	item, err := scanMedia(row)
 	if errors.Is(err, sql.ErrNoRows) {
 		return domain.Media{}, domain.ErrMediaNotFound
@@ -132,7 +192,7 @@ func (r *MediaRepository) Get(ctx context.Context, id, userID string) (domain.Me
 }
 
 // GetThumbnail 返回可见媒体当前最高生成版本的 ready 默认缩略图。
-func (r *MediaRepository) GetThumbnail(ctx context.Context, mediaID, variant string) (domain.ThumbnailAsset, error) {
+func (r *MediaRepository) GetThumbnail(ctx context.Context, mediaID, variant, userID string) (domain.ThumbnailAsset, error) {
 	var asset domain.ThumbnailAsset
 	var updatedMS int64
 	err := r.db.QueryRowContext(ctx, `SELECT a.id, a.media_id, a.storage_key, COALESCE(a.mime_type, ''),
@@ -140,17 +200,19 @@ func (r *MediaRepository) GetThumbnail(ctx context.Context, mediaID, variant str
         FROM media_assets a
         JOIN media_items m ON m.id = a.media_id
         JOIN sources s ON s.id = m.source_id
-        WHERE a.media_id = ? AND a.asset_type = 'thumbnail' AND a.variant = ? AND a.status = 'ready'
-          AND m.status <> 'missing' AND s.enabled = 1 AND s.deleted_at_ms IS NULL
-        ORDER BY a.generator_version DESC, a.id DESC LIMIT 1`, mediaID, variant).Scan(
+		WHERE a.media_id = ? AND a.asset_type = 'thumbnail' AND a.variant = ? AND a.status = 'ready'
+		  AND m.status <> 'missing' AND s.enabled = 1 AND s.deleted_at_ms IS NULL
+		  AND EXISTS (SELECT 1 FROM source_grants g WHERE g.source_id = s.id AND g.user_id = ?)
+		ORDER BY a.generator_version DESC, a.id DESC LIMIT 1`, mediaID, variant, userID).Scan(
 		&asset.ID, &asset.MediaID, &asset.StorageKey, &asset.MIMEType,
 		&asset.ContentSHA256, &asset.GeneratorVersion, &updatedMS)
 	if errors.Is(err, sql.ErrNoRows) {
 		var exists int
 		if checkErr := r.db.QueryRowContext(ctx, `SELECT EXISTS(
             SELECT 1 FROM media_items m JOIN sources s ON s.id = m.source_id
-            WHERE m.id = ? AND m.status <> 'missing' AND s.enabled = 1 AND s.deleted_at_ms IS NULL
-        )`, mediaID).Scan(&exists); checkErr != nil {
+			WHERE m.id = ? AND m.status <> 'missing' AND s.enabled = 1 AND s.deleted_at_ms IS NULL
+			AND EXISTS (SELECT 1 FROM source_grants g WHERE g.source_id = s.id AND g.user_id = ?)
+		)`, mediaID, userID).Scan(&exists); checkErr != nil {
 			return domain.ThumbnailAsset{}, fmt.Errorf("检查媒体缩略图: %w", checkErr)
 		}
 		if exists == 0 {
@@ -166,13 +228,14 @@ func (r *MediaRepository) GetThumbnail(ctx context.Context, mediaID, variant str
 }
 
 // GetStreamLocation 返回可见原始媒体的服务端内容定位字段。
-func (r *MediaRepository) GetStreamLocation(ctx context.Context, mediaID string) (domain.StreamLocation, error) {
+func (r *MediaRepository) GetStreamLocation(ctx context.Context, mediaID, userID string) (domain.StreamLocation, error) {
 	var location domain.StreamLocation
 	err := r.db.QueryRowContext(ctx, `SELECT m.id, m.filename, m.media_type, COALESCE(m.mime_type, ''),
         s.source_type, s.root_path, m.relative_path FROM media_items m
         JOIN sources s ON s.id = m.source_id
         WHERE m.id = ? AND m.status <> 'missing' AND s.enabled = 1
-        AND s.deleted_at_ms IS NULL AND s.source_type = 'local'`, mediaID).Scan(
+		AND s.deleted_at_ms IS NULL AND s.source_type = 'local'
+		AND EXISTS (SELECT 1 FROM source_grants g WHERE g.source_id = s.id AND g.user_id = ?)`, mediaID, userID).Scan(
 		&location.ID, &location.Filename, &location.MediaType, &location.MIMEType,
 		&location.SourceType, &location.RootPath, &location.RelativePath)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -250,7 +313,7 @@ func scanMedia(row rowScanner) (domain.Media, error) {
 	var captured, indexed, lastPlayed sql.NullInt64
 	var discoveredMS int64
 	var favorite, completed, hasThumbnail, hasCardThumbnail int
-	err := row.Scan(&item.ID, &item.SourceID, &item.Filename, &item.Title, &item.MediaType,
+	err := row.Scan(&item.ID, &item.SourceID, &item.LibraryKind, &item.Filename, &item.Title, &item.MediaType,
 		&item.MIMEType, &item.FileSize, &duration, &width, &height, &item.VideoCodec,
 		&item.AudioCodec, &item.Container, &item.Bitrate, &frameNum, &frameDen, &tracks,
 		&orientation, &captured, &item.Status, &discoveredMS, &indexed, &favorite, &item.ProgressMS,

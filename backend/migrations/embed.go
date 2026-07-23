@@ -41,3 +41,23 @@ var Stage6UserData string
 //
 //go:embed 008_card_thumbnail_jobs.sql
 var CardThumbnailJobs string
+
+// Catalog 保存作品、季、单集与文件映射结构。
+//
+//go:embed 009_catalog.sql
+var Catalog string
+
+// AccessControl 保存多用户 Token 与媒体源授权结构。
+//
+//go:embed 010_access_control.sql
+var AccessControl string
+
+// ImageLibrary 将旧版仅图片媒体源迁移为个人视频来源。
+//
+//go:embed 011_image_library.sql
+var ImageLibrary string
+
+// AccessIdempotency preserves safe retry identities for administrative writes.
+//
+//go:embed 012_access_idempotency.sql
+var AccessIdempotency string

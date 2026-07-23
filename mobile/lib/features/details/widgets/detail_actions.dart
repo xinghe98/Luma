@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/extensions.dart';
+import '../../../core/theme.dart';
 import '../../../data/models/media_item.dart';
 import '../../../data/models/media_types.dart';
 import '../../player/player_page.dart';
@@ -21,7 +22,6 @@ class DetailActions extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         FilledButton.icon(
-          style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(52)),
           onPressed: canPlay ? () => _openPrimary(context, item) : null,
           icon: Icon(
             item.type == MediaType.video
@@ -36,16 +36,15 @@ class DetailActions extends StatelessWidget {
                 : '查看大图',
           ),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: LumaSpacing.sm),
         OutlinedButton.icon(
-          style: OutlinedButton.styleFrom(
-            minimumSize: const Size.fromHeight(48),
-          ),
           onPressed: () => _toggleFavorite(context, item),
           icon: AnimatedSwitcher(
-            duration: const Duration(milliseconds: 180),
+            duration: LumaMotion.fast,
+            switchInCurve: LumaMotion.standard,
+            switchOutCurve: LumaMotion.standard,
             transitionBuilder: (child, animation) =>
-                ScaleTransition(scale: animation, child: child),
+                FadeTransition(opacity: animation, child: child),
             child: Icon(
               key: ValueKey(item.isFavorite),
               item.isFavorite
@@ -61,7 +60,6 @@ class DetailActions extends StatelessWidget {
 
   void _openPrimary(BuildContext context, MediaItem item) {
     if (item.type == MediaType.image) {
-      // 详情内已在详情页，预览无需再提供「详情」入口。
       showImagePreviewDialog(context, item);
       return;
     }

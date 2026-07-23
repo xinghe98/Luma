@@ -14,6 +14,12 @@ import (
 
 type recordingMediaUseCase struct {
 	request domain.MediaListRequest
+	count   int
+}
+
+func (u *recordingMediaUseCase) Count(_ context.Context, request domain.MediaListRequest, _ string) (int, error) {
+	u.request = request
+	return u.count, nil
 }
 
 func (u *recordingMediaUseCase) List(_ context.Context, request domain.MediaListRequest, _ string) (domain.MediaPage, error) {
@@ -25,7 +31,7 @@ func (*recordingMediaUseCase) Get(context.Context, string, string) (domain.Media
 	return domain.Media{}, nil
 }
 
-func (*recordingMediaUseCase) Thumbnail(context.Context, string, string, string) (domain.ThumbnailContent, error) {
+func (*recordingMediaUseCase) Thumbnail(context.Context, string, string, string, string) (domain.ThumbnailContent, error) {
 	return domain.ThumbnailContent{}, nil
 }
 
@@ -79,5 +85,22 @@ func TestMediaListPassesWatchStatus(t *testing.T) {
 	engine.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/media?watch_status=watching", nil))
 	if recorder.Code != http.StatusOK || useCase.request.WatchStatus != domain.WatchStatusWatching {
 		t.Fatalf("status=%d request=%#v", recorder.Code, useCase.request)
+	}
+}
+
+func TestMediaCountPassesFiltersWithoutPagination(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	useCase := &recordingMediaUseCase{count: 7}
+	handler, err := NewMediaHandler(useCase)
+	if err != nil {
+		t.Fatal(err)
+	}
+	engine := gin.New()
+	engine.Use(func(c *gin.Context) { c.Set("user_id", "user_local") })
+	engine.GET("/media/count", handler.Count)
+	recorder := httptest.NewRecorder()
+	engine.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/media/count?type=image&favorite=true", nil))
+	if recorder.Code != http.StatusOK || useCase.request.MediaType != domain.MediaTypeImage || useCase.request.Favorite == nil || !*useCase.request.Favorite || recorder.Body.String() != "{\"count\":7}" {
+		t.Fatalf("status=%d request=%#v body=%s", recorder.Code, useCase.request, recorder.Body.String())
 	}
 }

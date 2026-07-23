@@ -173,14 +173,17 @@ func TestAppStartsServesHealthAndShutsDown(t *testing.T) {
 		cancel()
 		t.Fatal(err)
 	}
-	var systemInfo map[string]string
+	var systemInfo struct {
+		Database     string   `json:"database"`
+		Capabilities []string `json:"capabilities"`
+	}
 	if err := json.NewDecoder(response.Body).Decode(&systemInfo); err != nil {
 		_ = response.Body.Close()
 		cancel()
 		t.Fatal(err)
 	}
 	_ = response.Body.Close()
-	if response.StatusCode != http.StatusOK || systemInfo["database"] != "ok" {
+	if response.StatusCode != http.StatusOK || systemInfo.Database != "ok" {
 		cancel()
 		t.Fatalf("system info status = %d, body = %#v", response.StatusCode, systemInfo)
 	}

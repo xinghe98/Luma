@@ -53,8 +53,10 @@ class SettingsController extends ChangeNotifier {
   Future<void> restoreScan() async {
     final repository = _scanRepository;
     if (repository == null || isScanning) return;
+    final generation = ++_scanGeneration;
     try {
       final jobs = await repository.latestAll();
+      if (generation != _scanGeneration) return;
       if (jobs.isEmpty) return;
       final interrupted = jobs.where((job) => job.status == 'interrupted');
       if (interrupted.isNotEmpty) {
@@ -74,10 +76,11 @@ class SettingsController extends ChangeNotifier {
       await _pollJobs(
         active.map((job) => job.id).toList(),
         null,
-        null,
+        generation,
         retained,
       );
     } on Object catch (error) {
+      if (generation != _scanGeneration) return;
       _scanProgress = null;
       _scanError = error.toString();
       notifyListeners();
@@ -92,6 +95,7 @@ class SettingsController extends ChangeNotifier {
     notifyListeners();
     try {
       final jobs = await _scanRepository!.startAll();
+      if (generation != _scanGeneration) return;
       if (jobs.isEmpty) throw StateError('没有可扫描的媒体源');
       await _pollJobs(
         jobs.map((job) => job.id).toList(),
@@ -99,6 +103,7 @@ class SettingsController extends ChangeNotifier {
         generation,
       );
     } on Object catch (error) {
+      if (generation != _scanGeneration) return;
       _scanProgress = null;
       _scanError = error.toString();
       notifyListeners();
@@ -117,6 +122,7 @@ class SettingsController extends ChangeNotifier {
       await Future<void>.delayed(scanPollInterval);
       if (activeGeneration != _scanGeneration) return;
       final jobs = await Future.wait(ids.map(_scanRepository!.get));
+      if (activeGeneration != _scanGeneration) return;
       _scanDiscoveredCount = jobs.fold(
         0,
         (total, job) => total + job.discoveredCount,

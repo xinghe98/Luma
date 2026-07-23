@@ -32,10 +32,7 @@ class MediaArtwork extends StatelessWidget {
         ? item.cardThumbnailUrl
         : item.thumbnailUrl;
     final palette = _palettes[item.artSeed % _palettes.length];
-    final placeholder = _PlaceholderArtwork(
-      item: item,
-      palette: palette,
-    );
+    final placeholder = _PlaceholderArtwork(item: item, palette: palette);
     return ClipRRect(
       borderRadius: BorderRadius.circular(borderRadius),
       child: Stack(
@@ -52,7 +49,8 @@ class MediaArtwork extends StatelessWidget {
                 final cacheWidth = logicalWidth.isFinite && logicalWidth > 0
                     ? (logicalWidth * dpr).round().clamp(1, 640)
                     : null;
-                final cacheHeight = useCardThumbnail &&
+                final cacheHeight =
+                    useCardThumbnail &&
                         logicalHeight.isFinite &&
                         logicalHeight > 0
                     ? (logicalHeight * dpr).round().clamp(1, 400)
@@ -69,11 +67,7 @@ class MediaArtwork extends StatelessWidget {
           else
             placeholder,
           if (item.isPortrait)
-            const Positioned(
-              left: 10,
-              top: 10,
-              child: MediaBadge(label: '竖屏'),
-            ),
+            const Positioned(left: 10, top: 10, child: MediaBadge(label: '竖屏')),
         ],
       ),
     );
@@ -123,7 +117,7 @@ class _PlaceholderArtwork extends StatelessWidget {
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(80),
                   border: Border.all(
-                    color: Colors.white.withAlpha(35),
+                    color: LumaColors.onInk.withAlpha(35),
                     width: 2,
                   ),
                   color: palette[0].withAlpha(90),
@@ -137,7 +131,7 @@ class _PlaceholderArtwork extends StatelessWidget {
                   ? Icons.play_circle_outline_rounded
                   : Icons.image_outlined,
               size: 38,
-              color: Colors.white.withAlpha(175),
+              color: LumaColors.onInk.withAlpha(175),
             ),
           ),
         ],

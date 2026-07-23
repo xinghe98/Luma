@@ -9,12 +9,13 @@ import 'package:luma/data/mock/mock_connection_service.dart';
 import 'package:luma/data/mock/mock_media_repository.dart';
 import 'package:luma/data/models/media_types.dart';
 import 'package:luma/data/models/server_profile.dart';
+import 'package:luma/data/services/connection_service.dart';
 import 'package:luma/data/storage/server_alias_store.dart';
+import 'package:luma/features/connection/connection_page.dart';
 import 'package:luma/features/search/widgets/search_results.dart';
 import 'package:luma/features/settings/settings_page.dart';
 import 'package:luma/main.dart';
 import 'package:luma/shared/media/masonry_media_tile.dart';
-import 'package:luma/shared/media/media_card.dart';
 
 void main() {
   AppDependencies createDependencies() => AppDependencies(
@@ -34,7 +35,57 @@ void main() {
     await tester.pump();
     expect(find.text('正在连接'), findsOneWidget);
     await tester.pump(const Duration(milliseconds: 950));
-    expect(find.textContaining('完整的 http://'), findsOneWidget);
+    expect(find.text('请输入有效的服务器地址'), findsOneWidget);
+  });
+
+  testWidgets('connection page uses HTTP without a protocol choice', (
+    tester,
+  ) async {
+    final service = _RecordingConnectionService();
+    final dependencies = AppDependencies(
+      mediaRepository: MockMediaRepository(),
+      connectionService: service,
+    );
+    addTearDown(dependencies.dispose);
+    await tester.pumpWidget(LumaApp(dependencies: dependencies));
+
+    expect(find.text('连接协议'), findsNothing);
+    await tester.enterText(find.byType(TextField).at(0), '192.168.1.10');
+    await tester.enterText(find.byType(TextField).at(1), '8080');
+    await tester.enterText(find.byType(TextField).at(2), 'test-token');
+    await tester.tap(find.text('立即连接'));
+    await tester.pump();
+
+    expect(service.lastAddress, 'http://192.168.1.10:8080');
+  });
+
+  testWidgets('connection page unlocks after saved-session recovery ends', (
+    tester,
+  ) async {
+    final dependencies = createDependencies();
+    addTearDown(dependencies.dispose);
+    dependencies.restoring.value = true;
+    await tester.pumpWidget(
+      AppScope(
+        dependencies: dependencies,
+        child: const MaterialApp(home: ConnectionPage()),
+      ),
+    );
+
+    expect(find.text('正在恢复已保存的服务器连接…'), findsOneWidget);
+    expect(
+      tester.widget<FilledButton>(find.byType(FilledButton)).onPressed,
+      isNull,
+    );
+
+    dependencies.restoring.value = false;
+    await tester.pump();
+
+    expect(find.text('正在恢复已保存的服务器连接…'), findsNothing);
+    expect(
+      tester.widget<FilledButton>(find.byType(FilledButton)).onPressed,
+      isNotNull,
+    );
   });
 
   testWidgets('successful connection opens the five destination shell', (
@@ -55,7 +106,7 @@ void main() {
       navigation.destinations.whereType<NavigationDestination>().map(
         (item) => item.label,
       ),
-      ['首页', '图片库', '影音库', '搜索', '设置'],
+      ['首页', '图片库', '影视库', '搜索', '设置'],
     );
 
     await tester.tap(find.text('图片库'));
@@ -78,21 +129,17 @@ void main() {
     await tester.tap(
       find.descendant(
         of: find.byType(NavigationBar),
-        matching: find.text('影音库'),
+        matching: find.text('影视库'),
       ),
     );
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 200));
     expect(
-      find.descendant(of: find.byType(AppBar), matching: find.text('影音库')),
+      find.descendant(of: find.byType(AppBar), matching: find.text('影视库')),
       findsOneWidget,
     );
-    final videoCards = tester.widgetList<MediaCard>(find.byType(MediaCard));
-    expect(videoCards, isNotEmpty);
-    expect(
-      videoCards.every((card) => card.item.type == MediaType.video),
-      isTrue,
-    );
+    expect(find.text('电影'), findsOneWidget);
+    expect(find.text('电视剧'), findsOneWidget);
 
     await tester.tap(
       find.descendant(
@@ -222,5 +269,20 @@ class _WidgetAliasStore implements ServerAliasStore {
   @override
   Future<void> write(String origin, String alias) async {
     _values[origin] = alias;
+  }
+}
+
+class _RecordingConnectionService implements ConnectionService {
+  @override
+  ServerProfile? connectedProfile;
+  String? lastAddress;
+
+  @override
+  Future<void> disconnect() async {}
+
+  @override
+  Future<ConnectionResult> test(String address, String token) async {
+    lastAddress = address;
+    return ConnectionResult.invalidAddress;
   }
 }

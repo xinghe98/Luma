@@ -1,15 +1,20 @@
 package security
 
 import (
+	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
+
+	"github.com/xinghe98/Luma/backend/internal/domain"
 )
 
 // tokenBytes 是自动生成 Token 使用的安全随机字节数。
@@ -73,6 +78,21 @@ type TokenAuthenticator struct {
 	expected string
 }
 
+// GenerateToken 生成适合长期 Bearer 认证的 256 位随机令牌。
+func GenerateToken() (string, error) {
+	random := make([]byte, tokenBytes)
+	if _, err := rand.Read(random); err != nil {
+		return "", fmt.Errorf("generate API token: %w", err)
+	}
+	return base64.RawURLEncoding.EncodeToString(random), nil
+}
+
+// HashToken 返回数据库保存的固定长度十六进制摘要。
+func HashToken(token string) string {
+	sum := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(sum[:])
+}
+
 // NewTokenAuthenticator 创建 Token 认证器并校验 Token 强度。
 func NewTokenAuthenticator(token string) (*TokenAuthenticator, error) {
 	if err := validateToken(token); err != nil {
@@ -82,9 +102,12 @@ func NewTokenAuthenticator(token string) (*TokenAuthenticator, error) {
 }
 
 // AuthenticateAuthorization 验证完整的 HTTP Authorization 请求头。
-func (a *TokenAuthenticator) AuthenticateAuthorization(authorization string) bool {
+func (a *TokenAuthenticator) AuthenticateAuthorization(_ context.Context, authorization string) (domain.Principal, bool) {
 	parts := strings.Fields(authorization)
-	return len(parts) == 2 && strings.EqualFold(parts[0], "Bearer") && MatchesToken(a.expected, parts[1])
+	if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") || !MatchesToken(a.expected, parts[1]) {
+		return domain.Principal{}, false
+	}
+	return domain.Principal{UserID: "user_local", Name: "Local User", Role: domain.RoleAdmin}, true
 }
 
 // validateToken 校验 Token 的最小长度和字符约束。

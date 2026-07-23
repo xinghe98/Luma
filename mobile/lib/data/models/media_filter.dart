@@ -3,10 +3,7 @@ import 'media_types.dart';
 
 /// 游标分页的一页媒体结果。
 class MediaListPage {
-  const MediaListPage({
-    required this.items,
-    required this.nextCursor,
-  });
+  const MediaListPage({required this.items, required this.nextCursor});
 
   final List<MediaItem> items;
   final String? nextCursor;
@@ -17,6 +14,7 @@ class MediaFilter {
   const MediaFilter({
     this.text = '',
     this.type,
+    this.libraryKind,
     this.tag,
     this.tagId,
     this.watchStatus,
@@ -26,6 +24,7 @@ class MediaFilter {
 
   final String text;
   final MediaType? type;
+  final String? libraryKind;
   final String? tag;
   final String? tagId;
   final WatchStatus? watchStatus;
@@ -42,6 +41,8 @@ List<MediaItem> filterMediaItems(List<MediaItem> source, MediaFilter filter) {
         item.tags.any((tag) => tag.toLowerCase().contains(keyword));
     return matchesText &&
         (filter.type == null || item.type == filter.type) &&
+        (filter.libraryKind == null ||
+            item.libraryKind == filter.libraryKind) &&
         (filter.tag == null || item.tags.contains(filter.tag)) &&
         (filter.watchStatus == null ||
             item.watchStatus == filter.watchStatus) &&

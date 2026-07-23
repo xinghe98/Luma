@@ -53,7 +53,7 @@ class _MediaDetailPageState extends State<MediaDetailPage> {
             ),
             body: Center(
               child: Padding(
-                padding: const EdgeInsets.all(24),
+                padding: const EdgeInsets.all(LumaSpacing.lg),
                 child: controller.isLoading
                     ? const CircularProgressIndicator()
                     : Column(
@@ -62,8 +62,14 @@ class _MediaDetailPageState extends State<MediaDetailPage> {
                           Text(
                             controller.detailError ?? '找不到该媒体，可能已被移除或尚未加载。',
                             textAlign: TextAlign.center,
+                            style: Theme.of(context).textTheme.bodyLarge
+                                ?.copyWith(
+                                  color: Theme.of(
+                                    context,
+                                  ).colorScheme.onSurfaceVariant,
+                                ),
                           ),
-                          const SizedBox(height: 16),
+                          const SizedBox(height: LumaSpacing.md),
                           FilledButton(
                             onPressed: controller.reload,
                             child: const Text('重试'),
@@ -74,9 +80,10 @@ class _MediaDetailPageState extends State<MediaDetailPage> {
             ),
           );
         }
+        final coverRadius = context.luma.coverRadius;
         final cover = AspectRatio(
           aspectRatio: item.isPortrait ? 3 / 4 : 16 / 10,
-          child: MediaArtwork(item: item, borderRadius: LumaRadii.large),
+          child: MediaArtwork(item: item, borderRadius: coverRadius),
         );
         final artwork = widget.heroTag == null
             ? cover
@@ -88,7 +95,7 @@ class _MediaDetailPageState extends State<MediaDetailPage> {
           body: LayoutBuilder(
             builder: (context, constraints) => SingleChildScrollView(
               controller: _scroll,
-              padding: const EdgeInsets.fromLTRB(20, 12, 20, 40),
+              padding: LumaLayout.pagePadding(top: LumaSpacing.sm),
               child: Center(
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(
@@ -99,7 +106,7 @@ class _MediaDetailPageState extends State<MediaDetailPage> {
                     children: [
                       if (controller.detailError != null)
                         Padding(
-                          padding: const EdgeInsets.only(bottom: 12),
+                          padding: const EdgeInsets.only(bottom: LumaSpacing.sm),
                           child: MaterialBanner(
                             content: Text(controller.detailError!),
                             actions: [
@@ -116,7 +123,7 @@ class _MediaDetailPageState extends State<MediaDetailPage> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Expanded(flex: 5, child: artwork),
-                            const SizedBox(width: 36),
+                            const SizedBox(width: LumaSpacing.xl + LumaSpacing.xxs),
                             Expanded(
                               flex: 6,
                               child: DetailInformation(controller: controller),

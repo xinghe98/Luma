@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/theme.dart';
 import '../player_controller.dart';
 
 class PlayerCenterControls extends StatelessWidget {
@@ -9,6 +10,7 @@ class PlayerCenterControls extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final extras = context.luma;
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
@@ -17,12 +19,12 @@ class PlayerCenterControls extends StatelessWidget {
           tooltip: '后退 10 秒',
           onPressed: () => controller.seekBy(-10),
         ),
-        const SizedBox(width: 28),
+        const SizedBox(width: LumaSpacing.lg + LumaSpacing.xxs),
         IconButton.filled(
           tooltip: controller.playing ? '暂停' : '播放',
           style: IconButton.styleFrom(
-            backgroundColor: Colors.white,
-            foregroundColor: Colors.black,
+            backgroundColor: extras.onPlayerInk,
+            foregroundColor: extras.playerInk,
             minimumSize: const Size.square(64),
           ),
           onPressed: controller.togglePlay,
@@ -31,7 +33,7 @@ class PlayerCenterControls extends StatelessWidget {
             controller.playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
           ),
         ),
-        const SizedBox(width: 28),
+        const SizedBox(width: LumaSpacing.lg + LumaSpacing.xxs),
         _ControlButton(
           icon: Icons.forward_10_rounded,
           tooltip: '快进 10 秒',
@@ -54,14 +56,17 @@ class _ControlButton extends StatelessWidget {
   final VoidCallback onPressed;
 
   @override
-  Widget build(BuildContext context) => IconButton(
-    tooltip: tooltip,
-    style: IconButton.styleFrom(
-      backgroundColor: Colors.black.withAlpha(90),
-      foregroundColor: Colors.white,
-      minimumSize: const Size.square(50),
-    ),
-    onPressed: onPressed,
-    icon: Icon(icon, size: 30),
-  );
+  Widget build(BuildContext context) {
+    final extras = context.luma;
+    return IconButton(
+      tooltip: tooltip,
+      style: IconButton.styleFrom(
+        backgroundColor: extras.playerInk.withAlpha(90),
+        foregroundColor: extras.onPlayerInk,
+        minimumSize: const Size.square(LumaLayout.minTapTarget + 2),
+      ),
+      onPressed: onPressed,
+      icon: Icon(icon, size: 30),
+    );
+  }
 }

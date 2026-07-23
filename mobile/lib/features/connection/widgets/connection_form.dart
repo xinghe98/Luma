@@ -12,9 +12,7 @@ class ConnectionForm extends StatelessWidget {
     required this.hostController,
     required this.portController,
     required this.tokenController,
-    required this.scheme,
     required this.enabled,
-    required this.onSchemeChanged,
     required this.onConnect,
   });
 
@@ -22,9 +20,7 @@ class ConnectionForm extends StatelessWidget {
   final TextEditingController hostController;
   final TextEditingController portController;
   final TextEditingController tokenController;
-  final String scheme;
   final bool enabled;
-  final ValueChanged<String> onSchemeChanged;
   final VoidCallback onConnect;
 
   @override
@@ -68,24 +64,6 @@ class ConnectionForm extends StatelessWidget {
             ),
           ],
         ),
-        const SizedBox(height: LumaSpacing.sm),
-        DropdownButtonFormField<String>(
-          initialValue: scheme,
-          onChanged: !enabled || controller.isLoading
-              ? null
-              : (value) {
-                  if (value != null) onSchemeChanged(value);
-                },
-          decoration: const InputDecoration(
-            labelText: '连接协议',
-            prefixIcon: Icon(Icons.security_outlined),
-            helperText: 'HTTP 仅适用于可信内网；优先使用 HTTPS。',
-          ),
-          items: const [
-            DropdownMenuItem(value: 'https', child: Text('HTTPS（推荐）')),
-            DropdownMenuItem(value: 'http', child: Text('HTTP（可信内网）')),
-          ],
-        ),
         const SizedBox(height: LumaSpacing.md),
         TextField(
           controller: tokenController,
@@ -102,7 +80,6 @@ class ConnectionForm extends StatelessWidget {
         ),
         const SizedBox(height: LumaSpacing.md),
         FilledButton.icon(
-          style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(52)),
           onPressed: !enabled || controller.isLoading ? null : onConnect,
           icon: controller.isLoading
               ? const SizedBox.square(
@@ -113,7 +90,9 @@ class ConnectionForm extends StatelessWidget {
           label: Text(controller.isLoading ? '正在连接' : '立即连接'),
         ),
         AnimatedSwitcher(
-          duration: const Duration(milliseconds: 220),
+          duration: LumaMotion.normal,
+          switchInCurve: LumaMotion.standard,
+          switchOutCurve: LumaMotion.standard,
           child: controller.message == null
               ? const SizedBox(height: LumaSpacing.xl)
               : ConnectionNotice(

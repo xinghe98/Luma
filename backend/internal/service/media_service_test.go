@@ -16,6 +16,8 @@ type fakeMediaRepository struct {
 	media domain.Media
 	// items 是列表查询返回的媒体条目。
 	items []domain.Media
+	// count 是总数查询返回的媒体条目数量。
+	count int
 	// query 记录最近一次列表查询参数。
 	query domain.MediaListQuery
 	// asset 是缩略图查询返回的资源。
@@ -30,6 +32,10 @@ type fakeMediaRepository struct {
 func (r *fakeMediaRepository) List(_ context.Context, query domain.MediaListQuery) ([]domain.Media, error) {
 	r.query = query
 	return r.items, nil
+}
+func (r *fakeMediaRepository) Count(_ context.Context, query domain.MediaListQuery) (int, error) {
+	r.query = query
+	return r.count, nil
 }
 func (r *fakeMediaRepository) Get(context.Context, string, string) (domain.Media, error) {
 	if r.media.ID != "" {
@@ -62,7 +68,22 @@ func TestMediaServiceContinueWatchingCursorBindsUserAndFilters(t *testing.T) {
 		t.Fatalf("cross-filter cursor error=%v", err)
 	}
 }
-func (r *fakeMediaRepository) GetThumbnail(_ context.Context, _, variant string) (domain.ThumbnailAsset, error) {
+
+func TestMediaServiceCountUsesVisibleQueryWithoutCursor(t *testing.T) {
+	repository := &fakeMediaRepository{count: 42}
+	service, err := NewMediaService(repository, countingThumbnailReader{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	count, err := service.Count(context.Background(), domain.MediaListRequest{MediaType: domain.MediaTypeImage, Cursor: "ignored"}, "user_local")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if count != 42 || repository.query.After != nil || repository.query.MediaType != domain.MediaTypeImage {
+		t.Fatalf("count=%d query=%#v", count, repository.query)
+	}
+}
+func (r *fakeMediaRepository) GetThumbnail(_ context.Context, _, variant, _ string) (domain.ThumbnailAsset, error) {
 	r.variant = variant
 	if r.assetErr != nil {
 		return domain.ThumbnailAsset{}, r.assetErr
@@ -79,10 +100,10 @@ func TestMediaServiceThumbnailValidatesAndForwardsVariant(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := service.Thumbnail(context.Background(), "media", "wide", ""); !errors.Is(err, domain.ErrInvalidRequest) {
+	if _, err := service.Thumbnail(context.Background(), "media", "wide", "", "user_local"); !errors.Is(err, domain.ErrInvalidRequest) {
 		t.Fatalf("invalid variant error=%v", err)
 	}
-	if _, err := service.Thumbnail(context.Background(), "media", domain.ThumbnailVariantCard, ""); err != nil {
+	if _, err := service.Thumbnail(context.Background(), "media", domain.ThumbnailVariantCard, "", "user_local"); err != nil {
 		t.Fatal(err)
 	}
 	if repository.variant != domain.ThumbnailVariantCard {
@@ -186,7 +207,7 @@ func TestMediaServiceValidatesQueryAndBuildsStrongETag(t *testing.T) {
 	if _, err := service.List(context.Background(), domain.MediaListRequest{Sort: domain.MediaSortLastPlayedAt}, "user_local"); !errors.Is(err, domain.ErrInvalidRequest) {
 		t.Fatalf("internal sort error = %v", err)
 	}
-	content, err := service.Thumbnail(context.Background(), "media", "", "")
+	content, err := service.Thumbnail(context.Background(), "media", "", "", "user_local")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -205,7 +226,7 @@ func TestMediaServiceThumbnailNotModifiedSkipsRead(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	content, err := service.Thumbnail(context.Background(), "media", "", `"`+hash+`"`)
+	content, err := service.Thumbnail(context.Background(), "media", "", `"`+hash+`"`, "user_local")
 	if err != nil {
 		t.Fatal(err)
 	}

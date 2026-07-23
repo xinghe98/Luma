@@ -59,9 +59,9 @@ class SearchFilters extends StatelessWidget {
         if (tags.isEmpty)
           Text(
             '暂无标签',
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              color: scheme.onSurfaceVariant,
-            ),
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(color: scheme.onSurfaceVariant),
           )
         else
           Wrap(

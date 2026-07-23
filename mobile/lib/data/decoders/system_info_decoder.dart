@@ -11,6 +11,12 @@ final class SystemInfoDecoder {
       platform: requiredValue(json, 'platform'),
       architecture: requiredValue(json, 'architecture'),
       database: requiredValue(json, 'database'),
+      userRole:
+          (json['user'] as Map<String, dynamic>?)?['role'] as String? ??
+          'admin',
+      capabilities: (json['capabilities'] as List<Object?>? ?? const [])
+          .whereType<String>()
+          .toList(growable: false),
     );
   }
 }

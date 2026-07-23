@@ -17,7 +17,12 @@ Future<LibraryFilters?> showLibraryFilterSheet(
     builder: (context) => StatefulBuilder(
       builder: (context, setSheetState) => SafeArea(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
+          padding: const EdgeInsets.fromLTRB(
+            LumaLayout.pagePaddingH,
+            LumaSpacing.xxs,
+            LumaLayout.pagePaddingH,
+            LumaSpacing.lg,
+          ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -25,7 +30,10 @@ Future<LibraryFilters?> showLibraryFilterSheet(
               Text('筛选媒体', style: Theme.of(context).textTheme.titleLarge),
               const SizedBox(height: LumaSpacing.lg),
               if (showWatchStatus) ...[
-                const Text('观看状态'),
+                Text(
+                  '观看状态',
+                  style: Theme.of(context).textTheme.labelLarge,
+                ),
                 const SizedBox(height: LumaSpacing.xs),
                 Wrap(
                   spacing: LumaSpacing.xs,

@@ -9,8 +9,12 @@ import '../../shared/layout/scroll_to_top_app_bar_title.dart';
 import 'dialogs/about_luma_dialog.dart';
 import 'dialogs/confirmation_dialog.dart';
 import 'dialogs/server_alias_dialog.dart';
+import 'access/access_management_page.dart';
 import 'widgets/application_settings_card.dart';
 import 'widgets/server_settings_card.dart';
+import '../../data/repositories/source_repository.dart';
+import 'library_sources_page.dart';
+import 'organization_page.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -38,70 +42,131 @@ class _SettingsPageState extends State<SettingsPage> {
         dependencies.media,
         dependencies.session,
       ]),
-      builder: (context, _) => Scaffold(
-        appBar: AppBar(
-          title: ScrollToTopAppBarTitle(title: '设置', controller: _scroll),
-          actions: [
-            IconButton(
-              tooltip: settings.themeMode == ThemeMode.dark
-                  ? '切换到浅色模式'
-                  : '切换到深色模式',
-              onPressed: () => settings.setThemeMode(
-                settings.themeMode == ThemeMode.dark
-                    ? ThemeMode.light
-                    : ThemeMode.dark,
-              ),
-              icon: AnimatedSwitcher(
-                duration: const Duration(milliseconds: 180),
-                transitionBuilder: (child, animation) => ScaleTransition(
-                  scale: animation,
-                  child: FadeTransition(opacity: animation, child: child),
-                ),
-                child: Icon(
-                  key: ValueKey(settings.themeMode),
+      builder: (context, _) {
+        final server = dependencies.session.server!;
+        final canManageAccess =
+            server.userRole == 'admin' &&
+            server.capabilities.contains('users.manage') &&
+            dependencies.sources != null;
+        return Scaffold(
+          appBar: AppBar(
+            title: ScrollToTopAppBarTitle(title: '设置', controller: _scroll),
+            actions: [
+              IconButton(
+                tooltip: settings.themeMode == ThemeMode.dark
+                    ? '切换到浅色模式'
+                    : '切换到深色模式',
+                onPressed: () => settings.setThemeMode(
                   settings.themeMode == ThemeMode.dark
-                      ? Icons.light_mode_outlined
-                      : Icons.dark_mode_outlined,
+                      ? ThemeMode.light
+                      : ThemeMode.dark,
+                ),
+                icon: AnimatedSwitcher(
+                  duration: LumaMotion.forContext(context, LumaMotion.fast),
+                  switchInCurve: LumaMotion.standard,
+                  switchOutCurve: LumaMotion.standard,
+                  transitionBuilder: (child, animation) =>
+                      FadeTransition(opacity: animation, child: child),
+                  child: Icon(
+                    key: ValueKey(settings.themeMode),
+                    settings.themeMode == ThemeMode.dark
+                        ? Icons.light_mode_outlined
+                        : Icons.dark_mode_outlined,
+                  ),
                 ),
               ),
-            ),
-          ],
-        ),
-        body: ConstrainedPageList(
-          scrollKey: const PageStorageKey('settings-scroll'),
-          controller: _scroll,
-          padding: const EdgeInsets.fromLTRB(20, 8, 20, 40),
-          children: [
-            const SectionHeader(title: '当前服务器'),
-            const SizedBox(height: LumaSpacing.sm),
-            ServerSettingsCard(
-              server: dependencies.session.server!,
-              settings: settings,
-              mediaCount: dependencies.media.catalogCount > 0
-                  ? dependencies.media.catalogCount
-                  : dependencies.media.items.length,
-              onScanComplete: () async {
-                await dependencies.media.refresh();
-                await dependencies.media.refreshCatalogCount();
-                if (!context.mounted) return;
-                context.showLumaSnack(
-                  '扫描完成，发现 ${settings.scanDiscoveredCount} 个媒体文件',
-                );
-              },
-              onEditAlias: () => _editAlias(context),
-            ),
-            const SizedBox(height: LumaSpacing.xl),
-            const SectionHeader(title: '存储与应用'),
-            const SizedBox(height: LumaSpacing.sm),
-            ApplicationSettingsCard(
-              settings: settings,
-              onClearCache: () => _clearCache(context),
-              onAbout: () => showAboutLumaDialog(context),
-              onDisconnect: () => _disconnect(context),
-            ),
-          ],
-        ),
-      ),
+            ],
+          ),
+          body: ConstrainedPageList(
+            scrollKey: const PageStorageKey('settings-scroll'),
+            controller: _scroll,
+            padding: LumaLayout.pagePadding(top: LumaSpacing.xs),
+            children: [
+              const SectionHeader(title: '当前服务器'),
+              const SizedBox(height: LumaSpacing.sm),
+              ServerSettingsCard(
+                server: server,
+                settings: settings,
+                mediaCount: dependencies.media.catalogCount > 0
+                    ? dependencies.media.catalogCount
+                    : dependencies.media.items.length,
+                onScanComplete: () async {
+                  await dependencies.media.refresh();
+                  if (!context.mounted) return;
+                  context.showLumaSnack(
+                    '扫描完成，发现 ${settings.scanDiscoveredCount} 个媒体文件',
+                  );
+                },
+                onEditAlias: () => _editAlias(context),
+                canScan: server.can('scans.manage'),
+              ),
+              const SizedBox(height: LumaSpacing.xl),
+              const SectionHeader(title: '媒体库整理'),
+              const SizedBox(height: LumaSpacing.sm),
+              if (server.can('sources.manage') &&
+                  dependencies.sources is MutableSourceRepository)
+                ListTile(
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+                  leading: const Icon(Icons.folder_copy_outlined),
+                  title: const Text('媒体源类型'),
+                  subtitle: const Text('指定个人视频、图片、电影或电视剧目录'),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => LibrarySourcesPage(
+                        repository:
+                            dependencies.sources as MutableSourceRepository,
+                      ),
+                    ),
+                  ),
+                ),
+              if (server.can('catalog.manage'))
+                ListTile(
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+                  leading: const Icon(Icons.rule_folder_outlined),
+                  title: const Text('待整理文件'),
+                  subtitle: const Text('修正无法自动识别的电影和剧集'),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) =>
+                          OrganizationPage(repository: dependencies.catalog),
+                    ),
+                  ),
+                ),
+              if (canManageAccess) ...[
+                const SizedBox(height: LumaSpacing.xl),
+                const SectionHeader(title: '成员与访问'),
+                const SizedBox(height: LumaSpacing.sm),
+                ListTile(
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+                  leading: const Icon(Icons.manage_accounts_outlined),
+                  title: const Text('成员与访问管理'),
+                  subtitle: const Text('管理成员、媒体源授权和设备令牌'),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => AccessManagementPage(
+                        access: dependencies.access,
+                        sources: dependencies.sources!,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+              const SizedBox(height: LumaSpacing.xl),
+              const SectionHeader(title: '存储与应用'),
+              const SizedBox(height: LumaSpacing.sm),
+              ApplicationSettingsCard(
+                settings: settings,
+                onClearCache: () => _clearCache(context),
+                onAbout: () => showAboutLumaDialog(context),
+                onDisconnect: () => _disconnect(context),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 

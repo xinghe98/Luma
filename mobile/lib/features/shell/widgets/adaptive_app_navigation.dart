@@ -26,7 +26,7 @@ class AdaptiveAppNavigation extends StatelessWidget {
             bottomNavigationBar: NavigationBar(
               animationDuration: MediaQuery.disableAnimationsOf(context)
                   ? Duration.zero
-                  : const Duration(milliseconds: 200),
+                  : LumaMotion.normal,
               selectedIndex: destination.index,
               onDestinationSelected: (index) =>
                   onSelect(AppDestination.values[index]),
@@ -47,9 +47,13 @@ class AdaptiveAppNavigation extends StatelessWidget {
                   selectedIndex: destination.index,
                   onDestinationSelected: (index) =>
                       onSelect(AppDestination.values[index]),
-                  leading: Padding(
-                    padding: const EdgeInsets.only(bottom: LumaSpacing.lg),
-                    child: BrandMark(compact: !extended),
+                  leading: const Padding(
+                    padding: EdgeInsets.only(bottom: LumaSpacing.lg),
+                    child: BrandMark(
+                      variant: BrandMarkVariant.symbol,
+                      compact: true,
+                      height: 36,
+                    ),
                   ),
                   destinations: AppDestination.values
                       .map((item) => item.toNavigationRailDestination())

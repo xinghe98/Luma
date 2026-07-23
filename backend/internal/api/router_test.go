@@ -29,7 +29,9 @@ func (fakeSystemUseCase) Health(context.Context) domain.Health {
 type fakeSourceUseCase struct{}
 
 // List 返回空媒体源列表。
-func (fakeSourceUseCase) List(context.Context) ([]domain.Source, error) { return nil, nil }
+func (fakeSourceUseCase) ListVisible(context.Context, string) ([]domain.Source, error) {
+	return nil, nil
+}
 
 // Create 返回请求对应的测试媒体源。
 func (fakeSourceUseCase) Create(_ context.Context, command domain.CreateSourceCommand) (domain.Source, error) {
@@ -49,6 +51,45 @@ type fakeScanUseCase struct{}
 
 // fakeMediaUseCase 为 Router 测试提供媒体 API 结果。
 type fakeMediaUseCase struct{}
+
+type fakeCatalogUseCase struct{}
+
+type fakeAccessUseCase struct{}
+
+func (fakeAccessUseCase) ListUsers(context.Context) ([]domain.User, error) {
+	return []domain.User{}, nil
+}
+func (fakeAccessUseCase) CreateUser(_ context.Context, name string) (domain.User, error) {
+	return domain.User{ID: "user_test", Name: name, Role: domain.RoleMember, Enabled: true}, nil
+}
+func (fakeAccessUseCase) UpdateUser(context.Context, string, *string, *bool) (domain.User, error) {
+	return domain.User{ID: "user_test", Role: domain.RoleMember, Enabled: true}, nil
+}
+func (fakeAccessUseCase) ListTokens(context.Context, string) ([]domain.APIToken, error) {
+	return []domain.APIToken{}, nil
+}
+func (fakeAccessUseCase) IssueToken(context.Context, string, string, *time.Time) (domain.IssuedToken, error) {
+	return domain.IssuedToken{Token: domain.APIToken{ID: "token_test"}, Secret: "secret"}, nil
+}
+func (fakeAccessUseCase) RevokeToken(context.Context, string) error { return nil }
+func (fakeAccessUseCase) ListGrants(context.Context, string) ([]string, error) {
+	return []string{}, nil
+}
+func (fakeAccessUseCase) GrantSource(context.Context, string, string) error  { return nil }
+func (fakeAccessUseCase) RevokeSource(context.Context, string, string) error { return nil }
+
+func (fakeCatalogUseCase) List(context.Context, domain.CatalogListRequest, string) ([]domain.CatalogItem, error) {
+	return []domain.CatalogItem{}, nil
+}
+func (fakeCatalogUseCase) Get(context.Context, string, string) (domain.CatalogItem, error) {
+	return domain.CatalogItem{ID: "catalog_test", Kind: domain.CatalogKindMovie, Title: "测试电影"}, nil
+}
+func (fakeCatalogUseCase) Issues(context.Context, int) ([]domain.CatalogIssue, error) {
+	return []domain.CatalogIssue{}, nil
+}
+func (fakeCatalogUseCase) UpdateMatch(context.Context, domain.UpdateCatalogMatchCommand) error {
+	return nil
+}
 
 // fakeStreamUseCase 为 Router 测试提供可定位的原始媒体内容。
 type fakeStreamUseCase struct{}
@@ -85,14 +126,14 @@ type memoryStream struct {
 
 func (*memoryStream) Close() error { return nil }
 
-func (fakeStreamUseCase) Open(context.Context, string) (domain.StreamContent, error) {
+func (fakeStreamUseCase) Open(context.Context, string, string) (domain.StreamContent, error) {
 	return domain.StreamContent{
 		Name: "test.mp4", MIMEType: "video/mp4", ETag: `W/"c-3b9aca00"`, Size: 12,
 		ModifiedAt: time.Unix(1, 0).UTC(), Reader: &memoryStream{bytes.NewReader([]byte("video-stream"))},
 	}, nil
 }
 
-func (fakeStreamUseCase) OpenOriginal(context.Context, string) (domain.StreamContent, error) {
+func (fakeStreamUseCase) OpenOriginal(context.Context, string, string) (domain.StreamContent, error) {
 	return domain.StreamContent{
 		Name: "photo.jpg", MIMEType: "image/jpeg", ETag: `W/"a-3b9aca00"`, Size: 10,
 		ModifiedAt: time.Unix(1, 0).UTC(), Reader: &memoryStream{bytes.NewReader([]byte("image-data"))},
@@ -106,6 +147,10 @@ func (fakeMediaUseCase) List(context.Context, domain.MediaListRequest, string) (
 	}}}, nil
 }
 
+func (fakeMediaUseCase) Count(context.Context, domain.MediaListRequest, string) (int, error) {
+	return 1, nil
+}
+
 func (fakeMediaUseCase) Get(context.Context, string, string) (domain.Media, error) {
 	return domain.Media{
 		ID: "media_test", Filename: "test.mp4", Title: "test.mp4", MediaType: domain.MediaTypeVideo,
@@ -113,7 +158,7 @@ func (fakeMediaUseCase) Get(context.Context, string, string) (domain.Media, erro
 	}, nil
 }
 
-func (fakeMediaUseCase) Thumbnail(_ context.Context, _, _, ifNoneMatch string) (domain.ThumbnailContent, error) {
+func (fakeMediaUseCase) Thumbnail(_ context.Context, _, _, ifNoneMatch, _ string) (domain.ThumbnailContent, error) {
 	const etag = `"etag"`
 	if ifNoneMatch == etag {
 		return domain.ThumbnailContent{MIMEType: "image/jpeg", ETag: etag, NotModified: true}, nil
@@ -179,6 +224,14 @@ func testRouter(t *testing.T) http.Handler {
 	if err != nil {
 		t.Fatal(err)
 	}
+	catalogHandler, err := handler.NewCatalogHandler(fakeCatalogUseCase{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	accessHandler, err := handler.NewAccessHandler(fakeAccessUseCase{})
+	if err != nil {
+		t.Fatal(err)
+	}
 	authenticator, err := security.NewTokenAuthenticator("abcdefghijklmnopqrstuvwxyz123456")
 	if err != nil {
 		t.Fatal(err)
@@ -186,7 +239,8 @@ func testRouter(t *testing.T) http.Handler {
 	router, err := NewRouter(RouterParams{
 		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
 		Health: health, System: system, Sources: sources, Scans: scans, Media: media, Stream: stream,
-		UserData: userData, Tags: tags, Authenticator: authenticator,
+		UserData: userData, Tags: tags, Catalog: catalogHandler, Access: accessHandler,
+		Authenticator: authenticator,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -424,6 +478,39 @@ func TestMediaListRejectsInvalidLimitAndDoesNotExposePaths(t *testing.T) {
 		if strings.Contains(recorder.Body.String(), "root_path") || strings.Contains(recorder.Body.String(), "relative_path") || strings.Contains(recorder.Body.String(), "storage_key") {
 			t.Fatalf("response exposes internal path: %s", recorder.Body.String())
 		}
+	}
+}
+
+func TestCatalogRoutesRequireAuthAndExposeStableShapes(t *testing.T) {
+	router := testRouter(t)
+	unauthorized := httptest.NewRecorder()
+	router.ServeHTTP(unauthorized, httptest.NewRequest(http.MethodGet, "/api/v1/catalog", nil))
+	if unauthorized.Code != http.StatusUnauthorized {
+		t.Fatalf("unauthorized catalog status=%d", unauthorized.Code)
+	}
+
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/catalog/catalog_test", nil)
+	request.Header.Set("Authorization", "Bearer abcdefghijklmnopqrstuvwxyz123456")
+	responseRecorder := httptest.NewRecorder()
+	router.ServeHTTP(responseRecorder, request)
+	if responseRecorder.Code != http.StatusOK {
+		t.Fatalf("catalog detail status=%d body=%s", responseRecorder.Code, responseRecorder.Body.String())
+	}
+	var body map[string]any
+	if err := json.Unmarshal(responseRecorder.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if body["kind"] != domain.CatalogKindMovie || body["playable_media_id"] == nil || body["thumbnail_url"] == nil {
+		t.Fatalf("unexpected catalog payload: %#v", body)
+	}
+
+	update := httptest.NewRequest(http.MethodPatch, "/api/v1/catalog/media/media_test", strings.NewReader(`{"ignored":true}`))
+	update.Header.Set("Authorization", "Bearer abcdefghijklmnopqrstuvwxyz123456")
+	update.Header.Set("Content-Type", "application/json")
+	updated := httptest.NewRecorder()
+	router.ServeHTTP(updated, update)
+	if updated.Code != http.StatusNoContent {
+		t.Fatalf("catalog update status=%d body=%s", updated.Code, updated.Body.String())
 	}
 }
 

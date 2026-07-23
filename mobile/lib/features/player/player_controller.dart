@@ -12,7 +12,7 @@ class PlayerController extends ChangeNotifier {
     required this.item,
     required MediaController media,
     ApiSession? apiSession,
-    this.autoHideDelay = const Duration(seconds: 3),
+    this.autoHideDelay = const Duration(seconds: 4),
   }) : _media = media,
        _apiSession = apiSession,
        _position = item.duration * item.progress;
@@ -138,7 +138,11 @@ class PlayerController extends ChangeNotifier {
     }
     _controlsVisible = !_controlsVisible;
     notifyListeners();
-    if (_controlsVisible) scheduleHide();
+    if (_controlsVisible) {
+      scheduleHide();
+    } else {
+      _hideTimer?.cancel();
+    }
   }
 
   void togglePlay({bool revealControls = true}) {
@@ -278,8 +282,9 @@ class PlayerController extends ChangeNotifier {
 
   void scheduleHide() {
     _hideTimer?.cancel();
-    if (!_playing || _locked) return;
+    if (_locked) return;
     _hideTimer = Timer(autoHideDelay, () {
+      _hideTimer = null;
       _controlsVisible = false;
       notifyListeners();
     });

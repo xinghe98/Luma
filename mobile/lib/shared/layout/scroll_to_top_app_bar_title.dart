@@ -5,23 +5,35 @@ class ScrollToTopAppBarTitle extends StatelessWidget {
   const ScrollToTopAppBarTitle({
     super.key,
     required this.title,
-    required this.controller,
-  });
+    this.controller,
+    this.onScrollToTop,
+  }) : assert(controller != null || onScrollToTop != null);
 
   final String title;
-  final ScrollController controller;
+  final ScrollController? controller;
+
+  /// 供拥有多个内部滚动列表的页面将双击操作转发到当前列表。
+  final VoidCallback? onScrollToTop;
+
+  void _scrollToTop() {
+    final callback = onScrollToTop;
+    if (callback != null) {
+      callback();
+      return;
+    }
+    final scrollController = controller!;
+    if (!scrollController.hasClients || scrollController.offset <= 0) return;
+    scrollController.animateTo(
+      0,
+      duration: const Duration(milliseconds: 200),
+      curve: Curves.easeOutCubic,
+    );
+  }
 
   @override
   Widget build(BuildContext context) => GestureDetector(
     behavior: HitTestBehavior.translucent,
-    onDoubleTap: () {
-      if (!controller.hasClients || controller.offset <= 0) return;
-      controller.animateTo(
-        0,
-        duration: const Duration(milliseconds: 200),
-        curve: Curves.easeOutCubic,
-      );
-    },
+    onDoubleTap: _scrollToTop,
     child: SizedBox(
       width: double.infinity,
       child: Align(alignment: Alignment.centerLeft, child: Text(title)),

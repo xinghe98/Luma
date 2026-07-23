@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/theme.dart';
 import '../../../shared/formatters/duration_formatter.dart';
 import '../player_controller.dart';
 
@@ -10,17 +11,19 @@ class PlayerTimeline extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final onInk = context.luma.onPlayerInk;
     final durationMs = controller.duration.inMilliseconds.toDouble();
     final positionMs = controller.position.inMilliseconds.clamp(
       0,
       controller.duration.inMilliseconds,
     );
+    final timeStyle = Theme.of(context).textTheme.labelMedium?.copyWith(
+      color: onInk,
+      fontFeatures: const [FontFeature.tabularFigures()],
+    );
     return Row(
       children: [
-        Text(
-          formatDuration(controller.position),
-          style: const TextStyle(color: Colors.white),
-        ),
+        Text(formatDuration(controller.position), style: timeStyle),
         Expanded(
           child: Slider(
             value: durationMs <= 0 ? 0 : positionMs.toDouble(),
@@ -31,10 +34,7 @@ class PlayerTimeline extends StatelessWidget {
             onChangeEnd: (_) => controller.commitScrub(),
           ),
         ),
-        Text(
-          formatDuration(controller.duration),
-          style: const TextStyle(color: Colors.white),
-        ),
+        Text(formatDuration(controller.duration), style: timeStyle),
       ],
     );
   }

@@ -70,11 +70,6 @@ func (b *bootstrap) build(ctx context.Context) (*App, error) {
 	if created {
 		b.logger.Info("API token file created", "path", b.config.Security.APITokenFile)
 	}
-	authenticator, err := security.NewTokenAuthenticator(token)
-	if err != nil {
-		return nil, fmt.Errorf("create API authenticator: %w", err)
-	}
-
 	systemService, err := service.NewSystemService(b.version, database)
 	if err != nil {
 		return nil, fmt.Errorf("create system service: %w", err)
@@ -83,6 +78,14 @@ func (b *bootstrap) build(ctx context.Context) (*App, error) {
 	if err != nil {
 		return nil, fmt.Errorf("创建媒体源 Repository: %w", err)
 	}
+	accessRepository, err := dbrepo.NewAccessRepository(database)
+	if err != nil {
+		return nil, fmt.Errorf("创建访问控制 Repository: %w", err)
+	}
+	authenticator, err := security.NewAccessAuthenticator(token, accessRepository)
+	if err != nil {
+		return nil, fmt.Errorf("create API authenticator: %w", err)
+	}
 	scanRepository, err := dbrepo.NewScanRepository(database)
 	if err != nil {
 		return nil, fmt.Errorf("创建扫描 Repository: %w", err)
@@ -90,6 +93,10 @@ func (b *bootstrap) build(ctx context.Context) (*App, error) {
 	mediaRepository, err := dbrepo.NewMediaRepository(database)
 	if err != nil {
 		return nil, fmt.Errorf("创建媒体 Repository: %w", err)
+	}
+	catalogRepository, err := dbrepo.NewCatalogRepository(database)
+	if err != nil {
+		return nil, fmt.Errorf("创建作品库 Repository: %w", err)
 	}
 	userDataRepository, err := dbrepo.NewUserDataRepository(database)
 	if err != nil {
@@ -105,11 +112,20 @@ func (b *bootstrap) build(ctx context.Context) (*App, error) {
 	}
 	ids := platform.SecureIDGenerator{}
 	clock := platform.RealClock{}
+	catalogService, err := service.NewCatalogService(catalogRepository, clock)
+	if err != nil {
+		return nil, fmt.Errorf("创建作品库服务: %w", err)
+	}
+	accessService, err := service.NewAccessService(accessRepository, ids, clock)
+	if err != nil {
+		return nil, fmt.Errorf("创建访问控制服务: %w", err)
+	}
 	localFactory, err := storage.NewLocalFactory(platform.OSFileIdentifier{}, clock)
 	if err != nil {
 		return nil, fmt.Errorf("创建本地媒体源工厂: %w", err)
 	}
-	workerGroup, scanSignal, err := b.buildWorkers(database, sourceRepository, scanRepository, localFactory, ids, clock)
+	catalogSignal := jobs.NewSignal()
+	workerGroup, scanSignal, err := b.buildWorkers(database, sourceRepository, scanRepository, localFactory, ids, clock, catalogSignal)
 	if err != nil {
 		return nil, err
 	}
@@ -136,6 +152,13 @@ func (b *bootstrap) build(ctx context.Context) (*App, error) {
 	mediaService, err := service.NewMediaService(mediaRepository, thumbnailStore)
 	if err != nil {
 		return nil, fmt.Errorf("创建媒体服务: %w", err)
+	}
+	catalogSynchronizer, err := jobs.NewCatalogSynchronizer(catalogService, catalogSignal, b.logger)
+	if err != nil {
+		return nil, fmt.Errorf("创建作品库后台整理器: %w", err)
+	}
+	if err := workerGroup.Add(catalogSynchronizer); err != nil {
+		return nil, fmt.Errorf("注册作品库后台整理器: %w", err)
 	}
 	streamService, err := service.NewStreamService(mediaRepository, localFactory)
 	if err != nil {
@@ -169,6 +192,14 @@ func (b *bootstrap) build(ctx context.Context) (*App, error) {
 	if err != nil {
 		return nil, fmt.Errorf("创建媒体 Handler: %w", err)
 	}
+	catalogHandler, err := handler.NewCatalogHandler(catalogService)
+	if err != nil {
+		return nil, fmt.Errorf("创建作品库 Handler: %w", err)
+	}
+	accessHandler, err := handler.NewAccessHandler(accessService)
+	if err != nil {
+		return nil, fmt.Errorf("创建访问控制 Handler: %w", err)
+	}
 	streamHandler, err := handler.NewStreamHandler(streamService)
 	if err != nil {
 		return nil, fmt.Errorf("创建原始媒体 Handler: %w", err)
@@ -185,7 +216,8 @@ func (b *bootstrap) build(ctx context.Context) (*App, error) {
 		Logger: b.logger, AllowedOrigins: b.config.Security.AllowedOrigins,
 		Health: healthHandler, System: systemHandler, Sources: sourceHandler,
 		Scans: scanHandler, Media: mediaHandler, Stream: streamHandler,
-		UserData: userDataHandler, Tags: tagHandler, Authenticator: authenticator,
+		UserData: userDataHandler, Tags: tagHandler, Catalog: catalogHandler, Access: accessHandler,
+		Authenticator: authenticator,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("create router: %w", err)

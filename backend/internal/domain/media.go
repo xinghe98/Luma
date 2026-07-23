@@ -40,6 +40,8 @@ type Media struct {
 	ID string
 	// SourceID 是媒体来源标识。
 	SourceID string
+	// LibraryKind 是来源的内容组织类型，用于客户端严格隔离文件库与作品库。
+	LibraryKind string
 	// Filename 是媒体文件名。
 	Filename string
 	// Title 是媒体展示标题。
@@ -116,6 +118,8 @@ type MediaListQuery struct {
 	Search string
 	// MediaType 是媒体类型筛选值。
 	MediaType string
+	// LibraryKind 是来源类型筛选值。
+	LibraryKind string
 	// Favorite 是可选收藏状态筛选。
 	Favorite *bool
 	// TagID 是当前用户的标签筛选。
@@ -140,6 +144,8 @@ type MediaListRequest struct {
 	Query string
 	// MediaType 是原始媒体类型筛选值。
 	MediaType string
+	// LibraryKind 是原始来源类型筛选值。
+	LibraryKind string
 	// Favorite 是可选收藏状态筛选。
 	Favorite *bool
 	// TagID 是原始标签筛选。

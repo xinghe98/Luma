@@ -2,6 +2,8 @@
 import 'package:dio/dio.dart';
 
 import 'api_exception.dart';
+import 'api_session.dart';
+import 'api_session_interceptor.dart';
 
 final class ApiClient {
   ApiClient(this._dio, {String apiPrefix = defaultApiPrefix})
@@ -11,6 +13,17 @@ final class ApiClient {
 
   final Dio _dio;
   final String _apiPrefix;
+
+  /// Creates a short-lived client bound to [session] without changing the
+  /// application's shared interceptor. Connection probes use this so an old
+  /// request can never redirect in-flight traffic to another server.
+  ApiClient isolatedFor(ApiSession session) {
+    final dio = Dio(_dio.options.copyWith(baseUrl: ''))
+      ..interceptors.add(ApiSessionInterceptor(session));
+    return ApiClient(dio, apiPrefix: _apiPrefix);
+  }
+
+  void close() => _dio.close(force: true);
 
   Future<Map<String, dynamic>> getHealth() => _json('GET', '/health');
 
@@ -51,6 +64,7 @@ final class ApiClient {
   Future<Map<String, dynamic>> getMedia({
     String? query,
     String? type,
+    String? libraryKind,
     bool? favorite,
     String? tagId,
     String? watchStatus,
@@ -64,6 +78,7 @@ final class ApiClient {
     queryParameters: {
       'q': ?query,
       'type': ?type,
+      'library_kind': ?libraryKind,
       'favorite': ?favorite,
       'tag_id': ?tagId,
       'watch_status': ?watchStatus,
@@ -83,8 +98,103 @@ final class ApiClient {
     queryParameters: {'cursor': ?cursor, 'limit': ?limit},
   );
 
+  Future<Map<String, dynamic>> getMediaCount({
+    String? query,
+    String? type,
+    String? libraryKind,
+    bool? favorite,
+    String? tagId,
+    String? watchStatus,
+  }) => _json(
+    'GET',
+    _api('/media/count'),
+    queryParameters: {
+      'q': ?query,
+      'type': ?type,
+      'library_kind': ?libraryKind,
+      'favorite': ?favorite,
+      'tag_id': ?tagId,
+      'watch_status': ?watchStatus,
+    },
+  );
+
   Future<Map<String, dynamic>> getMediaDetail(String id) =>
       _json('GET', _api('/media/${_segment(id)}'));
+
+  Future<Map<String, dynamic>> getCatalog({String? kind, String? query}) =>
+      _json(
+        'GET',
+        _api('/catalog'),
+        queryParameters: {'kind': ?kind, 'q': ?query},
+      );
+
+  Future<Map<String, dynamic>> getCatalogDetail(String id) =>
+      _json('GET', _api('/catalog/${_segment(id)}'));
+
+  Future<Map<String, dynamic>> getCatalogIssues() =>
+      _json('GET', _api('/catalog/issues'));
+
+  Future<void> updateCatalogMatch(
+    String mediaId,
+    Map<String, dynamic> data,
+  ) async {
+    await _empty(
+      'PATCH',
+      _api('/catalog/media/${_segment(mediaId)}'),
+      data: data,
+    );
+  }
+
+  Future<Map<String, dynamic>> getAccessUsers() =>
+      _json('GET', _api('/admin/users'));
+
+  Future<Map<String, dynamic>> createAccessUser(
+    String name, {
+    String? requestId,
+  }) => _json(
+    'POST',
+    _api('/admin/users'),
+    data: {'name': name, 'request_id': ?requestId},
+  );
+
+  Future<Map<String, dynamic>> updateAccessUser(
+    String id,
+    Map<String, dynamic> changes,
+  ) => _json('PATCH', _api('/admin/users/${_segment(id)}'), data: changes);
+
+  Future<Map<String, dynamic>> getAccessTokens(String userId) =>
+      _json('GET', _api('/admin/users/${_segment(userId)}/tokens'));
+
+  Future<Map<String, dynamic>> issueAccessToken(
+    String userId,
+    Map<String, dynamic> data, {
+    String? requestId,
+  }) => _json(
+    'POST',
+    _api('/admin/users/${_segment(userId)}/tokens'),
+    data: {...data, 'request_id': ?requestId},
+  );
+
+  Future<void> revokeAccessToken(String id) async {
+    await _empty('DELETE', _api('/admin/tokens/${_segment(id)}'));
+  }
+
+  Future<Map<String, dynamic>> getAccessGrants(String userId) =>
+      _json('GET', _api('/admin/users/${_segment(userId)}/sources'));
+
+  Future<void> grantAccessSource(String userId, String sourceId) async {
+    await _empty(
+      'PUT',
+      _api('/admin/users/${_segment(userId)}/sources/${_segment(sourceId)}'),
+    );
+  }
+
+  Future<void> revokeAccessSource(String userId, String sourceId) async {
+    await _empty(
+      'DELETE',
+      _api('/admin/users/${_segment(userId)}/sources/${_segment(sourceId)}'),
+    );
+  }
 
   String thumbnailPath(String id) => _api('/media/${_segment(id)}/thumbnail');
 
@@ -235,10 +345,12 @@ final class ApiClient {
     String method,
     String path, {
     Map<String, dynamic>? headers,
+    Object? data,
   }) async {
     try {
       return await _dio.request<void>(
         path,
+        data: data,
         options: Options(
           method: method,
           headers: headers,

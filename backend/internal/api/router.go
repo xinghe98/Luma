@@ -35,6 +35,10 @@ type RouterParams struct {
 	UserData *handler.UserDataHandler
 	// Tags 处理用户私有标签请求。
 	Tags *handler.TagHandler
+	// Catalog 处理电影、剧集和待整理文件。
+	Catalog *handler.CatalogHandler
+	// Access 处理管理员成员、令牌和媒体源授权接口。
+	Access *handler.AccessHandler
 	// Authenticator 验证 API Bearer Token。
 	Authenticator middleware.BearerAuthenticator
 }
@@ -44,7 +48,7 @@ func NewRouter(params RouterParams) (http.Handler, error) {
 	if params.Logger == nil {
 		return nil, errors.New("logger is required")
 	}
-	if params.Health == nil || params.System == nil || params.Sources == nil || params.Scans == nil || params.Media == nil || params.Stream == nil || params.UserData == nil || params.Tags == nil {
+	if params.Health == nil || params.System == nil || params.Sources == nil || params.Scans == nil || params.Media == nil || params.Stream == nil || params.UserData == nil || params.Tags == nil || params.Catalog == nil || params.Access == nil {
 		return nil, errors.New("HTTP Handler 依赖不能为空")
 	}
 	if params.Authenticator == nil {
@@ -71,15 +75,12 @@ func NewRouter(params RouterParams) (http.Handler, error) {
 	v1.Use(middleware.TokenAuth(params.Authenticator))
 	v1.GET("/system/info", params.System.Info)
 	v1.GET("/sources", params.Sources.List)
-	v1.POST("/sources", params.Sources.Create)
-	v1.PATCH("/sources/:id", params.Sources.Update)
-	v1.DELETE("/sources/:id", params.Sources.Delete)
-	v1.POST("/sources/:id/scan", params.Scans.Start)
-	v1.GET("/scan-jobs/latest", params.Scans.Latest)
-	v1.GET("/scan-jobs/:id", params.Scans.Get)
 	v1.GET("/media", params.Media.List)
+	v1.GET("/media/count", params.Media.Count)
 	v1.GET("/media/continue-watching", params.Media.ContinueWatching)
 	v1.GET("/media/:id", params.Media.Get)
+	v1.GET("/catalog", params.Catalog.List)
+	v1.GET("/catalog/:id", params.Catalog.Get)
 	v1.GET("/media/:id/thumbnail", params.Media.Thumbnail)
 	v1.GET("/media/:id/stream", params.Stream.Stream)
 	v1.HEAD("/media/:id/stream", params.Stream.Stream)
@@ -93,9 +94,30 @@ func NewRouter(params RouterParams) (http.Handler, error) {
 	v1.PATCH("/tags/:id", params.Tags.Update)
 	v1.DELETE("/tags/:id", params.Tags.Delete)
 
+	admin := v1.Group("")
+	admin.Use(middleware.RequireAdmin())
+	admin.POST("/sources", params.Sources.Create)
+	admin.PATCH("/sources/:id", params.Sources.Update)
+	admin.DELETE("/sources/:id", params.Sources.Delete)
+	admin.POST("/sources/:id/scan", params.Scans.Start)
+	admin.GET("/scan-jobs/latest", params.Scans.Latest)
+	admin.GET("/scan-jobs/:id", params.Scans.Get)
+	admin.GET("/catalog/issues", params.Catalog.Issues)
+	admin.PATCH("/catalog/media/:id", params.Catalog.UpdateMatch)
+	admin.GET("/admin/users", params.Access.ListUsers)
+	admin.POST("/admin/users", params.Access.CreateUser)
+	admin.PATCH("/admin/users/:id", params.Access.UpdateUser)
+	admin.GET("/admin/users/:id/tokens", params.Access.ListTokens)
+	admin.POST("/admin/users/:id/tokens", params.Access.IssueToken)
+	admin.DELETE("/admin/tokens/:id", params.Access.RevokeToken)
+	admin.GET("/admin/users/:id/sources", params.Access.ListGrants)
+	admin.PUT("/admin/users/:id/sources/:sourceId", params.Access.GrantSource)
+	admin.DELETE("/admin/users/:id/sources/:sourceId", params.Access.RevokeSource)
+
 	secureFallback := func(status int, code, message string) gin.HandlerFunc {
 		return func(c *gin.Context) {
-			if strings.HasPrefix(c.Request.URL.Path, "/api/") && !params.Authenticator.AuthenticateAuthorization(c.GetHeader("Authorization")) {
+			_, authenticated := params.Authenticator.AuthenticateAuthorization(c.Request.Context(), c.GetHeader("Authorization"))
+			if strings.HasPrefix(c.Request.URL.Path, "/api/") && !authenticated {
 				c.Header("WWW-Authenticate", "Bearer")
 				response.Error(c, http.StatusUnauthorized, "UNAUTHORIZED", "valid bearer token required", nil)
 				return

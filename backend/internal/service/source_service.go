@@ -63,6 +63,21 @@ func (s *SourceService) List(ctx context.Context) ([]domain.Source, error) {
 	return s.repository.List(ctx)
 }
 
+// ListVisible 是面向 API 身份的来源列表，后台任务继续使用 List。
+func (s *SourceService) ListVisible(ctx context.Context, userID string) ([]domain.Source, error) {
+	if strings.TrimSpace(userID) == "" {
+		return nil, domain.ErrUnauthorized
+	}
+	visible, ok := s.repository.(interface {
+		ListVisible(context.Context, string) ([]domain.Source, error)
+	})
+	if !ok {
+		// 测试替身和旧的仓储实现保持兼容；生产 SQLite 实现始终走授权查询。
+		return s.repository.List(ctx)
+	}
+	return visible.ListVisible(ctx, userID)
+}
+
 // Get 返回指定媒体源，供 Handler 和后台 Worker 使用。
 func (s *SourceService) Get(ctx context.Context, id string) (domain.Source, error) {
 	return s.repository.Get(ctx, id)
@@ -78,13 +93,20 @@ func (s *SourceService) Create(ctx context.Context, command domain.CreateSourceC
 	if err != nil {
 		return domain.Source{}, fmt.Errorf("%w: %v", domain.ErrForbiddenPath, err)
 	}
+	libraryKind := domain.LibraryKindPersonal
+	if strings.TrimSpace(command.LibraryKind) != "" {
+		libraryKind, err = validateLibraryKind(command.LibraryKind)
+		if err != nil {
+			return domain.Source{}, err
+		}
+	}
 	id, err := s.ids.New("source")
 	if err != nil {
 		return domain.Source{}, err
 	}
 	now := s.clock.Now()
 	source := domain.Source{
-		ID: id, Name: name, Type: domain.SourceTypeLocal, RootPath: root,
+		ID: id, Name: name, Type: domain.SourceTypeLocal, LibraryKind: libraryKind, RootPath: root,
 		Enabled: true, Status: domain.SourceStatusOnline, CreatedAt: now, UpdatedAt: now,
 	}
 	if err := s.repository.Create(ctx, source); err != nil {
@@ -129,11 +151,28 @@ func (s *SourceService) Update(ctx context.Context, command domain.UpdateSourceC
 			source.Status = domain.SourceStatusDisabled
 		}
 	}
+	if command.LibraryKind != nil {
+		kind, validationErr := validateLibraryKind(*command.LibraryKind)
+		if validationErr != nil {
+			return domain.Source{}, validationErr
+		}
+		source.LibraryKind = kind
+	}
 	source.UpdatedAt = s.clock.Now()
 	if err := s.repository.Update(ctx, source); err != nil {
 		return domain.Source{}, err
 	}
 	return source, nil
+}
+
+func validateLibraryKind(value string) (string, error) {
+	kind := strings.TrimSpace(value)
+	switch kind {
+	case domain.LibraryKindPersonal, domain.LibraryKindMovies, domain.LibraryKindTV:
+		return kind, nil
+	default:
+		return "", fmt.Errorf("%w: library_kind 必须是 personal、movies 或 tv", domain.ErrInvalidRequest)
+	}
 }
 
 // Delete 软删除媒体源，释放根路径占用，并保留媒体索引及用户数据。

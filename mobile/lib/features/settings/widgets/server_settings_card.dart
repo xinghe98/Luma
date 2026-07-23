@@ -13,6 +13,7 @@ class ServerSettingsCard extends StatelessWidget {
     required this.mediaCount,
     required this.onScanComplete,
     required this.onEditAlias,
+    this.canScan = true,
   });
 
   final ServerProfile server;
@@ -20,6 +21,7 @@ class ServerSettingsCard extends StatelessWidget {
   final int mediaCount;
   final VoidCallback onScanComplete;
   final VoidCallback onEditAlias;
+  final bool canScan;
 
   @override
   Widget build(BuildContext context) {
@@ -86,7 +88,10 @@ class ServerSettingsCard extends StatelessWidget {
               ),
             ],
           ),
-          const Divider(height: 28),
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: LumaSpacing.sm),
+            child: Divider(height: 1),
+          ),
           Row(
             children: [
               _Metric(label: '媒体源', value: '${server.sourceCount}'),
@@ -105,26 +110,27 @@ class ServerSettingsCard extends StatelessWidget {
             const SizedBox(height: LumaSpacing.md),
             LinearProgressIndicator(
               value: settings.scanProgress,
-              borderRadius: BorderRadius.circular(2),
+              borderRadius: BorderRadius.circular(LumaRadii.badge),
             ),
           ],
           const SizedBox(height: LumaSpacing.md),
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton.tonalIcon(
-              onPressed: settings.isScanning
-                  ? null
-                  : () => settings.startScan(onComplete: onScanComplete),
-              icon: const Icon(Icons.sync_rounded),
-              label: Text(
-                settings.isScanning
-                    ? '正在扫描'
-                    : settings.scanError?.contains('中断') == true
-                    ? '重新扫描'
-                    : '手动扫描',
+          if (canScan)
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.tonalIcon(
+                onPressed: settings.isScanning
+                    ? null
+                    : () => settings.startScan(onComplete: onScanComplete),
+                icon: const Icon(Icons.sync_rounded),
+                label: Text(
+                  settings.isScanning
+                      ? '正在扫描'
+                      : settings.scanError?.contains('中断') == true
+                      ? '重新扫描'
+                      : '手动扫描',
+                ),
               ),
             ),
-          ),
         ],
       ),
     );

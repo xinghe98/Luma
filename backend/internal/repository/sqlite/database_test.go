@@ -36,8 +36,8 @@ func TestOpenMigratesAndCreatesDefaultUser(t *testing.T) {
 	if err := db.QueryRow("SELECT MAX(version) FROM schema_migrations").Scan(&version); err != nil {
 		t.Fatal(err)
 	}
-	if version != 8 {
-		t.Fatalf("migration version = %d, want 8", version)
+	if version != 12 {
+		t.Fatalf("migration version = %d, want 12", version)
 	}
 	for _, table := range []string{"media_user_data", "tags"} {
 		var columns int
@@ -56,6 +56,46 @@ func TestOpenMigratesAndCreatesDefaultUser(t *testing.T) {
 		if indexes != 1 {
 			t.Fatalf("index %s missing", index)
 		}
+	}
+}
+
+func TestImageLibraryMigrationConvertsLegacyPhotoSources(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "image-library-upgrade.db")
+	db, err := sql.Open("sqlite", "file:"+escapeSQLitePath(path)+"?_pragma=foreign_keys(1)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`CREATE TABLE schema_migrations(version INTEGER PRIMARY KEY, applied_at_ms INTEGER NOT NULL)`); err != nil {
+		t.Fatal(err)
+	}
+	for _, migration := range allMigrations[:10] {
+		if _, err := db.Exec(migration.sql); err != nil {
+			t.Fatalf("apply %s: %v", migration.name, err)
+		}
+		if _, err := db.Exec(`INSERT INTO schema_migrations(version, applied_at_ms) VALUES(?, 1)`, migration.version); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := db.Exec(`INSERT INTO sources(id,name,source_type,library_kind,root_path,enabled,status,created_at_ms,updated_at_ms)
+        VALUES('photos','图片','local','photos','/photos',1,'online',1,1)`); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	upgraded, err := Open(ctx, config.DatabaseConfig{Path: path, BusyTimeoutMS: 1000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer upgraded.Close()
+	var kind string
+	if err := upgraded.QueryRow(`SELECT library_kind FROM sources WHERE id='photos'`).Scan(&kind); err != nil {
+		t.Fatal(err)
+	}
+	if kind != "personal" {
+		t.Fatalf("legacy source kind = %q, want personal", kind)
 	}
 }
 

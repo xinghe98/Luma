@@ -47,7 +47,7 @@ void main() {
     expect(find.byType(SliverLayoutBuilder), findsNothing);
   });
 
-  testWidgets('瓷砖按物理宽高解码且不创建第二套网络占位图', (tester) async {
+  testWidgets('瓷砖按物理边界等比例解码且不创建第二套网络占位图', (tester) async {
     tester.view.devicePixelRatio = 3;
     addTearDown(tester.view.resetDevicePixelRatio);
 
@@ -70,6 +70,7 @@ void main() {
     );
     expect(image.cacheWidth, 600);
     expect(image.cacheHeight, 800);
+    expect(image.resizePolicy, ResizeImagePolicy.fit);
     expect(find.byType(MediaArtwork), findsNothing);
   });
 

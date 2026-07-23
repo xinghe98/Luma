@@ -24,6 +24,11 @@ final class ApiMediaRepository
   final TagDecoder _tagDecoder = const TagDecoder();
   final Map<String, MediaItem> _items = {};
 
+  // Keep detail/user-data cache bounded while library pages stream in. The UI
+  // owns its visible page list, so retaining every remote item here only
+  // creates a silent session-long memory climb.
+  static const _maxCachedItems = 512;
+
   @override
   void clearSessionCache() => _items.clear();
 
@@ -54,6 +59,7 @@ final class ApiMediaRepository
       await _client.getMedia(
         query: filter.text.trim().isEmpty ? null : filter.text.trim(),
         type: filter.type?.name,
+        libraryKind: filter.libraryKind,
         favorite: filter.favoritesOnly ? true : null,
         tagId: filter.tagId,
         watchStatus: _watchStatus(filter.watchStatus),
@@ -73,22 +79,11 @@ final class ApiMediaRepository
 
   @override
   Future<int> countMedia({MediaType? type}) async {
-    var total = 0;
-    String? cursor;
-    do {
-      final page = _mediaDecoder.decodePage(
-        await _client.getMedia(
-          type: type?.name,
-          sort: 'created_at',
-          order: 'desc',
-          cursor: cursor,
-          limit: 100,
-        ),
-      );
-      total += page.items.length;
-      cursor = page.nextCursor;
-    } while (cursor != null);
-    return total;
+    final response = await _client.getMediaCount(type: type?.name);
+    final raw = response['count'];
+    if (raw is int && raw >= 0) return raw;
+    if (raw is num && raw >= 0) return raw.toInt();
+    throw const FormatException('媒体总数响应无效');
   }
 
   @override
@@ -180,6 +175,7 @@ final class ApiMediaRepository
       _items
         ..clear()
         ..addAll(next);
+      _trimCache();
     } else {
       for (final summary in summaries) {
         result.add(_rememberSummary(summary));
@@ -251,6 +247,7 @@ final class ApiMediaRepository
       originalUrl: value.originalUrl,
       mimeType: existing?.mimeType ?? '',
       sourceId: existing?.sourceId ?? '',
+      libraryKind: value.libraryKind,
       videoCodec: existing?.videoCodec ?? '',
       audioCodec: existing?.audioCodec ?? '',
       bitrate: existing?.bitrate ?? 0,
@@ -301,8 +298,17 @@ final class ApiMediaRepository
   }
 
   MediaItem _remember(MediaItem item) {
+    // Reinserting moves a recently used item to the end of insertion order.
+    _items.remove(item.id);
     _items[item.id] = item;
+    _trimCache();
     return item;
+  }
+
+  void _trimCache() {
+    while (_items.length > _maxCachedItems) {
+      _items.remove(_items.keys.first);
+    }
   }
 
   MediaItem _requiredItem(String id) {

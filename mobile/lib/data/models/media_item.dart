@@ -25,6 +25,7 @@ class MediaItem {
     this.mimeType = '',
     this.sourceId = '',
     this.sourceName = '',
+    this.libraryKind = 'personal',
     this.videoCodec = '',
     this.audioCodec = '',
     this.bitrate = 0,
@@ -57,6 +58,7 @@ class MediaItem {
   final String mimeType;
   final String sourceId;
   final String sourceName;
+  final String libraryKind;
   final String videoCodec;
   final String audioCodec;
   final int bitrate;
@@ -93,6 +95,7 @@ class MediaItem {
     String? mimeType,
     String? sourceId,
     String? sourceName,
+    String? libraryKind,
     String? videoCodec,
     String? audioCodec,
     int? bitrate,
@@ -126,6 +129,7 @@ class MediaItem {
       mimeType: mimeType ?? this.mimeType,
       sourceId: sourceId ?? this.sourceId,
       sourceName: sourceName ?? this.sourceName,
+      libraryKind: libraryKind ?? this.libraryKind,
       videoCodec: videoCodec ?? this.videoCodec,
       audioCodec: audioCodec ?? this.audioCodec,
       bitrate: bitrate ?? this.bitrate,

@@ -9,6 +9,8 @@ class ServerProfile {
     this.platform,
     this.architecture,
     this.database,
+    this.userRole = 'admin',
+    this.capabilities = const [],
   });
 
   final String name;
@@ -20,6 +22,11 @@ class ServerProfile {
   final String? platform;
   final String? architecture;
   final String? database;
+  final String userRole;
+  final List<String> capabilities;
+
+  bool can(String capability) =>
+      capabilities.isEmpty || capabilities.contains(capability);
 
   ServerProfile copyWith({String? name}) => ServerProfile(
     name: name ?? this.name,
@@ -31,5 +38,7 @@ class ServerProfile {
     platform: platform,
     architecture: architecture,
     database: database,
+    userRole: userRole,
+    capabilities: capabilities,
   );
 }

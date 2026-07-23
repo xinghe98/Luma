@@ -24,7 +24,12 @@ class RecentMediaSection extends StatelessWidget {
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: LumaLayout.contentMaxWidth),
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
+          padding: const EdgeInsets.fromLTRB(
+            LumaLayout.pagePaddingH,
+            LumaSpacing.sm,
+            LumaLayout.pagePaddingH,
+            LumaSpacing.xl,
+          ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [

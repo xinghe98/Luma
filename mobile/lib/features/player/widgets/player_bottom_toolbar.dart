@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/theme.dart';
 import '../player_controller.dart';
 
 class PlayerBottomToolbar extends StatelessWidget {
@@ -14,12 +15,13 @@ class PlayerBottomToolbar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final extras = context.luma;
     return Row(
       children: [
         IconButton(
           tooltip: '锁定控制',
           onPressed: () => controller.setLocked(true),
-          icon: const Icon(Icons.lock_open_rounded, color: Colors.white),
+          icon: Icon(Icons.lock_open_rounded, color: extras.onPlayerInk),
         ),
         const Spacer(),
         PopupMenuButton<double>(
@@ -33,12 +35,11 @@ class PlayerBottomToolbar extends StatelessWidget {
               )
               .toList(),
           child: Padding(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.all(LumaSpacing.sm),
             child: Text(
               '${controller.speed}x',
-              style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.w600,
+              style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                color: extras.onPlayerInk,
               ),
             ),
           ),
@@ -48,7 +49,9 @@ class PlayerBottomToolbar extends StatelessWidget {
           onPressed: onRotate,
           icon: Icon(
             Icons.screen_rotation_alt_rounded,
-            color: onRotate == null ? Colors.white38 : Colors.white,
+            color: onRotate == null
+                ? extras.onPlayerInk.withValues(alpha: 0.38)
+                : extras.onPlayerInk,
           ),
         ),
       ],

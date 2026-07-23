@@ -66,6 +66,12 @@ List<MediaItem> buildMediaFixtures() {
       id: 'image-$index',
       title: imageTitles[index],
       type: MediaType.image,
+      // 图片来自不同视频用途的来源，也应统一进入图片库。
+      libraryKind: switch (index % 3) {
+        0 => 'personal',
+        1 => 'movies',
+        _ => 'tv',
+      },
       duration: Duration.zero,
       resolution: index.isEven ? '6000 × 4000' : '3024 × 4032',
       format: index % 3 == 0 ? 'PNG' : 'JPG',

@@ -14,6 +14,10 @@ const (
 	SourceStatusDegraded = "degraded"
 	// SourceStatusDisabled 表示用户禁用，对应 sources.status = disabled。
 	SourceStatusDisabled = "disabled"
+
+	LibraryKindPersonal = "personal"
+	LibraryKindMovies   = "movies"
+	LibraryKindTV       = "tv"
 )
 
 // Source 表示经过安全校验的媒体来源，对应 sources 表。
@@ -24,6 +28,8 @@ type Source struct {
 	Name string
 	// Type 对应 sources.source_type，V1 固定为 local。
 	Type string
+	// LibraryKind 决定该来源中视频按个人视频、电影或电视剧组织。
+	LibraryKind string
 	// RootPath 对应 sources.root_path，仅服务端内部使用的真实根目录，API 响应不得返回。
 	RootPath string
 	// Enabled 对应 sources.enabled，是否参与默认查询与扫描。
@@ -46,6 +52,8 @@ type CreateSourceCommand struct {
 	Name string
 	// RootPath 将写入 sources.root_path，须通过白名单校验。
 	RootPath string
+	// LibraryKind 为空时使用 personal；图片始终按文件类型进入图片库。
+	LibraryKind string
 }
 
 // UpdateSourceCommand 表示媒体源的部分更新输入（非表行）。
@@ -58,4 +66,6 @@ type UpdateSourceCommand struct {
 	RootPath *string
 	// Enabled 非空时更新 sources.enabled。
 	Enabled *bool
+	// LibraryKind 非空时更新目录中视频的组织方式。
+	LibraryKind *string
 }
