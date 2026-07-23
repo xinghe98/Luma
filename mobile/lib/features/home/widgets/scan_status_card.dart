@@ -21,10 +21,12 @@ class ScanStatusCard extends StatelessWidget {
         final progress = settings.scanProgress ?? 0;
         final percent = (progress * 100).round();
         final count = media.items.length;
-        final error = settings.scanError;
+        final isProblem = settings.hasScanProblem;
         return SurfaceCard(
           onTap: () => context.showLumaSnack(
-            scanning ? '正在扫描媒体源：$percent%' : error ?? '媒体库已同步，共 $count 个项目',
+            scanning
+                ? '${settings.scanStatusLabel}：$percent%'
+                : settings.scanStatusDetails,
           ),
           child: Row(
             children: [
@@ -38,10 +40,10 @@ class ScanStatusCard extends StatelessWidget {
                 )
               else
                 Icon(
-                  error == null
+                  !isProblem
                       ? Icons.check_circle_outline_rounded
                       : Icons.error_outline_rounded,
-                  color: error == null
+                  color: !isProblem
                       ? context.luma.success
                       : context.luma.warning,
                 ),
@@ -51,18 +53,16 @@ class ScanStatusCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      scanning
-                          ? '正在扫描媒体源'
-                          : error == null
-                          ? '媒体库已就绪'
-                          : '扫描失败',
+                      settings.scanStatusLabel,
                       style: Theme.of(context).textTheme.titleSmall,
                     ),
                     const SizedBox(height: LumaSpacing.xxs),
                     Text(
                       scanning
-                          ? '已完成 $percent% · 轻触查看状态'
-                          : error ?? '共 $count 个项目 · 轻触查看状态',
+                          ? '${settings.scanStatusDetails} · $percent%'
+                          : settings.scanJobs.isEmpty
+                          ? '媒体库共 $count 个项目 · 轻触查看状态'
+                          : settings.scanStatusDetails,
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
                         color: Theme.of(context).colorScheme.onSurfaceVariant,
                       ),

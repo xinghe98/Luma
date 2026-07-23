@@ -12,6 +12,7 @@ import 'package:luma/data/models/media_types.dart';
 import 'package:luma/data/models/media_item.dart';
 import 'package:luma/data/models/server_profile.dart';
 import 'package:luma/data/models/api_scan.dart';
+import 'package:luma/data/models/api_tag.dart';
 import 'package:luma/data/repositories/scan_repository.dart';
 import 'package:luma/data/storage/credential_store.dart';
 import 'package:luma/data/storage/server_alias_store.dart';
@@ -38,6 +39,31 @@ void main() {
     expect(session.isConnected, isTrue);
     expect(media.items.length, 32);
   });
+
+  test(
+    'member connection does not restore administrator-only scan status',
+    () async {
+      final scans = _CountingScanRepository();
+      final dependencies = AppDependencies(
+        mediaRepository: MockMediaRepository(),
+        connectionService: _MemberConnectionService(),
+        settingsController: SettingsController(scanRepository: scans),
+      );
+      addTearDown(dependencies.dispose);
+
+      expect(
+        await dependencies.connection.restore(
+          'http://server.local',
+          'member-token',
+        ),
+        isTrue,
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 700));
+
+      expect(scans.latestAllCalls, 0);
+      expect(dependencies.settings.scanError, isNull);
+    },
+  );
 
   test(
     'restored connection cancels stale background sync after reset',
@@ -186,20 +212,44 @@ void main() {
     expect(media.continueWatching.any((entry) => entry.id == item.id), isFalse);
   });
 
-  test('catalog count is single-flight and stale responses cannot repopulate', () async {
-    final repository = _BlockingCountMediaRepository();
-    final media = MediaController(repository);
-    final first = media.refreshCatalogCount();
-    final second = media.refreshCatalogCount();
-    expect(repository.countCalls, 1);
+  test(
+    'catalog count is single-flight and stale responses cannot repopulate',
+    () async {
+      final repository = _BlockingCountMediaRepository();
+      final media = MediaController(repository);
+      final first = media.refreshCatalogCount();
+      final second = media.refreshCatalogCount();
+      expect(repository.countCalls, 1);
 
-    media.clear();
-    repository.completeCount(99);
-    await Future.wait([first, second]);
+      media.clear();
+      repository.completeCount(99);
+      await Future.wait([first, second]);
 
-    expect(media.catalogCount, 0);
-    media.dispose();
-  });
+      expect(media.catalogCount, 0);
+      media.dispose();
+    },
+  );
+
+  test(
+    'home media, continue watching and tags begin loading in parallel',
+    () async {
+      final repository = _ParallelMediaRepository();
+      final media = MediaController(repository);
+      final loading = media.load();
+
+      await Future.wait([
+        repository.mediaStarted.future,
+        repository.continueStarted.future,
+        repository.tagsStarted.future,
+      ]);
+      expect(repository.refreshCalls, 0);
+
+      repository.complete();
+      await loading;
+      expect(media.loadState, LoadState.ready);
+      media.dispose();
+    },
+  );
 
   test('media controller findById is null-safe', () async {
     final media = MediaController(MockMediaRepository());
@@ -517,6 +567,43 @@ class _BlockingCountMediaRepository extends MockMediaRepository {
   void completeCount(int value) => _count.complete(value);
 }
 
+class _ParallelMediaRepository extends MockMediaRepository {
+  final mediaStarted = Completer<void>();
+  final continueStarted = Completer<void>();
+  final tagsStarted = Completer<void>();
+  final _release = Completer<void>();
+  var refreshCalls = 0;
+
+  void complete() => _release.complete();
+
+  @override
+  Future<List<MediaItem>> loadMedia() async {
+    mediaStarted.complete();
+    await _release.future;
+    return const [];
+  }
+
+  @override
+  Future<List<MediaItem>> loadContinueWatching() async {
+    continueStarted.complete();
+    await _release.future;
+    return const [];
+  }
+
+  @override
+  Future<List<Tag>> loadTags() async {
+    tagsStarted.complete();
+    await _release.future;
+    return const [];
+  }
+
+  @override
+  Future<List<MediaItem>> refresh() async {
+    refreshCalls++;
+    return const [];
+  }
+}
+
 class _PendingCredentialStore implements CredentialStore {
   final readStarted = Completer<void>();
   final _result = Completer<StoredCredentials?>();
@@ -553,4 +640,44 @@ class _ImmediateConnectionService implements ConnectionService {
 
   @override
   Future<void> disconnect() async {}
+}
+
+class _MemberConnectionService implements ConnectionService {
+  @override
+  ServerProfile? connectedProfile;
+
+  @override
+  Future<ConnectionResult> test(String address, String token) async {
+    connectedProfile = ServerProfile(
+      name: 'server.local',
+      address: address,
+      token: token,
+      hostName: 'server.local',
+      userRole: 'member',
+      capabilities: const ['media.read', 'user_data.write'],
+    );
+    return ConnectionResult.success;
+  }
+
+  @override
+  Future<void> disconnect() async {}
+}
+
+class _CountingScanRepository implements ScanRepository {
+  var latestAllCalls = 0;
+
+  @override
+  Future<ScanJob> get(String id) => throw UnimplementedError();
+
+  @override
+  Future<ScanJob?> latest() => throw UnimplementedError();
+
+  @override
+  Future<List<ScanJob>> latestAll() async {
+    latestAllCalls++;
+    return const [];
+  }
+
+  @override
+  Future<List<ScanJob>> startAll() => throw UnimplementedError();
 }

@@ -1,5 +1,5 @@
 import 'package:dio/dio.dart';
-import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import '../data/api/api_client.dart';
@@ -52,7 +52,15 @@ class AppDependencies {
       connectionService: connectionService,
       sessionController: session,
       mediaController: media,
-      onConnected: settings.restoreScan,
+      // Scan-job APIs are administrator-only. Ordinary members still load
+      // their accessible media, but must not turn the expected 403 response
+      // from scan status restoration into a visible scan failure.
+      onConnected: () async {
+        final server = session.server;
+        if (server != null && server.can('scans.manage')) {
+          await settings.restoreScan();
+        }
+      },
     );
   }
 
@@ -146,6 +154,9 @@ class AppDependencies {
     restoring.value = false;
     session.disconnect();
     media.clear();
+    final imageCache = PaintingBinding.instance.imageCache;
+    imageCache.clear();
+    imageCache.clearLiveImages();
     if (sources case SessionResettableSourceRepository resettable) {
       resettable.clearSessionCache();
     }

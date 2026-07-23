@@ -1,13 +1,15 @@
-import 'package:flutter/material.dart';
+import 'dart:async';
 
+import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
+
+import '../../../app/app_router.dart';
 import '../../../core/theme.dart';
 import '../../../data/models/api_access.dart';
 import '../../../data/repositories/access_repository.dart';
 import '../../../data/repositories/source_repository.dart';
 import '../../../shared/layout/constrained_page_list.dart';
 import '../../../shared/states/empty_state.dart';
-import 'member_detail_page.dart';
-import 'new_member_page.dart';
 
 class AccessManagementPage extends StatefulWidget {
   const AccessManagementPage({
@@ -27,11 +29,19 @@ class _AccessManagementPageState extends State<AccessManagementPage> {
   List<AccessUser>? _users;
   Object? _error;
   int _loadGeneration = 0;
+  Timer? _refreshTimer;
 
   @override
   void initState() {
     super.initState();
     _load();
+    _refreshTimer = Timer.periodic(const Duration(seconds: 30), (_) => _load());
+  }
+
+  @override
+  void dispose() {
+    _refreshTimer?.cancel();
+    super.dispose();
   }
 
   @override
@@ -70,7 +80,7 @@ class _AccessManagementPageState extends State<AccessManagementPage> {
       padding: LumaLayout.pagePadding(top: LumaSpacing.sm),
       children: [
         Text(
-          '管理家庭成员可访问的媒体源和设备令牌。令牌明文只在签发时显示一次。',
+          '管理家庭成员可访问的媒体源和设备令牌。在线表示最近 2 分钟内有服务端访问，页面每 30 秒自动刷新。',
           style: TextStyle(
             color: Theme.of(context).colorScheme.onSurfaceVariant,
           ),
@@ -98,24 +108,53 @@ class _AccessManagementPageState extends State<AccessManagementPage> {
     );
   }
 
-  Widget _userTile(AccessUser user) => ListTile(
-    contentPadding: EdgeInsets.zero,
-    leading: Icon(
-      user.isAdmin
-          ? Icons.admin_panel_settings_outlined
-          : Icons.person_outline_rounded,
-    ),
-    title: Text(user.name),
-    subtitle: Text(
-      user.isAdmin
-          ? '管理员'
-          : user.enabled
-          ? '成员 · 已启用'
-          : '成员 · 已停用',
-    ),
-    trailing: const Icon(Icons.chevron_right_rounded),
-    onTap: () => _openMember(user),
-  );
+  Widget _userTile(AccessUser user) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final online = user.enabled && user.online;
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      leading: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Icon(
+            user.isAdmin
+                ? Icons.admin_panel_settings_outlined
+                : Icons.person_outline_rounded,
+          ),
+          Positioned(
+            right: -3,
+            bottom: -3,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: colorScheme.surface,
+                shape: BoxShape.circle,
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(2),
+                child: Icon(
+                  Icons.circle,
+                  size: 10,
+                  color: online
+                      ? colorScheme.primary
+                      : colorScheme.onSurfaceVariant.withValues(alpha: 0.55),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+      title: Text(user.name),
+      subtitle: Text(
+        '${user.isAdmin
+            ? '管理员'
+            : user.enabled
+            ? '成员 · 已启用'
+            : '成员 · 已停用'} · ${online ? '在线' : '离线'}',
+      ),
+      trailing: const Icon(Icons.chevron_right_rounded),
+      onTap: () => _openMember(user),
+    );
+  }
 
   Future<void> _load() async {
     final generation = ++_loadGeneration;
@@ -135,24 +174,14 @@ class _AccessManagementPageState extends State<AccessManagementPage> {
   }
 
   Future<void> _createMember() async {
-    await Navigator.of(context).push<bool>(
-      MaterialPageRoute(
-        builder: (_) =>
-            NewMemberPage(access: widget.access, sources: widget.sources),
-      ),
-    );
+    await context.pushNamed<bool>(AppRoute.newMember);
     if (mounted) _load();
   }
 
   Future<void> _openMember(AccessUser user) async {
-    await Navigator.of(context).push<void>(
-      MaterialPageRoute(
-        builder: (_) => MemberDetailPage(
-          access: widget.access,
-          sources: widget.sources,
-          user: user,
-        ),
-      ),
+    await context.pushNamed<void>(
+      AppRoute.memberDetail,
+      pathParameters: {'userId': user.id},
     );
     if (mounted) _load();
   }

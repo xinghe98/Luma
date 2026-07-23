@@ -25,12 +25,14 @@ class LibraryPage extends StatefulWidget {
     this.onLongPressMedia,
     this.fixedLibraryKind,
     this.embedded = false,
+    this.title,
   });
 
   final MediaType type;
   final MediaOpenCallback onOpenMedia;
   final VoidCallback onOpenSearch;
   final String? fixedLibraryKind;
+  final String? title;
 
   /// 嵌入影视库分页时仅渲染内容和局部工具栏，避免嵌套 Scaffold/AppBar。
   final bool embedded;
@@ -116,7 +118,7 @@ class _LibraryPageState extends State<LibraryPage>
                 ),
                 controller: _scroll,
                 // 只预构建约半屏内容，控制快速滑动时的并发解码和纹理峰值。
-                cacheExtent: 320,
+                cacheExtent: LumaLayout.scrollCacheExtent,
                 physics: const AlwaysScrollableScrollPhysics(),
                 slivers: [
                   if (controller.isRefreshing)
@@ -268,7 +270,7 @@ class _LibraryPageState extends State<LibraryPage>
         return Scaffold(
           appBar: AppBar(
             title: ScrollToTopAppBarTitle(
-              title: isVideo ? '影音库' : '图片库',
+              title: widget.title ?? (isVideo ? '影音库' : '图片库'),
               controller: _scroll,
             ),
             actions: _actions(),

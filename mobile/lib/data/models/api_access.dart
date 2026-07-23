@@ -5,6 +5,7 @@ final class AccessUser {
     required this.name,
     required this.role,
     required this.enabled,
+    this.online = false,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -13,6 +14,7 @@ final class AccessUser {
   final String name;
   final String role;
   final bool enabled;
+  final bool online;
   final DateTime createdAt;
   final DateTime updatedAt;
 

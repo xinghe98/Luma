@@ -41,6 +41,22 @@ final class ApiClient {
     data: {'name': name, 'root_path': rootPath},
   );
 
+  Future<Map<String, dynamic>> createManagedSource({
+    required String name,
+    required String rootPath,
+    required String libraryKind,
+    required List<String> userIds,
+  }) => _json(
+    'POST',
+    _api('/admin/media-sources'),
+    data: {
+      'name': name,
+      'root_path': rootPath,
+      'library_kind': libraryKind,
+      'user_ids': userIds,
+    },
+  );
+
   Future<Map<String, dynamic>> updateSource(
     String id,
     Map<String, dynamic> changes,

@@ -1,25 +1,59 @@
 import 'package:flutter/material.dart';
 
 abstract final class LumaColors {
-  static const ink = Color(0xFF101820);
-  static const deepBlue = Color(0xFF131D27);
-  static const surface = Color(0xFF1B2732);
-  static const elevated = Color(0xFF24323E);
-  static const mist = Color(0xFF9DBFC0);
-  static const gold = Color(0xFFD0AA69);
-  static const paper = Color(0xFFF3F5F4);
-  static const success = Color(0xFF7BAF8A);
-  static const warning = Color(0xFFD9A05B);
-  // Darker light-theme semantic colors preserve text/icon contrast on paper.
-  static const lightSuccess = Color(0xFF2E6B3A);
-  static const lightWarning = Color(0xFF805710);
-  static const lightPrimary = Color(0xFF426D70);
-  static const darkPrimary = Color(0xFFA8CACA);
-  static const lightSecondary = Color(0xFF866629);
-  static const lightSurfaceContainer = Color(0xFFE8ECEB);
-  static const lightSurfaceContainerHigh = Color(0xFFDDE3E2);
-  static const onInk = Color(0xFFF3F5F4);
-  static const onInkMuted = Color(0xB3F3F5F4);
+  // Extracted from the app icon: graphite, aged gold, and warm ivory.
+  // All Material roles are explicit so a seed color cannot introduce teal
+  // containers elsewhere in the app.
+  static const ink = Color(0xFF2C3433);
+  static const deepBlue = Color(0xFF2E322F);
+  static const surface = Color(0xFF3A3D38);
+  static const elevated = Color(0xFF484A44);
+  static const gold = Color(0xFFB48A4B);
+  static const paper = Color(0xFFEEE6DA);
+  static const success = Color(0xFF8EAD92);
+  static const warning = Color(0xFFC1A064);
+  // Darker light-theme semantic colors preserve text/icon contrast on ivory.
+  static const lightSuccess = Color(0xFF356746);
+  static const lightWarning = Color(0xFF765617);
+  static const lightPrimary = Color(0xFF535853);
+  static const darkPrimary = Color(0xFFC5C6BD);
+  static const lightSecondary = Color(0xFF756035);
+  static const lightSurfaceContainer = Color(0xFFE1D9CD);
+  static const lightSurfaceContainerHigh = Color(0xFFD4CCC0);
+  static const onInk = Color(0xFFF7F0E6);
+  static const onInkMuted = Color(0xB3F7F0E6);
+  static const lightPrimaryContainer = Color(0xFFDAD8CD);
+  static const lightSecondaryContainer = Color(0xFFE7D8BE);
+  static const lightTertiary = Color(0xFF705E55);
+  static const lightTertiaryContainer = Color(0xFFE5D6CC);
+  static const lightOutline = Color(0xFF79776E);
+  static const lightOutlineVariant = Color(0xFFC8C1B7);
+  static const darkPrimaryContainer = Color(0xFF52554F);
+  static const darkSecondaryContainer = Color(0xFF5D502F);
+  static const darkTertiary = Color(0xFFD5BFB3);
+  static const darkTertiaryContainer = Color(0xFF594940);
+  static const darkOutline = Color(0xFF97938A);
+  static const darkOutlineVariant = Color(0xFF4B4A44);
+  static const lightSurfaceDim = Color(0xFFD9D1C5);
+  static const darkSurfaceBright = Color(0xFF464842);
+  static const error = Color(0xFFB3261E);
+  static const onError = Color(0xFFFFF8F6);
+  static const lightErrorContainer = Color(0xFFFFDAD5);
+  static const lightOnErrorContainer = Color(0xFF410002);
+  static const darkErrorContainer = Color(0xFF8C1D18);
+  static const darkOnErrorContainer = Color(0xFFFFDAD5);
+  static const lightBadgeScrim = Color(0x9A2C3433);
+  static const darkBadgeScrim = Color(0xB32C3433);
+}
+
+abstract final class LumaArtworkColors {
+  static const palettes = <List<Color>>[
+    [Color(0xFF5A5C56), Color(0xFF2C3433), LumaColors.gold],
+    [Color(0xFF665F58), Color(0xFF353632), Color(0xFFA88B72)],
+    [Color(0xFF4A504B), Color(0xFF282C29), Color(0xFFA5A093)],
+    [Color(0xFF6A5346), Color(0xFF332F2E), Color(0xFFC0A06B)],
+    [Color(0xFF555851), Color(0xFF2B2E2B), Color(0xFFA99A81)],
+  ];
 }
 
 abstract final class LumaLayout {
@@ -37,6 +71,10 @@ abstract final class LumaLayout {
   static const buttonHeight = 52.0;
   static const navigationBarHeight = 68.0;
   static const minTapTarget = 48.0;
+
+  /// Roughly one mobile viewport, shared by primary scroll surfaces so they
+  /// prebuild enough content for smooth scrolling without retaining pages.
+  static const scrollCacheExtent = 320.0;
 
   static EdgeInsets pagePadding({
     double top = pagePaddingTop,
@@ -111,7 +149,7 @@ class LumaExtras extends ThemeExtension<LumaExtras> {
     playerInk: LumaColors.ink,
     onPlayerInk: LumaColors.onInk,
     onPlayerInkMuted: LumaColors.onInkMuted,
-    badgeScrim: Color(0x9A101820),
+    badgeScrim: LumaColors.lightBadgeScrim,
     coverRadius: LumaRadii.large,
   );
 
@@ -121,7 +159,7 @@ class LumaExtras extends ThemeExtension<LumaExtras> {
     playerInk: LumaColors.ink,
     onPlayerInk: LumaColors.onInk,
     onPlayerInkMuted: LumaColors.onInkMuted,
-    badgeScrim: Color(0xB3101820),
+    badgeScrim: LumaColors.darkBadgeScrim,
     coverRadius: LumaRadii.large,
   );
 
@@ -164,7 +202,8 @@ class LumaExtras extends ThemeExtension<LumaExtras> {
 }
 
 extension LumaThemeContext on BuildContext {
-  LumaExtras get luma => Theme.of(this).extension<LumaExtras>() ?? LumaExtras.light;
+  LumaExtras get luma =>
+      Theme.of(this).extension<LumaExtras>() ?? LumaExtras.light;
 }
 
 abstract final class LumaTheme {
@@ -177,21 +216,60 @@ abstract final class LumaTheme {
 
   static ThemeData _build(Brightness brightness) {
     final isDark = brightness == Brightness.dark;
-    final scheme =
-        ColorScheme.fromSeed(
-          seedColor: LumaColors.mist,
-          brightness: brightness,
-          surface: isDark ? LumaColors.deepBlue : LumaColors.paper,
-        ).copyWith(
-          primary: isDark ? LumaColors.darkPrimary : LumaColors.lightPrimary,
-          secondary: isDark ? LumaColors.gold : LumaColors.lightSecondary,
-          surfaceContainer: isDark
-              ? LumaColors.surface
-              : LumaColors.lightSurfaceContainer,
-          surfaceContainerHigh: isDark
-              ? LumaColors.elevated
-              : LumaColors.lightSurfaceContainerHigh,
-        );
+    final scheme = ColorScheme(
+      brightness: brightness,
+      primary: isDark ? LumaColors.darkPrimary : LumaColors.lightPrimary,
+      onPrimary: isDark ? LumaColors.deepBlue : LumaColors.paper,
+      primaryContainer: isDark
+          ? LumaColors.darkPrimaryContainer
+          : LumaColors.lightPrimaryContainer,
+      onPrimaryContainer: isDark ? LumaColors.onInk : LumaColors.ink,
+      secondary: isDark ? LumaColors.gold : LumaColors.lightSecondary,
+      onSecondary: isDark ? LumaColors.deepBlue : LumaColors.paper,
+      secondaryContainer: isDark
+          ? LumaColors.darkSecondaryContainer
+          : LumaColors.lightSecondaryContainer,
+      onSecondaryContainer: isDark ? LumaColors.onInk : LumaColors.ink,
+      tertiary: isDark ? LumaColors.darkTertiary : LumaColors.lightTertiary,
+      onTertiary: isDark ? LumaColors.deepBlue : LumaColors.paper,
+      tertiaryContainer: isDark
+          ? LumaColors.darkTertiaryContainer
+          : LumaColors.lightTertiaryContainer,
+      onTertiaryContainer: isDark ? LumaColors.onInk : LumaColors.ink,
+      error: LumaColors.error,
+      onError: LumaColors.onError,
+      errorContainer: isDark
+          ? LumaColors.darkErrorContainer
+          : LumaColors.lightErrorContainer,
+      onErrorContainer: isDark
+          ? LumaColors.darkOnErrorContainer
+          : LumaColors.lightOnErrorContainer,
+      surface: isDark ? LumaColors.deepBlue : LumaColors.paper,
+      onSurface: isDark ? LumaColors.onInk : LumaColors.ink,
+      surfaceDim: isDark ? LumaColors.ink : LumaColors.lightSurfaceDim,
+      surfaceBright: isDark ? LumaColors.darkSurfaceBright : LumaColors.paper,
+      surfaceContainerLowest: isDark ? LumaColors.ink : LumaColors.paper,
+      surfaceContainerLow: isDark ? LumaColors.deepBlue : LumaColors.paper,
+      surfaceContainer: isDark
+          ? LumaColors.surface
+          : LumaColors.lightSurfaceContainer,
+      surfaceContainerHigh: isDark
+          ? LumaColors.elevated
+          : LumaColors.lightSurfaceContainerHigh,
+      surfaceContainerHighest: isDark
+          ? LumaColors.elevated
+          : LumaColors.lightSurfaceContainerHigh,
+      outline: isDark ? LumaColors.darkOutline : LumaColors.lightOutline,
+      outlineVariant: isDark
+          ? LumaColors.darkOutlineVariant
+          : LumaColors.lightOutlineVariant,
+      shadow: LumaColors.ink,
+      scrim: LumaColors.ink,
+      inverseSurface: isDark ? LumaColors.paper : LumaColors.ink,
+      onInverseSurface: isDark ? LumaColors.ink : LumaColors.onInk,
+      inversePrimary: isDark ? LumaColors.lightPrimary : LumaColors.darkPrimary,
+      surfaceTint: isDark ? LumaColors.darkPrimary : LumaColors.lightPrimary,
+    );
 
     final scaffold = isDark ? LumaColors.deepBlue : LumaColors.paper;
     final extras = isDark ? LumaExtras.dark : LumaExtras.light;
@@ -423,7 +501,9 @@ abstract final class LumaTheme {
           final selected = states.contains(WidgetState.selected);
           return IconThemeData(
             size: 24,
-            color: selected ? scheme.onPrimaryContainer : scheme.onSurfaceVariant,
+            color: selected
+                ? scheme.onPrimaryContainer
+                : scheme.onSurfaceVariant,
           );
         }),
       ),
@@ -447,7 +527,9 @@ abstract final class LumaTheme {
           horizontal: LumaSpacing.md,
           vertical: LumaSpacing.xxs,
         ),
-        titleTextStyle: textTheme.titleMedium?.copyWith(color: scheme.onSurface),
+        titleTextStyle: textTheme.titleMedium?.copyWith(
+          color: scheme.onSurface,
+        ),
         subtitleTextStyle: textTheme.bodySmall?.copyWith(
           color: scheme.onSurfaceVariant,
         ),

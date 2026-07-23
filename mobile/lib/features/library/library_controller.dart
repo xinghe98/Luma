@@ -62,6 +62,7 @@ class LibraryController extends ChangeNotifier {
   LoadState get loadState => _loadState;
   bool get hasMore => _nextCursor != null;
   bool get isLoadingMore => _loadingMore;
+  bool get hasStarted => _started;
   int get itemCount => _remoteItems.length;
 
   /// 是否正在刷新且已有列表（用于保留网格、避免骨架屏拆掉缩略图）。

@@ -71,7 +71,7 @@ class PlayerFeedbackHud extends StatelessWidget {
                               backgroundColor: extras.onPlayerInk.withValues(
                                 alpha: 0.24,
                               ),
-                              color: LumaColors.mist,
+                              color: LumaColors.gold,
                             ),
                           ),
                         ],

@@ -170,7 +170,7 @@ docker compose exec luma-server cat /data/secrets/api_token
 
 ### 4. 创建媒体源并扫描
 
-容器内允许的媒体根目录是 `/media`。当前客户端尚未提供完整的媒体源管理页面，可先通过 API 创建：
+容器内允许的媒体根目录是 `/media`。管理员可在 App 的“设置 → 媒体源”中新增目录，服务端会将该目录写入 `security.allowed_roots` 并立即开始扫描。也可以通过 API 创建：
 
 ```bash
 export TOKEN='上一步读取的 Token'

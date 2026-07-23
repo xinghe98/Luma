@@ -96,15 +96,18 @@ class ServerSettingsCard extends StatelessWidget {
             children: [
               _Metric(label: '媒体源', value: '${server.sourceCount}'),
               _Metric(label: '媒体项目', value: '$mediaCount'),
-              _Metric(
-                label: '扫描状态',
-                value: settings.isScanning
-                    ? '扫描中'
-                    : settings.scanError == null
-                    ? '空闲'
-                    : '失败',
-              ),
+              _Metric(label: '扫描状态', value: settings.scanStatusLabel),
             ],
+          ),
+          const SizedBox(height: LumaSpacing.sm),
+          Text(
+            settings.scanStatusDetails,
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: settings.hasScanProblem
+                  ? Theme.of(context).colorScheme.error
+                  : Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
           ),
           if (settings.scanProgress != null) ...[
             const SizedBox(height: LumaSpacing.md),
@@ -124,7 +127,7 @@ class ServerSettingsCard extends StatelessWidget {
                 icon: const Icon(Icons.sync_rounded),
                 label: Text(
                   settings.isScanning
-                      ? '正在扫描'
+                      ? settings.scanStatusLabel
                       : settings.scanError?.contains('中断') == true
                       ? '重新扫描'
                       : '手动扫描',

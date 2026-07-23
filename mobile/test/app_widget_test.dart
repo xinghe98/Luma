@@ -8,9 +8,12 @@ import 'package:luma/app/controllers/media_controller.dart';
 import 'package:luma/data/mock/mock_connection_service.dart';
 import 'package:luma/data/mock/mock_media_repository.dart';
 import 'package:luma/data/models/media_types.dart';
+import 'package:luma/data/models/api_catalog.dart';
 import 'package:luma/data/models/server_profile.dart';
+import 'package:luma/data/repositories/catalog_repository.dart';
 import 'package:luma/data/services/connection_service.dart';
 import 'package:luma/data/storage/server_alias_store.dart';
+import 'package:luma/features/catalog/catalog_page.dart';
 import 'package:luma/features/connection/connection_page.dart';
 import 'package:luma/features/search/widgets/search_results.dart';
 import 'package:luma/features/settings/settings_page.dart';
@@ -100,16 +103,26 @@ void main() {
     await tester.pump(const Duration(milliseconds: 1500));
     await tester.pump(const Duration(milliseconds: 700));
 
-    expect(find.byType(NavigationBar), findsOneWidget);
-    final navigation = tester.widget<NavigationBar>(find.byType(NavigationBar));
-    expect(
-      navigation.destinations.whereType<NavigationDestination>().map(
-        (item) => item.label,
+    expect(find.byType(NavigationBar), findsNothing);
+    for (final routeName in [
+      'home',
+      'photos',
+      'videos',
+      'search',
+      'settings',
+    ]) {
+      expect(find.byKey(ValueKey('bottom-nav-$routeName')), findsOneWidget);
+    }
+    final homeFeedback = tester.widget<InkResponse>(
+      find.descendant(
+        of: find.byKey(const ValueKey('bottom-nav-home')),
+        matching: find.byType(InkResponse),
       ),
-      ['首页', '图片库', '影视库', '搜索', '设置'],
     );
+    expect(homeFeedback.customBorder, isA<CircleBorder>());
+    expect(homeFeedback.containedInkWell, isTrue);
 
-    await tester.tap(find.text('图片库'));
+    await tester.tap(find.byKey(const ValueKey('bottom-nav-photos')));
     await tester.pump();
     // 库页 ensureLoaded → mock search 有短延迟。
     await tester.pump(const Duration(milliseconds: 200));
@@ -126,20 +139,14 @@ void main() {
       isTrue,
     );
 
-    await tester.tap(
-      find.descendant(
-        of: find.byType(NavigationBar),
-        matching: find.text('影视库'),
-      ),
-    );
+    await tester.tap(find.byKey(const ValueKey('bottom-nav-videos')));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 200));
     expect(
       find.descendant(of: find.byType(AppBar), matching: find.text('影视库')),
       findsOneWidget,
     );
-    expect(find.text('电影'), findsOneWidget);
-    expect(find.text('电视剧'), findsOneWidget);
+    expect(find.byType(TabBar), findsNothing);
 
     await tester.tap(
       find.descendant(
@@ -153,12 +160,7 @@ void main() {
       findsOneWidget,
     );
 
-    await tester.tap(
-      find.descendant(
-        of: find.byType(NavigationBar),
-        matching: find.text('设置'),
-      ),
-    );
+    await tester.tap(find.byKey(const ValueKey('bottom-nav-settings')));
     await tester.pump();
     expect(find.textContaining('windows amd64'), findsOneWidget);
     expect(find.textContaining('Database: ok'), findsOneWidget);
@@ -183,6 +185,42 @@ void main() {
 
     expect(find.text('开始搜索'), findsOneWidget);
     expect(find.text('没有找到相关内容'), findsNothing);
+  });
+
+  testWidgets('catalog overview only requests later shelves after scrolling', (
+    tester,
+  ) async {
+    final catalog = _CountingCatalogRepository();
+    final dependencies = AppDependencies(
+      mediaRepository: MockMediaRepository(),
+      catalogRepository: catalog,
+      connectionService: MockConnectionService(),
+    );
+    addTearDown(dependencies.dispose);
+    await tester.pumpWidget(
+      AppScope(
+        dependencies: dependencies,
+        child: MaterialApp(
+          home: CatalogPage(
+            onOpenCatalog: (_) {},
+            onOpenPersonalMedia: (item, {heroTag}) {},
+            onOpenSearch: () {},
+            onOpenMovies: () {},
+            onOpenSeries: () {},
+            onOpenPersonalVideos: () {},
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(catalog.calls[CatalogKind.movie], 1);
+    expect(catalog.calls[CatalogKind.series] ?? 0, 0);
+    expect(dependencies.media.loadState, LoadState.idle);
+
+    await tester.drag(find.byType(CustomScrollView), const Offset(0, -260));
+    await tester.pump();
+    expect(catalog.calls[CatalogKind.series], 1);
   });
 
   testWidgets('search reports search errors instead of empty results', (
@@ -238,6 +276,86 @@ void main() {
     expect(find.text('家庭服务器'), findsOneWidget);
   });
 
+  testWidgets('cancelling the server alias dialog does not throw', (
+    tester,
+  ) async {
+    final dependencies = AppDependencies(
+      mediaRepository: MockMediaRepository(),
+      connectionService: MockConnectionService(),
+      aliasStore: _WidgetAliasStore(),
+    );
+    addTearDown(dependencies.dispose);
+    dependencies.session.connect(
+      const ServerProfile(
+        name: 'server.local',
+        address: 'http://server.local:8080',
+        token: 'token',
+        hostName: 'server.local',
+      ),
+    );
+
+    await tester.pumpWidget(
+      AppScope(
+        dependencies: dependencies,
+        child: ListenableBuilder(
+          listenable: Listenable.merge([
+            dependencies.session,
+            dependencies.settings,
+            dependencies.restoring,
+          ]),
+          builder: (context, _) => const MaterialApp(home: SettingsPage()),
+        ),
+      ),
+    );
+    await tester.tap(find.byTooltip('编辑本地别名'));
+    await tester.pumpAndSettle();
+    expect(find.text('服务器别名'), findsOneWidget);
+
+    await tester.tap(find.text('取消'));
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(dependencies.session.server!.name, 'server.local');
+  });
+
+  testWidgets('server alias dialog keeps its three actions on one row', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(320, 720);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final dependencies = AppDependencies(
+      mediaRepository: MockMediaRepository(),
+      connectionService: MockConnectionService(),
+      aliasStore: _WidgetAliasStore(),
+    );
+    addTearDown(dependencies.dispose);
+    dependencies.session.connect(
+      const ServerProfile(
+        name: 'server.local',
+        address: 'http://server.local:8080',
+        token: 'token',
+        hostName: 'server.local',
+      ),
+    );
+
+    await tester.pumpWidget(
+      AppScope(
+        dependencies: dependencies,
+        child: const MaterialApp(home: SettingsPage()),
+      ),
+    );
+    await tester.tap(find.byTooltip('编辑本地别名'));
+    await tester.pumpAndSettle();
+
+    final restoreTop = tester.getTopLeft(find.text('恢复默认')).dy;
+    final cancelTop = tester.getTopLeft(find.text('取消')).dy;
+    final saveTop = tester.getTopLeft(find.text('保存')).dy;
+    expect(cancelTop, restoreTop);
+    expect(saveTop, restoreTop);
+  });
+
   testWidgets('wide layout uses a navigation rail', (tester) async {
     tester.view.physicalSize = const Size(1200, 800);
     tester.view.devicePixelRatio = 1;
@@ -285,4 +403,33 @@ class _RecordingConnectionService implements ConnectionService {
     lastAddress = address;
     return ConnectionResult.invalidAddress;
   }
+}
+
+class _CountingCatalogRepository implements CatalogRepository {
+  final calls = <CatalogKind, int>{};
+
+  @override
+  Future<List<CatalogItem>> list({CatalogKind? kind, String? query}) async {
+    if (kind != null) calls[kind] = (calls[kind] ?? 0) + 1;
+    return const [];
+  }
+
+  @override
+  Future<CatalogItem> detail(String id) => throw UnimplementedError();
+
+  @override
+  Future<void> ignore(String mediaId) => throw UnimplementedError();
+
+  @override
+  Future<List<CatalogIssue>> issues() => throw UnimplementedError();
+
+  @override
+  Future<void> updateMatch({
+    required String mediaId,
+    required CatalogKind kind,
+    required String title,
+    int? year,
+    int? seasonNumber,
+    int? episodeNumber,
+  }) => throw UnimplementedError();
 }

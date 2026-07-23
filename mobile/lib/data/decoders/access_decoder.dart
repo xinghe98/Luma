@@ -10,6 +10,7 @@ final class AccessDecoder {
     name: requiredValue(json, 'name'),
     role: requiredValue(json, 'role'),
     enabled: requiredValue(json, 'enabled'),
+    online: optionalValue<bool>(json, 'online') ?? false,
     createdAt: requiredDate(json, 'created_at'),
     updatedAt: requiredDate(json, 'updated_at'),
   );

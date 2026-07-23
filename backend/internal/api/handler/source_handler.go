@@ -11,6 +11,7 @@ import (
 	apirequest "github.com/xinghe98/Luma/backend/internal/api/request"
 	"github.com/xinghe98/Luma/backend/internal/api/response"
 	"github.com/xinghe98/Luma/backend/internal/domain"
+	"github.com/xinghe98/Luma/backend/internal/service"
 )
 
 // SourceUseCase 定义媒体源 Handler 所需的业务能力。
@@ -29,14 +30,53 @@ type SourceUseCase interface {
 type SourceHandler struct {
 	// service 是注入的媒体源业务用例。
 	service SourceUseCase
+	managed ManagedSourceUseCase
+}
+
+// ManagedSourceUseCase creates a source together with its configuration,
+// grants and initial scan. It is deliberately separate from legacy sources.
+type ManagedSourceUseCase interface {
+	Create(context.Context, service.ManagedMediaSourceCommand) (service.ManagedMediaSourceResult, error)
 }
 
 // NewSourceHandler 使用媒体源业务用例创建 Handler。
-func NewSourceHandler(service SourceUseCase) (*SourceHandler, error) {
+func NewSourceHandler(service SourceUseCase, managed ...ManagedSourceUseCase) (*SourceHandler, error) {
 	if service == nil {
 		return nil, errors.New("媒体源业务用例不能为空")
 	}
-	return &SourceHandler{service: service}, nil
+	result := &SourceHandler{service: service}
+	if len(managed) > 0 {
+		result.managed = managed[0]
+	}
+	return result, nil
+}
+
+type createManagedSourceRequest struct {
+	Name        string   `json:"name"`
+	RootPath    string   `json:"root_path"`
+	LibraryKind string   `json:"library_kind"`
+	UserIDs     []string `json:"user_ids"`
+}
+
+// CreateManaged provisions a source through the administrator-only route.
+func (h *SourceHandler) CreateManaged(c *gin.Context) {
+	if h.managed == nil {
+		response.Error(c, http.StatusNotImplemented, "NOT_IMPLEMENTED", "媒体源管理不可用", nil)
+		return
+	}
+	var request createManagedSourceRequest
+	if err := apirequest.DecodeJSON(c, &request); err != nil {
+		response.Error(c, http.StatusBadRequest, "INVALID_REQUEST", err.Error(), nil)
+		return
+	}
+	created, err := h.managed.Create(c.Request.Context(), service.ManagedMediaSourceCommand{
+		Name: request.Name, RootPath: request.RootPath, LibraryKind: request.LibraryKind, UserIDs: request.UserIDs,
+	})
+	if err != nil {
+		response.FromError(c, err)
+		return
+	}
+	c.JSON(http.StatusCreated, gin.H{"source": presentSource(created.Source), "scan_job": presentScanJob(created.Scan)})
 }
 
 // createSourceRequest 表示创建媒体源的 HTTP 请求体。

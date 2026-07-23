@@ -14,7 +14,9 @@ include_dir = ["api", "cmd", "configs", "internal", "migrations"]
 # 模块依赖文件没有受监听的扩展名，因此需要显式加入。
 include_file = ["go.mod", "go.sum"]
 exclude_dir = [".cache", "data", "dist", "vendor"]
-exclude_regex = ["_test\\.go$"]
+# 运行时新增媒体源会原子写入 config.yaml；该路径已由服务热更新，
+# 不应被 Air 当作源码改动而中断正在处理的 HTTP 请求。
+exclude_regex = ["_test\\.go$", "^configs[\\\\/](?:config|\\.luma-config-.*)\\.ya?ml$"]
 exclude_unchanged = true
 follow_symlink = false
 log = "air.log"

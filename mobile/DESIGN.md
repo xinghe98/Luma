@@ -2,21 +2,20 @@
 name: "轻影 Luma"
 description: "克制、安静、可信的私人媒体播放器"
 colors:
-  ink: "#101820"
-  deep-blue: "#131D27"
-  surface: "#1B2732"
-  elevated: "#24323E"
-  mist: "#9DBFC0"
-  gold: "#D0AA69"
-  paper: "#F3F5F4"
-  success: "#7BAF8A"
-  warning: "#D9A05B"
-  light-primary: "#426D70"
-  dark-primary: "#A8CACA"
-  light-secondary: "#866629"
-  light-surface-container: "#E8ECEB"
-  light-surface-container-high: "#DDE3E2"
-  on-ink: "#F3F5F4"
+  ink: "#2C3433"
+  deep-blue: "#293331"
+  surface: "#35403D"
+  elevated: "#424D49"
+  gold: "#B48A4B"
+  paper: "#EEE6DA"
+  success: "#8EAD92"
+  warning: "#C1A064"
+  light-primary: "#535853"
+  dark-primary: "#C5C6BD"
+  light-secondary: "#756035"
+  light-surface-container: "#E1D9CD"
+  light-surface-container-high: "#D4CCC0"
+  on-ink: "#F7F0E6"
 typography:
   headline:
     fontFamily: "system-ui, sans-serif"
@@ -81,35 +80,35 @@ brand:
 
 **Creative North Star: "安静的家庭放映室"**
 
-轻影的界面服务于私人媒体，不把设计本身变成主角。深蓝黑播放环境降低环境光干扰，雾青色承担交互强调，低饱和金色只用于少量辅助信息。布局熟悉、紧凑而不拥挤，反馈清楚但不会盖过内容。
+轻影的界面服务于私人媒体，不把设计本身变成主角。图标中的石墨、陈金和暖象牙白构成低明度色盘：石墨承担主要交互与播放环境，陈金只用于少量辅助信息。浅色界面使用象牙白的阴影层，而非图标的高光白，布局熟悉、紧凑而不拥挤，反馈清楚但不会盖过内容。
 
 系统拒绝营销落地页式的大标题、霓虹紫渐变、玻璃拟态和装饰性动效。响应式变化只解决设备尺寸与方向问题，播放器状态变化使用短促淡入淡出。
 
 **Key Characteristics:**
 
 - 内容优先的克制层级
-- 低饱和冷中性色与单一主强调色
+- 低饱和暖中性色与石墨主强调色
 - Material 3 的原生可预期控件
 - 8px、12px、18px 的递进圆角
 - 150–250ms 的状态型动效
 
 ## Colors
 
-主色板以深蓝黑和纸白建立安静背景，以雾青色表达主操作，金色只承担稀少的次级强调。
+主色板从应用图标提取。以石墨与暖象牙白阴影建立安静背景，以石墨表达主操作，陈金只承担稀少的次级强调。避免使用纯白、高亮冷灰和蓝青色容器。
 
 ### Primary
 
-- **雾青主色**：用于主要操作、当前选择、焦点和播放器进度，不作为大面积装饰。
+- **石墨主色**：用于主要操作、当前选择与焦点，不作为大面积装饰。
 
 ### Secondary
 
-- **低饱和金色**：用于需要区分但不抢占主操作层级的辅助信息。
+- **陈金色**：用于需要区分但不抢占主操作层级的辅助信息。
 
 ### Neutral
 
-- **深夜墨色**：播放器和深色页面的最深背景。
-- **深蓝表面**：深色主题的页面与工具栏表面。
-- **雾纸白**：浅色主题背景，避免纯白刺眼。
+- **石墨暗色**：播放器和深色页面的最深背景。
+- **石墨表面**：深色主题的页面与工具栏表面。
+- **暖象牙阴影**：浅色主题背景，避免纯白刺眼。
 
 **The One Voice Rule.** 主强调色只表达操作和状态；非交互装饰不得借用主色。
 

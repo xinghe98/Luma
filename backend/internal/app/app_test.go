@@ -133,7 +133,13 @@ func TestAppStartsServesHealthAndShutsDown(t *testing.T) {
 		Workers: config.WorkersConfig{Scan: 1, Probe: 1, Thumbnail: 1, LockTimeout: time.Minute},
 	}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	application, err := New(context.Background(), cfg, "test", logger)
+	application, err := New(
+		context.Background(),
+		cfg,
+		filepath.Join(base, "config.yaml"),
+		"test",
+		logger,
+	)
 	if err != nil {
 		t.Fatal(err)
 	}

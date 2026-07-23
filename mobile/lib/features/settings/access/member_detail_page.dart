@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
+import '../../../app/app_router.dart';
 import '../../../core/extensions.dart';
 import '../../../core/theme.dart';
 import '../../../data/models/api_access.dart';
@@ -13,7 +15,6 @@ import '../../../shared/layout/surface_card.dart';
 import '../../../shared/states/empty_state.dart';
 import '../dialogs/confirmation_dialog.dart';
 import 'access_widgets.dart';
-import 'issue_token_page.dart';
 
 class MemberDetailPage extends StatefulWidget {
   const MemberDetailPage({
@@ -343,10 +344,9 @@ class _MemberDetailPageState extends State<MemberDetailPage> {
   }
 
   Future<void> _issueToken() async {
-    await Navigator.of(context).push<IssuedAccessToken>(
-      MaterialPageRoute(
-        builder: (_) => IssueTokenPage(access: widget.access, user: _user),
-      ),
+    await context.pushNamed<IssuedAccessToken>(
+      AppRoute.issueToken,
+      pathParameters: {'userId': _user.id},
     );
     if (mounted) await _load();
   }

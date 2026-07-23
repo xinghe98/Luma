@@ -3,10 +3,10 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import 'app/app_dependencies.dart';
+import 'app/app_router.dart';
 import 'app/app_scope.dart';
 import 'core/theme.dart';
-import 'features/connection/connection_page.dart';
-import 'features/shell/app_shell.dart';
+import 'package:go_router/go_router.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -23,30 +23,47 @@ Future<void> main() async {
   unawaited(dependencies.restoreSession());
 }
 
-class LumaApp extends StatelessWidget {
+class LumaApp extends StatefulWidget {
   const LumaApp({super.key, required this.dependencies});
 
   final AppDependencies dependencies;
 
   @override
+  State<LumaApp> createState() => _LumaAppState();
+}
+
+class _LumaAppState extends State<LumaApp> {
+  late final GoRouter _router;
+
+  @override
+  void initState() {
+    super.initState();
+    _router = createAppRouter(widget.dependencies);
+  }
+
+  @override
+  void dispose() {
+    _router.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return ListenableBuilder(
-      listenable: Listenable.merge([
-        dependencies.session,
-        dependencies.settings,
-        dependencies.restoring,
-      ]),
-      builder: (context, _) => AppScope(
-        dependencies: dependencies,
-        child: MaterialApp(
+    return AppScope(
+      dependencies: widget.dependencies,
+      child: ListenableBuilder(
+        listenable: Listenable.merge([
+          widget.dependencies.session,
+          widget.dependencies.settings,
+          widget.dependencies.restoring,
+        ]),
+        builder: (context, _) => MaterialApp.router(
           debugShowCheckedModeBanner: false,
           title: '轻影 Luma',
           theme: LumaTheme.light(),
           darkTheme: LumaTheme.dark(),
-          themeMode: dependencies.settings.themeMode,
-          home: dependencies.session.isConnected
-              ? const AppShell()
-              : const ConnectionPage(),
+          themeMode: widget.dependencies.settings.themeMode,
+          routerConfig: _router,
         ),
       ),
     );

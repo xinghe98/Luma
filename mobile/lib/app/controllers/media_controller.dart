@@ -91,27 +91,31 @@ class MediaController extends ChangeNotifier {
   Future<void> refresh() => _runLoad(_refreshAll, showLoading: false);
 
   Future<_MediaBundle> _loadAll() async {
-    final items = await _repository.loadMedia();
-    final continueWatching = await _repository.loadContinueWatching();
-    final tags = await _repository.loadTags();
+    final results = await Future.wait<Object>([
+      _repository.loadMedia(),
+      _repository.loadContinueWatching(),
+      _repository.loadTags(),
+    ]);
     // 总数异步刷新，不阻塞首页首屏。
     unawaited(refreshCatalogCount());
     return _MediaBundle(
-      items: items,
-      continueWatching: continueWatching,
-      tags: tags,
+      items: results[0] as List<MediaItem>,
+      continueWatching: results[1] as List<MediaItem>,
+      tags: results[2] as List<Tag>,
     );
   }
 
   Future<_MediaBundle> _refreshAll() async {
-    final items = await _repository.refresh();
-    final continueWatching = await _repository.loadContinueWatching();
-    final tags = await _repository.loadTags();
+    final results = await Future.wait<Object>([
+      _repository.refresh(),
+      _repository.loadContinueWatching(),
+      _repository.loadTags(),
+    ]);
     unawaited(refreshCatalogCount());
     return _MediaBundle(
-      items: items,
-      continueWatching: continueWatching,
-      tags: tags,
+      items: results[0] as List<MediaItem>,
+      continueWatching: results[1] as List<MediaItem>,
+      tags: results[2] as List<Tag>,
     );
   }
 

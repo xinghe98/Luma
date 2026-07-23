@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
+import '../../app/app_router.dart';
 import '../../app/app_scope.dart';
 import '../../core/extensions.dart';
 import '../../core/theme.dart';
@@ -9,12 +11,9 @@ import '../../shared/layout/scroll_to_top_app_bar_title.dart';
 import 'dialogs/about_luma_dialog.dart';
 import 'dialogs/confirmation_dialog.dart';
 import 'dialogs/server_alias_dialog.dart';
-import 'access/access_management_page.dart';
 import 'widgets/application_settings_card.dart';
 import 'widgets/server_settings_card.dart';
 import '../../data/repositories/source_repository.dart';
-import 'library_sources_page.dart';
-import 'organization_page.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -108,17 +107,10 @@ class _SettingsPageState extends State<SettingsPage> {
                 ListTile(
                   contentPadding: const EdgeInsets.symmetric(horizontal: 4),
                   leading: const Icon(Icons.folder_copy_outlined),
-                  title: const Text('媒体源类型'),
+                  title: const Text('媒体源'),
                   subtitle: const Text('指定个人视频、图片、电影或电视剧目录'),
                   trailing: const Icon(Icons.chevron_right_rounded),
-                  onTap: () => Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (_) => LibrarySourcesPage(
-                        repository:
-                            dependencies.sources as MutableSourceRepository,
-                      ),
-                    ),
-                  ),
+                  onTap: () => context.pushNamed<void>(AppRoute.librarySources),
                 ),
               if (server.can('catalog.manage'))
                 ListTile(
@@ -127,12 +119,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   title: const Text('待整理文件'),
                   subtitle: const Text('修正无法自动识别的电影和剧集'),
                   trailing: const Icon(Icons.chevron_right_rounded),
-                  onTap: () => Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (_) =>
-                          OrganizationPage(repository: dependencies.catalog),
-                    ),
-                  ),
+                  onTap: () => context.pushNamed<void>(AppRoute.organization),
                 ),
               if (canManageAccess) ...[
                 const SizedBox(height: LumaSpacing.xl),
@@ -144,14 +131,8 @@ class _SettingsPageState extends State<SettingsPage> {
                   title: const Text('成员与访问管理'),
                   subtitle: const Text('管理成员、媒体源授权和设备令牌'),
                   trailing: const Icon(Icons.chevron_right_rounded),
-                  onTap: () => Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (_) => AccessManagementPage(
-                        access: dependencies.access,
-                        sources: dependencies.sources!,
-                      ),
-                    ),
-                  ),
+                  onTap: () =>
+                      context.pushNamed<void>(AppRoute.accessManagement),
                 ),
               ],
               const SizedBox(height: LumaSpacing.xl),

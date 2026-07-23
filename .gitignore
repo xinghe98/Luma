@@ -8,6 +8,9 @@ backend/*.db
 backend/*.db-shm
 backend/*.db-wal
 backend/configs/config.yaml
+# Runtime-generated server configuration snapshots.
+backend/configs/.luma-config-*.yaml
+.gocache/
 *.log
 .idea/
 .vscode/

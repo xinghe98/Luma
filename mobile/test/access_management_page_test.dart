@@ -12,6 +12,7 @@ import 'package:luma/data/repositories/access_repository.dart';
 import 'package:luma/data/repositories/source_repository.dart';
 import 'package:luma/data/services/connection_service.dart';
 import 'package:luma/features/settings/access/member_detail_page.dart';
+import 'package:luma/features/settings/access/access_management_page.dart';
 import 'package:luma/features/settings/access/new_member_page.dart';
 import 'package:luma/features/settings/settings_page.dart';
 
@@ -52,6 +53,25 @@ void main() {
 
     expect(find.text('成员与访问管理'), findsOneWidget);
   });
+
+  testWidgets(
+    'access management identifies recently active members as online',
+    (tester) async {
+      final access = _FakeAccessRepository()
+        ..users = [_user(name: 'Alice', online: true)];
+      await tester.pumpWidget(
+        MaterialApp(
+          home: AccessManagementPage(
+            access: access,
+            sources: _FakeSourceRepository(),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.text('成员 · 已启用 · 在线'), findsOneWidget);
+    },
+  );
 
   testWidgets('new member workflow grants sources before issuing its token', (
     tester,
@@ -238,6 +258,7 @@ class _FakeSourceRepository implements SourceRepository {
 class _FakeAccessRepository implements AccessRepository {
   final operations = <String>[];
   final failedGrantIds = <String>{};
+  List<AccessUser> users = [_user()];
   Completer<void>? grantGate;
   var createCalls = 0;
   var issueCalls = 0;
@@ -287,7 +308,7 @@ class _FakeAccessRepository implements AccessRepository {
   Future<List<AccessToken>> listTokens(String userId) async => const [];
 
   @override
-  Future<List<AccessUser>> listUsers() async => [_user()];
+  Future<List<AccessUser>> listUsers() async => users;
 
   @override
   Future<void> revokeSource(String userId, String sourceId) async {}
@@ -305,15 +326,19 @@ class _FakeAccessRepository implements AccessRepository {
   }) async => _user(name: name ?? 'Alice', enabled: enabled ?? true);
 }
 
-AccessUser _user({String name = 'Administrator', bool enabled = true}) =>
-    AccessUser(
-      id: 'user-1',
-      name: name,
-      role: 'member',
-      enabled: enabled,
-      createdAt: DateTime.utc(2026),
-      updatedAt: DateTime.utc(2026),
-    );
+AccessUser _user({
+  String name = 'Administrator',
+  bool enabled = true,
+  bool online = false,
+}) => AccessUser(
+  id: 'user-1',
+  name: name,
+  role: 'member',
+  enabled: enabled,
+  online: online,
+  createdAt: DateTime.utc(2026),
+  updatedAt: DateTime.utc(2026),
+);
 
 Source _source(String id, String name, {String libraryKind = 'personal'}) =>
     Source(

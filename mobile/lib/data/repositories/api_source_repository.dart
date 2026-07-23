@@ -1,6 +1,9 @@
 // Caches the authenticated source list for the active server session.
 import '../api/api_client.dart';
 import '../decoders/source_decoder.dart';
+import '../decoders/scan_job_decoder.dart';
+import '../decoders/decoder_utils.dart';
+import '../models/api_managed_source.dart';
 import '../models/api_source.dart';
 import 'source_repository.dart';
 
@@ -13,6 +16,7 @@ final class ApiSourceRepository
 
   final ApiClient _client;
   final SourceDecoder _decoder = const SourceDecoder();
+  final ScanJobDecoder _scanDecoder = const ScanJobDecoder();
   List<Source>? _cache;
 
   @override
@@ -49,5 +53,26 @@ final class ApiSourceRepository
       for (final item in _cache ?? await list()) item.id == id ? source : item,
     ];
     return source;
+  }
+
+  @override
+  Future<ManagedSourceCreation> createManagedSource({
+    required String name,
+    required String rootPath,
+    required String libraryKind,
+    required List<String> userIds,
+  }) async {
+    final response = await _client.createManagedSource(
+      name: name,
+      rootPath: rootPath,
+      libraryKind: libraryKind,
+      userIds: userIds,
+    );
+    final source = _decoder.decode(objectValue(response['source'], 'source'));
+    final scanJob = _scanDecoder.decode(
+      objectValue(response['scan_job'], 'scan_job'),
+    );
+    _cache = [...?_cache, source];
+    return ManagedSourceCreation(source: source, scanJob: scanJob);
   }
 }

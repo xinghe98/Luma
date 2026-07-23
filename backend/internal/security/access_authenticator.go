@@ -13,22 +13,34 @@ type PrincipalLookup interface {
 	FindPrincipalByTokenHash(context.Context, string, time.Time) (domain.Principal, error)
 }
 
+// ActivityRecorder observes successful requests without coupling
+// authentication to any particular presence implementation.
+type ActivityRecorder interface {
+	Observe(userID string)
+}
+
 // AccessAuthenticator 同时接受本地管理员根令牌和数据库中的成员令牌。
 type AccessAuthenticator struct {
 	bootstrap *TokenAuthenticator
 	lookup    PrincipalLookup
+	activity  ActivityRecorder
 }
 
-func NewAccessAuthenticator(bootstrapToken string, lookup PrincipalLookup) (*AccessAuthenticator, error) {
+func NewAccessAuthenticator(bootstrapToken string, lookup PrincipalLookup, activity ...ActivityRecorder) (*AccessAuthenticator, error) {
 	root, err := NewTokenAuthenticator(bootstrapToken)
 	if err != nil {
 		return nil, err
 	}
-	return &AccessAuthenticator{bootstrap: root, lookup: lookup}, nil
+	var recorder ActivityRecorder
+	if len(activity) > 0 {
+		recorder = activity[0]
+	}
+	return &AccessAuthenticator{bootstrap: root, lookup: lookup, activity: recorder}, nil
 }
 
 func (a *AccessAuthenticator) AuthenticateAuthorization(ctx context.Context, authorization string) (domain.Principal, bool) {
 	if principal, ok := a.bootstrap.AuthenticateAuthorization(ctx, authorization); ok {
+		a.observe(principal)
 		return principal, true
 	}
 	parts := strings.Fields(authorization)
@@ -36,5 +48,15 @@ func (a *AccessAuthenticator) AuthenticateAuthorization(ctx context.Context, aut
 		return domain.Principal{}, false
 	}
 	principal, err := a.lookup.FindPrincipalByTokenHash(ctx, HashToken(parts[1]), time.Now().UTC())
-	return principal, err == nil
+	if err != nil {
+		return domain.Principal{}, false
+	}
+	a.observe(principal)
+	return principal, true
+}
+
+func (a *AccessAuthenticator) observe(principal domain.Principal) {
+	if a.activity != nil {
+		a.activity.Observe(principal.UserID)
+	}
 }

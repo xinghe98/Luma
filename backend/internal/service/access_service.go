@@ -19,20 +19,32 @@ type AccessService struct {
 	repository      repository.AccessRepository
 	ids             IDGenerator
 	clock           Clock
+	presence        interface{ IsOnline(string) bool }
 	idempotencyMu   sync.Mutex
 	issuedByRequest map[string]domain.IssuedToken
 	issuedOrder     []string
 }
 
-func NewAccessService(repo repository.AccessRepository, ids IDGenerator, clock Clock) (*AccessService, error) {
+func NewAccessService(repo repository.AccessRepository, ids IDGenerator, clock Clock, presence ...interface{ IsOnline(string) bool }) (*AccessService, error) {
 	if repo == nil || ids == nil || clock == nil {
 		return nil, fmt.Errorf("访问控制依赖不能为空")
 	}
-	return &AccessService{repository: repo, ids: ids, clock: clock, issuedByRequest: map[string]domain.IssuedToken{}}, nil
+	var tracker interface{ IsOnline(string) bool }
+	if len(presence) > 0 {
+		tracker = presence[0]
+	}
+	return &AccessService{repository: repo, ids: ids, clock: clock, presence: tracker, issuedByRequest: map[string]domain.IssuedToken{}}, nil
 }
 
 func (s *AccessService) ListUsers(ctx context.Context) ([]domain.User, error) {
-	return s.repository.ListUsers(ctx)
+	users, err := s.repository.ListUsers(ctx)
+	if err != nil || s.presence == nil {
+		return users, err
+	}
+	for index := range users {
+		users[index].Online = users[index].Enabled && s.presence.IsOnline(users[index].ID)
+	}
+	return users, nil
 }
 
 func (s *AccessService) CreateUser(ctx context.Context, name string) (domain.User, error) {

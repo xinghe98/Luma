@@ -8,28 +8,43 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 )
 
 // PathPolicy 负责验证媒体源路径没有逃出允许目录白名单。
 type PathPolicy struct {
 	// allowedRoots 保存完成符号链接解析后的规范根目录。
 	allowedRoots []string
+	mu           sync.RWMutex
 }
 
 // NewPathPolicy 创建路径策略，并预先规范化所有允许根目录。
 func NewPathPolicy(roots []string) (*PathPolicy, error) {
-	policy := &PathPolicy{allowedRoots: make([]string, 0, len(roots))}
+	policy := &PathPolicy{}
+	if err := policy.ReplaceAllowedRoots(roots); err != nil {
+		return nil, err
+	}
+	return policy, nil
+}
+
+// ReplaceAllowedRoots swaps the complete whitelist only after every entry has
+// been canonicalized. Readers always observe either the old or the new list.
+func (p *PathPolicy) ReplaceAllowedRoots(roots []string) error {
+	canonical := make([]string, 0, len(roots))
 	for _, root := range roots {
 		resolved, err := canonicalExistingDir(root)
 		if err != nil {
-			return nil, fmt.Errorf("canonicalize allowed root %q: %w", root, err)
+			return fmt.Errorf("canonicalize allowed root %q: %w", root, err)
 		}
-		policy.allowedRoots = append(policy.allowedRoots, resolved)
+		canonical = append(canonical, resolved)
 	}
-	if len(policy.allowedRoots) == 0 {
-		return nil, fmt.Errorf("at least one allowed root is required")
+	if len(canonical) == 0 {
+		return fmt.Errorf("at least one allowed root is required")
 	}
-	return policy, nil
+	p.mu.Lock()
+	p.allowedRoots = canonical
+	p.mu.Unlock()
+	return nil
 }
 
 // ValidateSourceRoot 校验媒体源目录并返回其最终规范路径。
@@ -38,7 +53,10 @@ func (p *PathPolicy) ValidateSourceRoot(candidate string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	for _, root := range p.allowedRoots {
+	p.mu.RLock()
+	roots := append([]string(nil), p.allowedRoots...)
+	p.mu.RUnlock()
+	for _, root := range roots {
 		inside, err := pathWithin(root, resolved)
 		if err == nil && inside {
 			if runtime.GOOS == "windows" {

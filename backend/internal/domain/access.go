@@ -23,6 +23,7 @@ type User struct {
 	Name      string
 	Role      string
 	Enabled   bool
+	Online    bool
 	CreatedAt time.Time
 	UpdatedAt time.Time
 }

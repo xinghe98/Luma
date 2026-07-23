@@ -18,6 +18,7 @@ class SettingsController extends ChangeNotifier {
   String? _scanError;
   int _scanGeneration = 0;
   int _scanDiscoveredCount = 0;
+  List<ScanJob> _scanJobs = const [];
 
   ThemeMode get themeMode => _themeMode;
   double get cacheSizeMb =>
@@ -26,6 +27,47 @@ class SettingsController extends ChangeNotifier {
   bool get isScanning => _scanProgress != null;
   String? get scanError => _scanError;
   int get scanDiscoveredCount => _scanDiscoveredCount;
+
+  /// Latest known scan jobs, including background processing after traversal.
+  List<ScanJob> get scanJobs => List.unmodifiable(_scanJobs);
+
+  /// A user-facing state that distinguishes scanning from probe/thumbnail work.
+  String get scanStatusLabel {
+    if (isScanning) {
+      if (_scanJobs.isEmpty) return '正在准备扫描';
+      if (_scanJobs.any((job) => job.status == 'pending')) return '等待扫描';
+      if (_processing.thumbnailing > 0) return '正在生成缩略图';
+      if (_processing.probing > 0) return '正在探测媒体';
+      if (_processing.discovered > 0) return '等待媒体处理';
+      return '正在扫描目录';
+    }
+    if (_scanJobs.any((job) => job.status == 'interrupted')) return '扫描已中断';
+    if (_scanJobs.any((job) => job.status != 'completed')) return '扫描失败';
+    if (_processing.failed > 0) return '完成但有错误';
+    return '已就绪';
+  }
+
+  /// Compact counts for settings and home cards. State is never color-only.
+  String get scanStatusDetails {
+    if (_scanError != null) return _scanError!;
+    final summary = _processing;
+    if (isScanning && _scanJobs.isEmpty) return '正在创建扫描任务';
+    if (_scanJobs.isEmpty) return '没有正在处理的扫描任务';
+    final parts = <String>[
+      '共 ${summary.total} 个文件',
+      '已就绪 ${summary.ready}',
+      if (summary.discovered > 0) '待处理 ${summary.discovered}',
+      if (summary.probing > 0) '探测中 ${summary.probing}',
+      if (summary.thumbnailing > 0) '缩略图中 ${summary.thumbnailing}',
+      if (summary.failed > 0) '失败 ${summary.failed}',
+    ];
+    return parts.join(' · ');
+  }
+
+  bool get hasScanProblem =>
+      _scanError != null ||
+      _scanJobs.any((job) => job.status == 'interrupted') ||
+      _processing.failed > 0;
 
   void setThemeMode(ThemeMode value) {
     if (_themeMode == value) return;
@@ -57,6 +99,7 @@ class SettingsController extends ChangeNotifier {
     try {
       final jobs = await repository.latestAll();
       if (generation != _scanGeneration) return;
+      _scanJobs = jobs;
       if (jobs.isEmpty) return;
       final interrupted = jobs.where((job) => job.status == 'interrupted');
       if (interrupted.isNotEmpty) {
@@ -97,6 +140,7 @@ class SettingsController extends ChangeNotifier {
       final jobs = await _scanRepository!.startAll();
       if (generation != _scanGeneration) return;
       if (jobs.isEmpty) throw StateError('没有可扫描的媒体源');
+      _scanJobs = jobs;
       await _pollJobs(
         jobs.map((job) => job.id).toList(),
         onComplete,
@@ -123,6 +167,7 @@ class SettingsController extends ChangeNotifier {
       if (activeGeneration != _scanGeneration) return;
       final jobs = await Future.wait(ids.map(_scanRepository!.get));
       if (activeGeneration != _scanGeneration) return;
+      _scanJobs = [...retainedJobs, ...jobs];
       _scanDiscoveredCount = jobs.fold(
         0,
         (total, job) => total + job.discoveredCount,
@@ -147,7 +192,29 @@ class SettingsController extends ChangeNotifier {
     _scanProgress = null;
     _scanError = null;
     _scanDiscoveredCount = 0;
+    _scanJobs = const [];
     notifyListeners();
+  }
+
+  ProcessingSummary get _processing {
+    final jobs = _scanJobs;
+    return ProcessingSummary(
+      status: jobs.any((job) => job.processing.status == 'running')
+          ? 'running'
+          : 'completed',
+      total: jobs.fold(0, (total, job) => total + job.processing.total),
+      discovered: jobs.fold(
+        0,
+        (total, job) => total + job.processing.discovered,
+      ),
+      probing: jobs.fold(0, (total, job) => total + job.processing.probing),
+      thumbnailing: jobs.fold(
+        0,
+        (total, job) => total + job.processing.thumbnailing,
+      ),
+      ready: jobs.fold(0, (total, job) => total + job.processing.ready),
+      failed: jobs.fold(0, (total, job) => total + job.processing.failed),
+    );
   }
 
   static double _averageProgress(List<ScanJob> jobs) {

@@ -52,7 +52,7 @@ func run() error {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	application, err := app.New(ctx, cfg, version, logger)
+	application, err := app.New(ctx, cfg, *configPath, version, logger)
 	if err != nil {
 		return err
 	}

@@ -3,45 +3,53 @@ import 'package:flutter/material.dart';
 enum AppDestination {
   home(
     label: '首页',
+    routeName: 'home',
+    path: '/home',
     icon: Icons.home_outlined,
     selectedIcon: Icons.home_rounded,
   ),
   photos(
     label: '图片库',
+    routeName: 'photos',
+    path: '/photos',
     icon: Icons.photo_library_outlined,
     selectedIcon: Icons.photo_library_rounded,
   ),
   videos(
     label: '影视库',
+    routeName: 'videos',
+    path: '/videos',
     icon: Icons.movie_outlined,
     selectedIcon: Icons.movie_rounded,
   ),
   search(
     label: '搜索',
+    routeName: 'search',
+    path: '/search',
     icon: Icons.search_rounded,
     selectedIcon: Icons.search_rounded,
   ),
   settings(
     label: '设置',
+    routeName: 'settings',
+    path: '/settings',
     icon: Icons.settings_outlined,
     selectedIcon: Icons.settings_rounded,
   );
 
   const AppDestination({
     required this.label,
+    required this.routeName,
+    required this.path,
     required this.icon,
     required this.selectedIcon,
   });
 
   final String label;
+  final String routeName;
+  final String path;
   final IconData icon;
   final IconData selectedIcon;
-
-  NavigationDestination toNavigationDestination() => NavigationDestination(
-    icon: Icon(icon),
-    selectedIcon: Icon(selectedIcon),
-    label: label,
-  );
 
   NavigationRailDestination toNavigationRailDestination() =>
       NavigationRailDestination(

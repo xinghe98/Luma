@@ -69,6 +69,42 @@ func TestAccessServiceIdempotentWritesReplayWithoutDuplicating(t *testing.T) {
 	}
 }
 
+func TestAccessServiceIncludesObservedOnlineState(t *testing.T) {
+	ctx := context.Background()
+	db, err := dbrepo.Open(ctx, config.DatabaseConfig{Path: filepath.Join(t.TempDir(), "presence.db"), BusyTimeoutMS: 1000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	repository, err := dbrepo.NewAccessRepository(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ids := &accessServiceIDs{}
+	clock := accessServiceClock{now: time.Date(2026, 7, 23, 8, 0, 0, 0, time.UTC)}
+	presence := accessServicePresence{online: map[string]bool{"user-1": true}}
+	service, err := NewAccessService(repository, ids, clock, presence)
+	if err != nil {
+		t.Fatal(err)
+	}
+	user, err := service.CreateUser(ctx, "Alice")
+	if err != nil {
+		t.Fatal(err)
+	}
+	presence.online[user.ID] = true
+
+	users, err := service.ListUsers(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, listed := range users {
+		if listed.ID == user.ID && listed.Online {
+			return
+		}
+	}
+	t.Fatalf("online user %q was not returned as online: %#v", user.ID, users)
+}
+
 type accessServiceIDs struct{ next int }
 
 func (g *accessServiceIDs) New(prefix string) (string, error) {
@@ -79,3 +115,9 @@ func (g *accessServiceIDs) New(prefix string) (string, error) {
 type accessServiceClock struct{ now time.Time }
 
 func (c accessServiceClock) Now() time.Time { return c.now }
+
+type accessServicePresence struct{ online map[string]bool }
+
+func (p accessServicePresence) IsOnline(userID string) bool {
+	return p.online[userID]
+}

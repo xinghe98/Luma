@@ -67,7 +67,7 @@ class _SearchPageState extends State<SearchPage>
               child: CustomScrollView(
                 key: const PageStorageKey('search-scroll'),
                 controller: _scroll,
-                cacheExtent: 480,
+                cacheExtent: LumaLayout.scrollCacheExtent,
                 slivers: [
                   SliverPadding(
                     padding: const EdgeInsets.fromLTRB(

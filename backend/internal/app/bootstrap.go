@@ -6,12 +6,14 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/xinghe98/Luma/backend/internal/api"
 	"github.com/xinghe98/Luma/backend/internal/api/handler"
 	"github.com/xinghe98/Luma/backend/internal/config"
 	"github.com/xinghe98/Luma/backend/internal/jobs"
 	"github.com/xinghe98/Luma/backend/internal/platform"
+	"github.com/xinghe98/Luma/backend/internal/presence"
 	dbrepo "github.com/xinghe98/Luma/backend/internal/repository/sqlite"
 	"github.com/xinghe98/Luma/backend/internal/security"
 	"github.com/xinghe98/Luma/backend/internal/service"
@@ -22,6 +24,8 @@ import (
 type bootstrap struct {
 	// config 是用于组装组件的只读配置。
 	config config.Config
+	// configPath 是可由管理员安全更新的运行配置文件。
+	configPath string
 	// version 是构建时注入的服务版本。
 	version string
 	// logger 是应用共享日志器。
@@ -31,12 +35,12 @@ type bootstrap struct {
 }
 
 // New 按依赖顺序组装完整应用，并在任一步失败时回滚已创建资源。
-func New(ctx context.Context, cfg config.Config, version string, logger *slog.Logger) (_ *App, err error) {
+func New(ctx context.Context, cfg config.Config, configPath, version string, logger *slog.Logger) (_ *App, err error) {
 	if logger == nil {
 		return nil, errors.New("logger is required")
 	}
 	b := &bootstrap{
-		config: cfg, version: version, logger: logger,
+		config: cfg, configPath: configPath, version: version, logger: logger,
 		cleanups: &cleanupStack{},
 	}
 	defer func() {
@@ -82,7 +86,8 @@ func (b *bootstrap) build(ctx context.Context) (*App, error) {
 	if err != nil {
 		return nil, fmt.Errorf("创建访问控制 Repository: %w", err)
 	}
-	authenticator, err := security.NewAccessAuthenticator(token, accessRepository)
+	activeUsers := presence.New(time.Now)
+	authenticator, err := security.NewAccessAuthenticator(token, accessRepository, activeUsers)
 	if err != nil {
 		return nil, fmt.Errorf("create API authenticator: %w", err)
 	}
@@ -116,7 +121,7 @@ func (b *bootstrap) build(ctx context.Context) (*App, error) {
 	if err != nil {
 		return nil, fmt.Errorf("创建作品库服务: %w", err)
 	}
-	accessService, err := service.NewAccessService(accessRepository, ids, clock)
+	accessService, err := service.NewAccessService(accessRepository, ids, clock, activeUsers)
 	if err != nil {
 		return nil, fmt.Errorf("创建访问控制服务: %w", err)
 	}
@@ -136,6 +141,14 @@ func (b *bootstrap) build(ctx context.Context) (*App, error) {
 	scanService, err := service.NewScanService(sourceRepository, scanRepository, ids, clock, scanSignal)
 	if err != nil {
 		return nil, fmt.Errorf("创建扫描服务: %w", err)
+	}
+	allowedRootsStore, err := config.NewAllowedRootsStore(b.configPath)
+	if err != nil {
+		return nil, fmt.Errorf("创建媒体目录配置写入器: %w", err)
+	}
+	managedSources, err := service.NewManagedMediaSourceService(sourceService, accessService, scanService, allowedRootsStore, pathPolicy)
+	if err != nil {
+		return nil, fmt.Errorf("创建媒体源管理服务: %w", err)
 	}
 	// 自动扫描依赖 ScanService，故在 Worker 组创建后再挂接调度器。
 	if b.config.Media.AutoScan.Enabled {
@@ -180,7 +193,7 @@ func (b *bootstrap) build(ctx context.Context) (*App, error) {
 	if err != nil {
 		return nil, fmt.Errorf("create system handler: %w", err)
 	}
-	sourceHandler, err := handler.NewSourceHandler(sourceService)
+	sourceHandler, err := handler.NewSourceHandler(sourceService, managedSources)
 	if err != nil {
 		return nil, fmt.Errorf("创建媒体源 Handler: %w", err)
 	}

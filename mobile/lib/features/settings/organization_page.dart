@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
+import '../../app/app_router.dart';
 import '../../core/theme.dart';
 import '../../data/models/api_catalog.dart';
 import '../../data/repositories/catalog_repository.dart';
@@ -63,13 +65,9 @@ class _OrganizationPageState extends State<OrganizationPage> {
                 ),
                 trailing: const Icon(Icons.chevron_right_rounded),
                 onTap: () async {
-                  final changed = await Navigator.of(context).push<bool>(
-                    MaterialPageRoute(
-                      builder: (_) => _MatchEditor(
-                        issue: issue,
-                        repository: widget.repository,
-                      ),
-                    ),
+                  final changed = await context.pushNamed<bool>(
+                    AppRoute.organizationEditor,
+                    pathParameters: {'mediaId': issue.mediaId},
                   );
                   if (changed == true) _load();
                 },
@@ -79,16 +77,104 @@ class _OrganizationPageState extends State<OrganizationPage> {
   );
 }
 
-class _MatchEditor extends StatefulWidget {
-  const _MatchEditor({required this.issue, required this.repository});
+class OrganizationMatchRoutePage extends StatefulWidget {
+  const OrganizationMatchRoutePage({
+    super.key,
+    required this.repository,
+    required this.mediaId,
+  });
+
+  final CatalogRepository repository;
+  final String mediaId;
+
+  @override
+  State<OrganizationMatchRoutePage> createState() =>
+      _OrganizationMatchRoutePageState();
+}
+
+class _OrganizationMatchRoutePageState
+    extends State<OrganizationMatchRoutePage> {
+  CatalogIssue? _issue;
+  Object? _error;
+  var _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() {
+      _error = null;
+      _loading = true;
+    });
+    try {
+      final issues = await widget.repository.issues();
+      CatalogIssue? match;
+      for (final issue in issues) {
+        if (issue.mediaId == widget.mediaId) {
+          match = issue;
+          break;
+        }
+      }
+      if (mounted) {
+        setState(() {
+          _issue = match;
+          _loading = false;
+        });
+      }
+    } on Object catch (error) {
+      if (mounted) {
+        setState(() {
+          _error = error;
+          _loading = false;
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final issue = _issue;
+    if (issue != null) {
+      return OrganizationMatchEditorPage(
+        issue: issue,
+        repository: widget.repository,
+      );
+    }
+    return Scaffold(
+      appBar: AppBar(title: const Text('确认归属')),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : _error != null
+          ? ErrorState(onRetry: _load)
+          : const EmptyState(
+              icon: Icons.task_alt_rounded,
+              title: '文件已处理',
+              message: '该文件不再需要人工确认。',
+            ),
+    );
+  }
+}
+
+class OrganizationMatchEditorPage extends StatefulWidget {
+  const OrganizationMatchEditorPage({
+    super.key,
+    required this.issue,
+    required this.repository,
+  });
+
   final CatalogIssue issue;
   final CatalogRepository repository;
 
   @override
-  State<_MatchEditor> createState() => _MatchEditorState();
+  State<OrganizationMatchEditorPage> createState() =>
+      _OrganizationMatchEditorPageState();
 }
 
-class _MatchEditorState extends State<_MatchEditor> {
+class _OrganizationMatchEditorPageState
+    extends State<OrganizationMatchEditorPage> {
   late final TextEditingController _title;
   late final TextEditingController _year;
   late final TextEditingController _season;

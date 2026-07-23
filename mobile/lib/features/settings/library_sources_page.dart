@@ -1,15 +1,26 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
+import '../../app/app_scope.dart';
 import '../../core/theme.dart';
+import '../../data/models/api_managed_source.dart';
 import '../../data/models/api_source.dart';
+import '../../data/repositories/access_repository.dart';
 import '../../data/repositories/source_repository.dart';
 import '../../shared/states/error_state.dart';
 import '../../shared/library/library_kind_presentation.dart';
+import 'new_library_source_page.dart';
 
 class LibrarySourcesPage extends StatefulWidget {
-  const LibrarySourcesPage({super.key, required this.repository});
+  const LibrarySourcesPage({
+    super.key,
+    required this.repository,
+    required this.access,
+  });
 
   final MutableSourceRepository repository;
+  final AccessRepository access;
 
   @override
   State<LibrarySourcesPage> createState() => _LibrarySourcesPageState();
@@ -64,7 +75,16 @@ class _LibrarySourcesPageState extends State<LibrarySourcesPage> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('媒体源类型')),
+    appBar: AppBar(
+      title: const Text('媒体源'),
+      actions: [
+        IconButton(
+          tooltip: '新增媒体源',
+          icon: const Icon(Icons.create_new_folder_outlined),
+          onPressed: _createSource,
+        ),
+      ],
+    ),
     body: _error != null
         ? ErrorState(onRetry: _load)
         : _sources == null
@@ -84,9 +104,13 @@ class _LibrarySourcesPageState extends State<LibrarySourcesPage> {
                   padding: const EdgeInsets.only(bottom: LumaSpacing.sm),
                   child: ListTile(
                     contentPadding: const EdgeInsets.symmetric(horizontal: 4),
-                    leading: Icon(LibraryKindPresentation.icon(source.libraryKind)),
+                    leading: Icon(
+                      LibraryKindPresentation.icon(source.libraryKind),
+                    ),
                     title: Text(source.name),
-                    subtitle: Text('${LibraryKindPresentation.label(source.libraryKind)}库'),
+                    subtitle: Text(
+                      '${LibraryKindPresentation.label(source.libraryKind)}库',
+                    ),
                     trailing: _saving.contains(source.id)
                         ? const SizedBox(
                             width: 24,
@@ -111,4 +135,24 @@ class _LibrarySourcesPageState extends State<LibrarySourcesPage> {
             ],
           ),
   );
+
+  Future<void> _createSource() async {
+    final created = await Navigator.of(context).push<ManagedSourceCreation>(
+      MaterialPageRoute<ManagedSourceCreation>(
+        builder: (_) => NewLibrarySourcePage(
+          sources: widget.repository,
+          access: widget.access,
+        ),
+      ),
+    );
+    if (created == null || !mounted) return;
+    await _load();
+    if (!mounted) return;
+    // The server already queued this job. Start UI polling without issuing a
+    // duplicate scan request so its probe and thumbnail stages stay visible.
+    unawaited(AppScope.of(context).settings.restoreScan());
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('${created.source.name} 已新增，首次扫描已开始')),
+    );
+  }
 }

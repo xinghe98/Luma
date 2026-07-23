@@ -45,6 +45,7 @@ type accessUserJSON struct {
 	Name      string `json:"name"`
 	Role      string `json:"role"`
 	Enabled   bool   `json:"enabled"`
+	Online    bool   `json:"online"`
 	CreatedAt string `json:"created_at"`
 	UpdatedAt string `json:"updated_at"`
 }
@@ -197,7 +198,7 @@ func (h *AccessHandler) RevokeSource(c *gin.Context) {
 }
 
 func presentAccessUser(user domain.User) accessUserJSON {
-	return accessUserJSON{ID: user.ID, Name: user.Name, Role: user.Role, Enabled: user.Enabled,
+	return accessUserJSON{ID: user.ID, Name: user.Name, Role: user.Role, Enabled: user.Enabled, Online: user.Online,
 		CreatedAt: user.CreatedAt.UTC().Format(time.RFC3339Nano), UpdatedAt: user.UpdatedAt.UTC().Format(time.RFC3339Nano)}
 }
 

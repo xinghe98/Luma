@@ -18,20 +18,15 @@ class MediaArtwork extends StatelessWidget {
   final double borderRadius;
   final bool useCardThumbnail;
 
-  static const _palettes = [
-    [Color(0xFF45606A), Color(0xFF17232D), Color(0xFFB89162)],
-    [Color(0xFF5D536C), Color(0xFF1E2634), Color(0xFF9E7C77)],
-    [Color(0xFF345A57), Color(0xFF152A31), Color(0xFF91A9A0)],
-    [Color(0xFF6A5346), Color(0xFF29252B), Color(0xFFC4A16C)],
-    [Color(0xFF445A72), Color(0xFF171D29), Color(0xFF7B9EAE)],
-  ];
-
   @override
   Widget build(BuildContext context) {
     final imagePath = useCardThumbnail && item.cardThumbnailUrl.isNotEmpty
         ? item.cardThumbnailUrl
         : item.thumbnailUrl;
-    final palette = _palettes[item.artSeed % _palettes.length];
+    final palette =
+        LumaArtworkColors.palettes[
+            item.artSeed % LumaArtworkColors.palettes.length
+          ];
     final placeholder = _PlaceholderArtwork(item: item, palette: palette);
     return ClipRRect(
       borderRadius: BorderRadius.circular(borderRadius),

@@ -882,12 +882,13 @@ components:
           items: { type: string }
     AccessUser:
       type: object
-      required: [id, name, role, enabled, created_at, updated_at]
+      required: [id, name, role, enabled, online, created_at, updated_at]
       properties:
         id: { type: string }
         name: { type: string }
         role: { type: string, enum: [admin, member] }
         enabled: { type: boolean }
+        online: { type: boolean, description: 最近 2 分钟内有已认证服务端访问。 }
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
     AccessToken:

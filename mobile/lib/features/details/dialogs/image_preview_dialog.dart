@@ -20,8 +20,8 @@ void showImagePreviewDialog(
     context: context,
     barrierDismissible: true,
     barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
-    // 图片预览不应给原页面或 Hero 飞行中的图片加任何灰色遮罩。
-    barrierColor: Colors.transparent,
+    // 小尺寸图片按比例显示时，预览外区域使用实底，不能透出媒体瀑布流。
+    barrierColor: context.luma.playerInk,
     transitionDuration: LumaMotion.forContext(context, LumaMotion.slow),
     pageBuilder: (context, animation, secondaryAnimation) {
       return ImagePreviewDialog(
@@ -30,7 +30,7 @@ void showImagePreviewDialog(
         heroTag: heroTag,
       );
     },
-    // 图片由 Hero 负责位移动画；遮罩由 barrier 淡入，整页不再额外 Fade，
+    // 图片由 Hero 负责位移动画；实底遮罩由 barrier 淡入，整页不再额外 Fade，
     // 避免与 Hero 叠加造成闪一下。
     transitionBuilder: (context, animation, secondaryAnimation, child) => child,
   );
@@ -187,8 +187,8 @@ class _ImagePreviewDialogState extends State<ImagePreviewDialog> {
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: SystemUiOverlayStyle.light,
       child: Material(
-        // 保持透明，使图片以原始色彩呈现，预览外区域仍可见图片库。
-        color: Colors.transparent,
+        // 使用独立的播放环境底色，保证小图预览不会露出底层内容。
+        color: context.luma.playerInk,
         child: Stack(
           fit: StackFit.expand,
           children: [

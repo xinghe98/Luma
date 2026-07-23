@@ -66,7 +66,11 @@ class PlayerController extends ChangeNotifier {
     }
     _saveTimer ??= Timer.periodic(
       const Duration(seconds: 15),
-      (_) => unawaited(_saveProgress()),
+      // 暂停后的进度已在暂停动作中保存。继续定时写入相同位置会
+      // 触发不必要的网络请求和全局媒体状态更新。
+      (_) {
+        if (_playing) unawaited(_saveProgress());
+      },
     );
     scheduleHide();
   }
@@ -204,7 +208,12 @@ class PlayerController extends ChangeNotifier {
     final target = _position;
     final shouldResume = _resumeAfterScrub;
     _finishScrub();
-    if (initialized) unawaited(_commitVideoScrub(target, shouldResume));
+    if (initialized) {
+      unawaited(_commitVideoScrub(target, shouldResume));
+    } else if (!shouldResume) {
+      // 未初始化播放器时同样要保存暂停状态下的拖动位置。
+      unawaited(_saveProgress());
+    }
     notifyListeners();
   }
 
@@ -213,7 +222,11 @@ class PlayerController extends ChangeNotifier {
     if (video == null) return;
     try {
       await video.seekTo(target);
-      if (shouldResume && !_disposed) await video.play();
+      if (shouldResume && !_disposed) {
+        await video.play();
+      } else {
+        await _saveProgress();
+      }
     } on Object catch (error) {
       if (_disposed) return;
       _error = error.toString();

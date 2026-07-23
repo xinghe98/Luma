@@ -15,11 +15,12 @@ class MediaMetadata extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         const SectionHeader(title: '媒体信息'),
         const SizedBox(height: LumaSpacing.sm),
         Wrap(
+          alignment: WrapAlignment.center,
           spacing: LumaSpacing.sm,
           runSpacing: LumaSpacing.sm,
           children: [
