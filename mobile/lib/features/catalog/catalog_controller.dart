@@ -6,13 +6,20 @@ import '../../data/repositories/catalog_repository.dart';
 enum CatalogLoadState { idle, loading, ready, error }
 
 final class CatalogController extends ChangeNotifier {
-  CatalogController(this._repository, {required CatalogKind kind})
-    : _kind = kind;
+  CatalogController(
+    this._repository, {
+    required CatalogKind kind,
+    List<CatalogItem> initialItems = const [],
+  }) : _kind = kind,
+       _items = initialItems,
+       _state = initialItems.isEmpty
+           ? CatalogLoadState.idle
+           : CatalogLoadState.ready;
 
   final CatalogRepository _repository;
   final CatalogKind _kind;
-  CatalogLoadState _state = CatalogLoadState.idle;
-  List<CatalogItem> _items = const [];
+  CatalogLoadState _state;
+  List<CatalogItem> _items;
   String? _error;
   int _generation = 0;
   bool _disposed = false;

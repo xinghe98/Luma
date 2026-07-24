@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../core/theme.dart';
 import '../data/models/api_access.dart';
 import '../data/models/api_catalog.dart';
 import '../data/models/media_item.dart';
@@ -26,6 +27,7 @@ import '../features/settings/settings_page.dart';
 import '../features/shell/app_destination.dart';
 import '../features/shell/app_shell.dart';
 import '../shared/states/empty_state.dart';
+import '../shared/states/skeleton.dart';
 import 'app_dependencies.dart';
 import 'app_scope.dart';
 
@@ -45,6 +47,37 @@ abstract final class AppRoute {
   static const memberDetail = 'member-detail';
   static const issueToken = 'issue-token';
 }
+
+/// Route-only presentation data for media details.
+///
+/// Videos skip Hero and use a short fade because their cover must not compete
+/// with the platform route transition for raster work.
+class _MediaDetailRouteData {
+  const _MediaDetailRouteData({
+    this.heroTag,
+    this.useLightTransition = false,
+    this.initialLoadDelay = Duration.zero,
+  });
+
+  final String? heroTag;
+  final bool useLightTransition;
+  final Duration initialLoadDelay;
+}
+
+/// Applies a lightweight opacity-only transition without moving or scaling UI.
+Widget _lightFade(
+  BuildContext context,
+  Animation<double> animation,
+  Animation<double> secondaryAnimation,
+  Widget child,
+) => FadeTransition(
+  opacity: CurvedAnimation(
+    parent: animation,
+    curve: LumaMotion.standard,
+    reverseCurve: Curves.easeInCubic,
+  ),
+  child: child,
+);
 
 final _rootNavigatorKey = GlobalKey<NavigatorState>(debugLabel: 'root');
 
@@ -113,11 +146,18 @@ GoRouter createAppRouter(AppDependencies dependencies) => GoRouter(
                     context.openMediaDetails(item, heroTag: heroTag),
                 onOpenSearch: () =>
                     context.goToDestination(AppDestination.search),
-                onOpenMovies: () => context.pushNamed(AppRoute.movieCollection),
-                onOpenSeries: () =>
-                    context.pushNamed(AppRoute.seriesCollection),
-                onOpenPersonalVideos: () =>
-                    context.pushNamed(AppRoute.personalVideos),
+                onOpenMovies: (items) => context.pushNamed(
+                  AppRoute.movieCollection,
+                  extra: items,
+                ),
+                onOpenSeries: (items) => context.pushNamed(
+                  AppRoute.seriesCollection,
+                  extra: items,
+                ),
+                onOpenPersonalVideos: (items) => context.pushNamed(
+                  AppRoute.personalVideos,
+                  extra: items,
+                ),
               ),
             ),
           ],
@@ -149,27 +189,53 @@ GoRouter createAppRouter(AppDependencies dependencies) => GoRouter(
       parentNavigatorKey: _rootNavigatorKey,
       name: AppRoute.mediaDetail,
       path: '/media/:mediaId',
-      builder: (_, state) => MediaDetailPage(
-        mediaId: state.pathParameters['mediaId']!,
-        heroTag: state.extra as String?,
-      ),
+      pageBuilder: (_, state) {
+        final extra = state.extra;
+        final routeData = extra is _MediaDetailRouteData
+            ? extra
+            : _MediaDetailRouteData(heroTag: extra as String?);
+        final child = MediaDetailPage(
+          mediaId: state.pathParameters['mediaId']!,
+          heroTag: routeData.heroTag,
+          initialLoadDelay: routeData.initialLoadDelay,
+        );
+        if (!routeData.useLightTransition) {
+          return MaterialPage<void>(key: state.pageKey, child: child);
+        }
+        return CustomTransitionPage<void>(
+          key: state.pageKey,
+          transitionDuration: LumaMotion.fast,
+          reverseTransitionDuration: LumaMotion.fast,
+          transitionsBuilder: _lightFade,
+          child: child,
+        );
+      },
     ),
     GoRoute(
       parentNavigatorKey: _rootNavigatorKey,
       name: AppRoute.catalogDetail,
       path: '/catalog/:catalogId',
-      builder: (context, state) => CatalogDetailPage(
-        catalogId: state.pathParameters['catalogId']!,
-        repository: dependencies.catalog,
-        onOpenMedia: context.openPlayer,
+      pageBuilder: (context, state) => NoTransitionPage<void>(
+        key: state.pageKey,
+        child: CatalogDetailPage(
+          catalogId: state.pathParameters['catalogId']!,
+          initialItem: state.extra is CatalogItem
+              ? state.extra as CatalogItem
+              : null,
+          repository: dependencies.catalog,
+          onOpenMedia: context.openPlayer,
+        ),
       ),
     ),
     GoRoute(
       parentNavigatorKey: _rootNavigatorKey,
       name: AppRoute.movieCollection,
       path: '/videos/movies',
-      builder: (context, _) => CatalogCollectionPage(
+      builder: (context, state) => CatalogCollectionPage(
         kind: CatalogKind.movie,
+        initialItems: state.extra is List<CatalogItem>
+            ? state.extra as List<CatalogItem>
+            : const [],
         onOpenCatalog: context.openCatalogDetails,
         onOpenSearch: () => context.goToDestination(AppDestination.search),
       ),
@@ -178,8 +244,11 @@ GoRouter createAppRouter(AppDependencies dependencies) => GoRouter(
       parentNavigatorKey: _rootNavigatorKey,
       name: AppRoute.seriesCollection,
       path: '/videos/series',
-      builder: (context, _) => CatalogCollectionPage(
+      builder: (context, state) => CatalogCollectionPage(
         kind: CatalogKind.series,
+        initialItems: state.extra is List<CatalogItem>
+            ? state.extra as List<CatalogItem>
+            : const [],
         onOpenCatalog: context.openCatalogDetails,
         onOpenSearch: () => context.goToDestination(AppDestination.search),
       ),
@@ -188,10 +257,13 @@ GoRouter createAppRouter(AppDependencies dependencies) => GoRouter(
       parentNavigatorKey: _rootNavigatorKey,
       name: AppRoute.personalVideos,
       path: '/videos/personal',
-      builder: (context, _) => LibraryPage(
+      builder: (context, state) => LibraryPage(
         type: MediaType.video,
         fixedLibraryKind: 'personal',
         title: '个人视频',
+        initialItems: state.extra is List<MediaItem>
+            ? state.extra as List<MediaItem>
+            : const [],
         onOpenMedia: (item, {heroTag}) =>
             context.openMediaDetails(item, heroTag: heroTag),
         onOpenSearch: () => context.goToDestination(AppDestination.search),
@@ -235,6 +307,9 @@ GoRouter createAppRouter(AppDependencies dependencies) => GoRouter(
       builder: (_, state) => OrganizationMatchRoutePage(
         repository: dependencies.catalog,
         mediaId: state.pathParameters['mediaId']!,
+        initialIssue: state.extra is CatalogIssue
+            ? state.extra as CatalogIssue
+            : null,
       ),
     ),
     GoRoute(
@@ -278,6 +353,7 @@ GoRouter createAppRouter(AppDependencies dependencies) => GoRouter(
         access: dependencies.access,
         sources: dependencies.sources,
         userId: state.pathParameters['userId']!,
+        initialUser: state.extra is AccessUser ? state.extra as AccessUser : null,
         builder: (user, sources) => MemberDetailPage(
           access: dependencies.access,
           sources: sources,
@@ -293,6 +369,7 @@ GoRouter createAppRouter(AppDependencies dependencies) => GoRouter(
         access: dependencies.access,
         sources: dependencies.sources,
         userId: state.pathParameters['userId']!,
+        initialUser: state.extra is AccessUser ? state.extra as AccessUser : null,
         builder: (user, _) =>
             IssueTokenPage(access: dependencies.access, user: user),
       ),
@@ -306,13 +383,23 @@ extension AppNavigation on BuildContext {
   void goToDestination(AppDestination destination) =>
       goNamed(destination.routeName);
 
+  /// Opens a media detail route with the animation appropriate to its type.
   void openMediaDetails(MediaItem item, {String? heroTag}) {
     // 搜索/库页条目不一定位于首页集合，先写入缓存再打开稳定 URL。
     AppScope.of(this).media.remember(item);
+    final isVideo = item.type == MediaType.video;
     pushNamed<void>(
       AppRoute.mediaDetail,
       pathParameters: {'mediaId': item.id},
-      extra: heroTag,
+      extra: _MediaDetailRouteData(
+        heroTag: isVideo ? null : heroTag,
+        useLightTransition: isVideo,
+        initialLoadDelay: isVideo
+            ? LumaMotion.fast
+            : heroTag == null
+            ? Duration.zero
+            : LumaMotion.slow,
+      ),
     );
   }
 
@@ -329,6 +416,7 @@ extension AppNavigation on BuildContext {
   void openCatalogDetails(CatalogItem item) => pushNamed<void>(
     AppRoute.catalogDetail,
     pathParameters: {'catalogId': item.id},
+    extra: item,
   );
 
   Future<void> openPlayer(String mediaId) async {
@@ -368,12 +456,14 @@ class _AccessUserRoutePage extends StatefulWidget {
     required this.access,
     required this.sources,
     required this.userId,
+    this.initialUser,
     required this.builder,
   });
 
   final AccessRepository access;
   final SourceRepository? sources;
   final String userId;
+  final AccessUser? initialUser;
   final Widget Function(AccessUser user, SourceRepository sources) builder;
 
   @override
@@ -386,7 +476,7 @@ class _AccessUserRoutePageState extends State<_AccessUserRoutePage> {
   @override
   void initState() {
     super.initState();
-    _request = _load();
+    _request = widget.initialUser == null ? _load() : null;
   }
 
   Future<AccessUser?> _load() async {
@@ -406,12 +496,14 @@ class _AccessUserRoutePageState extends State<_AccessUserRoutePage> {
         message: '当前服务器不支持成员与访问管理。',
       );
     }
+    final initialUser = widget.initialUser;
+    if (initialUser != null) return widget.builder(initialUser, sources);
     return FutureBuilder<AccessUser?>(
       future: _request,
       builder: (context, snapshot) {
         if (snapshot.connectionState != ConnectionState.done) {
           return const Scaffold(
-            body: Center(child: CircularProgressIndicator()),
+            body: SettingsListSkeleton(items: 3),
           );
         }
         if (snapshot.hasError) {

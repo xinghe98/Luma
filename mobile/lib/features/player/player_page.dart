@@ -170,18 +170,24 @@ class _PlayerScene extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        RepaintBoundary(child: _PlayerVideoSurface(controller: controller)),
-        PlayerGestureLayer(interaction: interaction),
-        PlayerFeedbackHud(interaction: interaction),
-        _PlayerDynamicOverlay(
-          controller: controller,
-          onBack: onBack,
-          onRotate: onRotate,
-        ),
-      ],
+    // Video textures preserve their aspect ratio, leaving letterbox space on
+    // mismatched displays. Keep that space black instead of exposing the app
+    // shell's charcoal background.
+    return ColoredBox(
+      color: Colors.black,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          RepaintBoundary(child: _PlayerVideoSurface(controller: controller)),
+          PlayerGestureLayer(interaction: interaction),
+          PlayerFeedbackHud(interaction: interaction),
+          _PlayerDynamicOverlay(
+            controller: controller,
+            onBack: onBack,
+            onRotate: onRotate,
+          ),
+        ],
+      ),
     );
   }
 }

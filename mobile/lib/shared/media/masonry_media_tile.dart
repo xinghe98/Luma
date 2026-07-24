@@ -44,6 +44,9 @@ class MasonryMediaTile extends StatelessWidget {
             child: InkWell(
               onTap: onTap,
               onLongPress: onLongPress,
+              // Hero 过渡期间保留的默认水波纹会像一层灰色蒙版。
+              splashFactory: NoSplash.splashFactory,
+              overlayColor: const WidgetStatePropertyAll(Colors.transparent),
               borderRadius: radius,
               child: ClipRRect(
                 borderRadius: radius,

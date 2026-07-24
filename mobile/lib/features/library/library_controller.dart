@@ -13,20 +13,24 @@ class LibraryFilters {
 }
 
 class LibraryController extends ChangeNotifier {
+  /// [initialItems] 来自上一级已渲染的分区，用于避免路由动画期间重新空载。
   LibraryController({
     MediaType? fixedType,
     String? fixedLibraryKind,
     MediaController? media,
+    List<MediaItem> initialItems = const [],
   }) : _media = media,
        _fixedType = fixedType,
        _fixedLibraryKind = fixedLibraryKind,
        _type = fixedType {
     _media?.addListener(_onMediaChanged);
-    if (media != null) {
-      final seed = filterMediaItems(
-        media.items,
-        _filter,
-      ).take(12).toList(growable: false);
+    if (media != null || initialItems.isNotEmpty) {
+      final seed = initialItems.isNotEmpty
+          ? initialItems
+          : filterMediaItems(
+              media!.items,
+              _filter,
+            ).take(12).toList(growable: false);
       _remoteItems = seed;
       _visibleItems = seed;
       _remoteIds.addAll(seed.map((item) => item.id));

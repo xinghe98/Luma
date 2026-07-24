@@ -10,6 +10,7 @@ import '../../../data/repositories/access_repository.dart';
 import '../../../data/repositories/source_repository.dart';
 import '../../../shared/layout/constrained_page_list.dart';
 import '../../../shared/states/empty_state.dart';
+import '../../../shared/states/skeleton.dart';
 
 class AccessManagementPage extends StatefulWidget {
   const AccessManagementPage({
@@ -74,7 +75,7 @@ class _AccessManagementPageState extends State<AccessManagementPage> {
           ),
         );
       }
-      return const Center(child: CircularProgressIndicator());
+      return const SettingsListSkeleton(items: 3, showAction: true);
     }
     return ConstrainedPageList(
       padding: LumaLayout.pagePadding(top: LumaSpacing.sm),
@@ -182,6 +183,7 @@ class _AccessManagementPageState extends State<AccessManagementPage> {
     await context.pushNamed<void>(
       AppRoute.memberDetail,
       pathParameters: {'userId': user.id},
+      extra: user,
     );
     if (mounted) _load();
   }

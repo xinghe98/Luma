@@ -12,6 +12,9 @@ class PlayerTimeline extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final onInk = context.luma.onPlayerInk;
+    // The player always sits on a dark video surface, so it needs the warm
+    // theme accent instead of the app-wide primary colour used by regular UI.
+    const timelineColor = LumaColors.gold;
     final durationMs = controller.duration.inMilliseconds.toDouble();
     final positionMs = controller.position.inMilliseconds.clamp(
       0,
@@ -25,13 +28,22 @@ class PlayerTimeline extends StatelessWidget {
       children: [
         Text(formatDuration(controller.position), style: timeStyle),
         Expanded(
-          child: Slider(
-            value: durationMs <= 0 ? 0 : positionMs.toDouble(),
-            max: durationMs <= 0 ? 1 : durationMs,
-            onChangeStart: (_) => controller.beginScrub(),
-            onChanged: (value) =>
-                controller.updateScrub(Duration(milliseconds: value.round())),
-            onChangeEnd: (_) => controller.commitScrub(),
+          child: SliderTheme(
+            data: SliderTheme.of(context).copyWith(
+              activeTrackColor: timelineColor,
+              inactiveTrackColor: onInk.withValues(alpha: 0.28),
+              thumbColor: timelineColor,
+              overlayColor: timelineColor.withValues(alpha: 0.16),
+            ),
+            child: Slider(
+              value: durationMs <= 0 ? 0 : positionMs.toDouble(),
+              max: durationMs <= 0 ? 1 : durationMs,
+              onChangeStart: (_) => controller.beginScrub(),
+              onChanged: (value) => controller.updateScrub(
+                Duration(milliseconds: value.round()),
+              ),
+              onChangeEnd: (_) => controller.commitScrub(),
+            ),
           ),
         ),
         Text(formatDuration(controller.duration), style: timeStyle),

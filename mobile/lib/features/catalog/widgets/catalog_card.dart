@@ -24,6 +24,9 @@ class CatalogCard extends StatelessWidget {
       label: '${item.title}，$subtitle',
       child: InkWell(
         onTap: onTap,
+        // 详情页立即入场，避免默认水波纹在海报上留下短暂蒙层。
+        splashFactory: NoSplash.splashFactory,
+        overlayColor: const WidgetStatePropertyAll(Colors.transparent),
         borderRadius: BorderRadius.circular(LumaRadii.large),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,

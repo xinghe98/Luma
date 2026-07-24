@@ -10,6 +10,7 @@ import '../../../shared/layout/constrained_page_list.dart';
 import '../../../shared/layout/section_header.dart';
 import '../../../shared/library/library_kind_presentation.dart';
 import '../../../shared/states/empty_state.dart';
+import '../../../shared/states/skeleton.dart';
 import 'access_request_id.dart';
 import 'access_widgets.dart';
 
@@ -97,7 +98,7 @@ class _NewMemberPageState extends State<NewMemberPage> {
           ),
         );
       }
-      return const Center(child: CircularProgressIndicator());
+      return const SettingsListSkeleton(items: 3, showAction: true);
     }
     final created = _created;
     final isCreated = created != null;

@@ -3,6 +3,7 @@ import 'package:flutter/rendering.dart';
 
 import '../../core/theme.dart';
 import '../../data/models/media_item.dart';
+import '../../data/models/media_types.dart';
 import 'media_actions.dart';
 import 'media_card.dart';
 
@@ -45,7 +46,7 @@ class ResponsiveMediaGrid extends StatelessWidget {
           itemCount: items.length,
           itemBuilder: (context, index) {
             final item = items[index];
-            final heroTag = heroTagPrefix == null
+            final heroTag = heroTagPrefix == null || item.type == MediaType.video
                 ? null
                 : '$heroTagPrefix-${item.id}';
             return MediaCard(
@@ -93,7 +94,7 @@ class ResponsiveMediaSliverGrid extends StatelessWidget {
       delegate: SliverChildBuilderDelegate(
         (context, index) {
           final item = items[index];
-          final heroTag = heroTagPrefix == null
+          final heroTag = heroTagPrefix == null || item.type == MediaType.video
               ? null
               : '$heroTagPrefix-${item.id}';
           return MediaCard(

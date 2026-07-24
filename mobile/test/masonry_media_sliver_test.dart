@@ -71,6 +71,9 @@ void main() {
     expect(image.cacheWidth, 600);
     expect(image.cacheHeight, 800);
     expect(image.resizePolicy, ResizeImagePolicy.fit);
+    final ink = tester.widget<InkWell>(find.byType(InkWell));
+    expect(ink.splashFactory, NoSplash.splashFactory);
+    expect(ink.overlayColor?.resolve({}), Colors.transparent);
     expect(find.byType(MediaArtwork), findsNothing);
   });
 

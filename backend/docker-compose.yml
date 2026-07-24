@@ -1,4 +1,4 @@
-# 本文件提供本地单节点部署，并将媒体目录以只读方式挂载。
+# Docker 服务定义。媒体目录和运行时配置由 scripts/docker-compose.sh 根据 .env 生成。
 services:
   luma-server:
     build:
@@ -9,7 +9,6 @@ services:
       - "${LUMA_PORT:-8080}:8080"
     volumes:
       - luma-data:/data
-      - "${LUMA_MEDIA_DIR:-./data/media}:/media:ro"
     restart: unless-stopped
     stop_grace_period: 40s
     security_opt:

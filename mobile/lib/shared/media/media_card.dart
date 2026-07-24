@@ -33,6 +33,7 @@ class MediaCard extends StatelessWidget {
         ? MediaArtwork(item: item, useCardThumbnail: true)
         : Hero(
             tag: heroTag!,
+            flightShuttleBuilder: MediaArtwork.preserveSourceHeroFlight,
             child: MediaArtwork(item: item, useCardThumbnail: true),
           );
     return Semantics(
@@ -40,6 +41,9 @@ class MediaCard extends StatelessWidget {
       label: item.title,
       child: InkWell(
         onTap: onTap,
+        // 卡片点击会立即进入详情，避免默认水波纹在页面过渡时盖住封面。
+        splashFactory: NoSplash.splashFactory,
+        overlayColor: const WidgetStatePropertyAll(Colors.transparent),
         borderRadius: BorderRadius.circular(coverRadius),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,

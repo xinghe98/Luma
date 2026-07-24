@@ -13,6 +13,7 @@ import '../../../shared/layout/section_header.dart';
 import '../../../shared/library/library_kind_presentation.dart';
 import '../../../shared/layout/surface_card.dart';
 import '../../../shared/states/empty_state.dart';
+import '../../../shared/states/skeleton.dart';
 import '../dialogs/confirmation_dialog.dart';
 import 'access_widgets.dart';
 
@@ -84,7 +85,7 @@ class _MemberDetailPageState extends State<MemberDetailPage> {
           ),
         );
       }
-      return const Center(child: CircularProgressIndicator());
+      return const SettingsListSkeleton(items: 4);
     }
     final sourceIds = sources.map((source) => source.id).toSet();
     final missingGrantIds = _grants.difference(sourceIds).toList()..sort();
@@ -258,6 +259,7 @@ class _MemberDetailPageState extends State<MemberDetailPage> {
     final controller = TextEditingController(text: _user.name);
     final name = await showDialog<String>(
       context: context,
+      animationStyle: AnimationStyle.noAnimation,
       builder: (context) => AlertDialog(
         title: const Text('修改名称'),
         content: TextField(
@@ -347,6 +349,7 @@ class _MemberDetailPageState extends State<MemberDetailPage> {
     await context.pushNamed<IssuedAccessToken>(
       AppRoute.issueToken,
       pathParameters: {'userId': _user.id},
+      extra: _user,
     );
     if (mounted) await _load();
   }

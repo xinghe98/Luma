@@ -101,7 +101,7 @@ media:
 ```bash
 go run ./cmd/server -config configs/config.yaml -check-config
 sh ./scripts/build.sh
-docker compose up --build
+./scripts/docker-compose.sh up --build
 ```
 
 `configs/config.example.yaml` 是入库的配置模板；首次开发前将其复制为已被 Git 忽略的 `configs/config.yaml`，后续仅修改本地配置。Windows 可使用 `scripts/dev.ps1`、`scripts/build.ps1`。如需提前安装 Air，可执行 `go install github.com/air-verse/air@v1.62.0`。生产运行应复制示例配置并显式传入路径，不要直接依赖当前工作目录。
@@ -1794,10 +1794,12 @@ Windows 路径在 YAML 中优先使用单引号，避免反斜杠被当作转义
 ### 12.1 Docker
 
 ```bash
-docker compose up -d --build
+cp .env.example .env
+# 编辑 LUMA_VERSION、LUMA_PORT 和 LUMA_MEDIA_DIRS。
+./scripts/docker-compose.sh up -d --build
 ```
 
-当前 `docker-compose.yml` 使用命名卷 `luma-data` 持久化 `/data`，并将 `${LUMA_MEDIA_DIR:-./data/media}` 只读挂载到 `/media`。容器以非特权用户运行，宿主机媒体目录必须允许该用户读取。Compose 的停止宽限期为 40 秒，应始终长于配置中的 30 秒优雅关闭时间。
+Docker 部署的唯一用户配置入口是 `.env`。`LUMA_MEDIA_DIRS` 使用 `/host/path=container-name` 的逗号分隔格式；脚本会生成只读挂载与匹配的 `security.allowed_roots`，容器内路径为 `/media/<container-name>`。`LUMA_VERSION` 由 Compose 传入 Docker 构建参数，再由 Go 链接参数写入服务二进制。`docker-compose.yml` 使用命名卷 `luma-data` 持久化 `/data`；容器以非特权用户运行，宿主机媒体目录必须允许该用户读取。Compose 的停止宽限期为 40 秒，应始终长于配置中的 30 秒优雅关闭时间。
 
 目录规划：
 

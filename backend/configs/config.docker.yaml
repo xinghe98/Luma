@@ -1,4 +1,4 @@
-# 本配置用于容器部署：/media 只读，/data 持久化且可写。
+# 本配置用于容器部署：部署脚本会按 .env 重写 allowed_roots，其余字段保持不变。
 server:
   host: 0.0.0.0
   port: 8080

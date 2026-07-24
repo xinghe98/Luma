@@ -8,6 +8,7 @@ Future<bool> showConfirmationDialog(
 }) async {
   return await showDialog<bool>(
         context: context,
+        animationStyle: AnimationStyle.noAnimation,
         builder: (context) => AlertDialog(
           title: Text(title),
           content: Text(message),

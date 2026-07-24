@@ -9,6 +9,7 @@ import '../../data/models/api_source.dart';
 import '../../data/repositories/access_repository.dart';
 import '../../data/repositories/source_repository.dart';
 import '../../shared/states/error_state.dart';
+import '../../shared/states/skeleton.dart';
 import '../../shared/library/library_kind_presentation.dart';
 import 'new_library_source_page.dart';
 
@@ -88,7 +89,7 @@ class _LibrarySourcesPageState extends State<LibrarySourcesPage> {
     body: _error != null
         ? ErrorState(onRetry: _load)
         : _sources == null
-        ? const Center(child: CircularProgressIndicator())
+        ? const SettingsListSkeleton(items: 3)
         : ListView(
             padding: LumaLayout.pagePadding(top: LumaSpacing.sm),
             children: [

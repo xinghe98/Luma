@@ -5,6 +5,8 @@ Future<String?> showServerAliasDialog(
   String currentName,
 ) => showDialog<String>(
   context: context,
+  // 编辑取消后立即移除遮罩和阴影，避免键盘收起时留下退场残影。
+  animationStyle: AnimationStyle.noAnimation,
   builder: (_) => _ServerAliasDialog(currentName: currentName),
 );
 

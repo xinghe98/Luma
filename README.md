@@ -100,47 +100,32 @@ chmod 600 /var/lib/luma/secrets/api_token
 
 要求已安装 Docker Engine 和 Docker Compose 插件。
 
-### 1. 准备媒体目录
+### 1. 配置 .env
 
-默认挂载 `backend/data/media`：
-
-```bash
-mkdir -p backend/data/media
-```
-
-也可以通过 `LUMA_MEDIA_DIR` 使用任意宿主机目录。Linux 示例：
+所有 Docker 部署参数只有一个入口：`backend/.env`。复制模板后，填写版本号、端口和媒体目录：
 
 ```bash
-export LUMA_MEDIA_DIR=/srv/media
+cd backend
+cp .env.example .env
+nano .env
 ```
 
-PowerShell 示例：
-
-```powershell
-$env:LUMA_MEDIA_DIR = 'D:\Media'
+```env
+LUMA_VERSION=0.1.0
+LUMA_PORT=8080
+LUMA_MEDIA_DIRS=/mnt/TV=tv,/mnt/Movies=movies,/mnt/Photos=photos
 ```
 
-该目录会以只读方式挂载到容器内的 `/media`。宿主机必须允许容器中的非特权用户读取媒体文件。
+`LUMA_MEDIA_DIRS` 的每项格式为“宿主机绝对路径=容器目录名”，以英文逗号分隔。部署脚本会将它们只读挂载到 `/media/<容器目录名>`，并自动生成与之匹配的 `security.allowed_roots`；例如上面的目录在 App 中分别填写 `/media/tv`、`/media/movies` 和 `/media/photos`。宿主机必须允许容器中的非特权用户读取媒体文件。
+
+`LUMA_VERSION` 是唯一的 Docker 版本入口：Compose 将它传给 Docker 构建参数，Docker 再用 Go 链接参数注入最终的 `luma-server` 二进制。
 
 ### 2. 构建并启动
 
 ```bash
 cd backend
-docker compose up -d --build
-```
-
-可选环境变量：
-
-```text
-LUMA_MEDIA_DIR   宿主机媒体目录，默认 ./data/media
-LUMA_PORT        宿主机监听端口，默认 8080
-LUMA_VERSION     注入服务端的版本号，默认 dev
-```
-
-例如：
-
-```bash
-LUMA_MEDIA_DIR=/srv/media LUMA_PORT=8080 LUMA_VERSION=0.1.0 docker compose up -d --build
+chmod +x scripts/docker-compose.sh
+./scripts/docker-compose.sh up -d --build
 ```
 
 Compose 使用命名卷 `luma-data` 持久化以下内容：
@@ -152,25 +137,25 @@ Compose 使用命名卷 `luma-data` 持久化以下内容：
 /data/cache
 ```
 
-删除容器或重新构建镜像不会删除该命名卷。不要执行 `docker compose down -v`，除非确认需要删除数据库、Token 和衍生数据。
+删除容器或重新构建镜像不会删除该命名卷。不要执行 `./scripts/docker-compose.sh down -v`，除非确认需要删除数据库、Token 和衍生数据。
 
 ### 3. 检查服务
 
 ```bash
-docker compose ps
-docker compose logs -f luma-server
+./scripts/docker-compose.sh ps
+./scripts/docker-compose.sh logs -f luma-server
 curl http://127.0.0.1:8080/health
 ```
 
 读取首次启动生成的 Token：
 
 ```bash
-docker compose exec luma-server cat /data/secrets/api_token
+./scripts/docker-compose.sh exec luma-server cat /data/secrets/api_token
 ```
 
 ### 4. 创建媒体源并扫描
 
-容器内允许的媒体根目录是 `/media`。管理员可在 App 的“设置 → 媒体源”中新增目录，服务端会将该目录写入 `security.allowed_roots` 并立即开始扫描。也可以通过 API 创建：
+容器内允许的媒体根目录由 `.env` 自动生成；上例中分别是 `/media/tv`、`/media/movies` 和 `/media/photos`。管理员可在 App 的“设置 → 媒体源”中使用其中一个目录，也可以通过 API 创建：
 
 ```bash
 export TOKEN='上一步读取的 Token'
@@ -178,7 +163,7 @@ export TOKEN='上一步读取的 Token'
 curl -X POST http://127.0.0.1:8080/api/v1/sources \
   -H "Authorization: Bearer ${TOKEN}" \
   -H "Content-Type: application/json" \
-  -d '{"name":"本地媒体","root_path":"/media"}'
+  -d '{"name":"电视剧","root_path":"/media/tv"}'
 ```
 
 使用响应中的 `id` 触发扫描：
@@ -191,10 +176,10 @@ curl -X POST http://127.0.0.1:8080/api/v1/sources/{source_id}/scan \
 ### 5. 更新和停止
 
 ```bash
-docker compose up -d --build
-docker compose stop
-docker compose start
-docker compose down
+./scripts/docker-compose.sh up -d --build
+./scripts/docker-compose.sh stop
+./scripts/docker-compose.sh start
+./scripts/docker-compose.sh down
 ```
 
 更新前建议停止服务并备份 `luma-data` 命名卷。SQLite 数据库文件、WAL 文件和 Token 应作为同一份数据一起备份。

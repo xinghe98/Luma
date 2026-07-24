@@ -7,6 +7,7 @@ import '../../data/models/api_catalog.dart';
 import '../../data/repositories/catalog_repository.dart';
 import '../../shared/states/empty_state.dart';
 import '../../shared/states/error_state.dart';
+import '../../shared/states/skeleton.dart';
 
 class OrganizationPage extends StatefulWidget {
   const OrganizationPage({super.key, required this.repository});
@@ -43,7 +44,7 @@ class _OrganizationPageState extends State<OrganizationPage> {
     body: _error != null
         ? ErrorState(onRetry: _load)
         : _issues == null
-        ? const Center(child: CircularProgressIndicator())
+        ? const SettingsListSkeleton(items: 5)
         : _issues!.isEmpty
         ? const EmptyState(
             icon: Icons.task_alt_rounded,
@@ -68,6 +69,7 @@ class _OrganizationPageState extends State<OrganizationPage> {
                   final changed = await context.pushNamed<bool>(
                     AppRoute.organizationEditor,
                     pathParameters: {'mediaId': issue.mediaId},
+                    extra: issue,
                   );
                   if (changed == true) _load();
                 },
@@ -82,10 +84,12 @@ class OrganizationMatchRoutePage extends StatefulWidget {
     super.key,
     required this.repository,
     required this.mediaId,
+    this.initialIssue,
   });
 
   final CatalogRepository repository;
   final String mediaId;
+  final CatalogIssue? initialIssue;
 
   @override
   State<OrganizationMatchRoutePage> createState() =>
@@ -101,7 +105,9 @@ class _OrganizationMatchRoutePageState
   @override
   void initState() {
     super.initState();
-    _load();
+    _issue = widget.initialIssue;
+    _loading = _issue == null;
+    if (_issue == null) _load();
   }
 
   Future<void> _load() async {
@@ -146,7 +152,7 @@ class _OrganizationMatchRoutePageState
     return Scaffold(
       appBar: AppBar(title: const Text('确认归属')),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const SettingsListSkeleton(items: 3)
           : _error != null
           ? ErrorState(onRetry: _load)
           : const EmptyState(

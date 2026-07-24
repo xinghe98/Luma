@@ -4,6 +4,7 @@ import '../../app/app_scope.dart';
 import '../../app/controllers/media_controller.dart';
 import '../../core/extensions.dart';
 import '../../core/theme.dart';
+import '../../data/models/media_item.dart';
 import '../../data/models/media_types.dart';
 import '../../shared/media/masonry_media_sliver.dart';
 import '../../shared/media/media_actions.dart';
@@ -26,6 +27,7 @@ class LibraryPage extends StatefulWidget {
     this.fixedLibraryKind,
     this.embedded = false,
     this.title,
+    this.initialItems = const [],
   });
 
   final MediaType type;
@@ -33,6 +35,9 @@ class LibraryPage extends StatefulWidget {
   final VoidCallback onOpenSearch;
   final String? fixedLibraryKind;
   final String? title;
+
+  /// 上一级列表已加载的条目，会在远程刷新完成前作为此页的稳定首帧内容。
+  final List<MediaItem> initialItems;
 
   /// 嵌入影视库分页时仅渲染内容和局部工具栏，避免嵌套 Scaffold/AppBar。
   final bool embedded;
@@ -66,6 +71,7 @@ class _LibraryPageState extends State<LibraryPage>
       fixedType: widget.type,
       fixedLibraryKind: widget.fixedLibraryKind,
       media: media,
+      initialItems: widget.initialItems,
     );
     _controller!.ensureLoaded();
   }

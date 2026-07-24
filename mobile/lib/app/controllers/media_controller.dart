@@ -59,10 +59,14 @@ class MediaController extends ChangeNotifier {
 
   MediaItem? findById(String id) => _byId[id];
 
-  /// 打开详情/播放前写入缓存，避免库页/搜索结果不在首页列表时出现「找不到媒体」。
+  /// Caches an entry before opening its detail without rebuilding unchanged UI.
+  ///
+  /// A notification is sent only when this entry changes a visible home item;
+  /// callers can therefore use this during a route transition without forcing
+  /// the source page to rebuild its entire media grid.
   void remember(MediaItem item, {bool notify = true}) {
-    _cacheAndReplaceHome(item);
-    if (notify) notifyListeners();
+    final changedVisibleItem = _cacheAndReplaceHome(item);
+    if (notify && changedVisibleItem) notifyListeners();
   }
 
   void rememberAll(Iterable<MediaItem> items, {bool notify = true}) {
@@ -295,15 +299,20 @@ class MediaController extends ChangeNotifier {
     notifyListeners();
   }
 
-  void _cacheAndReplaceHome(MediaItem updated) {
+  /// Updates the cache and returns whether a visible home-list entry changed.
+  bool _cacheAndReplaceHome(MediaItem updated) {
     final index = _items.indexWhere((item) => item.id == updated.id);
-    if (index >= 0) {
+    final changedHomeItem =
+        index >= 0 && !identical(_items[index], updated);
+    if (changedHomeItem) {
       _items = [..._items]..[index] = updated;
     }
+    if (identical(_byId[updated.id], updated)) return changedHomeItem;
     _byId
       ..remove(updated.id)
       ..[updated.id] = updated;
     _trimRememberedItems();
+    return changedHomeItem;
   }
 
   void _syncContinueWatchingItem(MediaItem updated) {

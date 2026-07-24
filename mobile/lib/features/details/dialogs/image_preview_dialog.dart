@@ -22,7 +22,7 @@ void showImagePreviewDialog(
     barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
     // 小尺寸图片按比例显示时，预览外区域使用实底，不能透出媒体瀑布流。
     barrierColor: context.luma.playerInk,
-    transitionDuration: LumaMotion.forContext(context, LumaMotion.slow),
+    transitionDuration: LumaMotion.forContext(context, LumaMotion.fast),
     pageBuilder: (context, animation, secondaryAnimation) {
       return ImagePreviewDialog(
         item: item,
@@ -56,10 +56,27 @@ class _ImagePreviewDialogState extends State<ImagePreviewDialog> {
   final _transform = TransformationController();
   TapDownDetails? _doubleTapDetails;
   bool _originalReady = false;
+  bool _originalLoadAllowed = false;
 
   static const _minScale = 1.0;
   static const _maxScale = 4.0;
   static const _doubleTapScale = 2.5;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.heroTag == null) {
+      _originalLoadAllowed = true;
+    } else {
+      _allowOriginalLoadAfterTransition();
+    }
+  }
+
+  /// Defers the large original-image decode until the thumbnail Hero settles.
+  Future<void> _allowOriginalLoadAfterTransition() async {
+    await Future<void>.delayed(LumaMotion.fast);
+    if (mounted) setState(() => _originalLoadAllowed = true);
+  }
 
   @override
   void dispose() {
@@ -140,7 +157,7 @@ class _ImagePreviewDialogState extends State<ImagePreviewDialog> {
             resizePolicy: ResizeImagePolicy.fit,
             fallback: const SizedBox.expand(),
           ),
-        if (hasDistinctOriginal)
+        if (_originalLoadAllowed && hasDistinctOriginal)
           AuthenticatedMediaImage(
             path: originalPath,
             fit: BoxFit.contain,
@@ -152,7 +169,7 @@ class _ImagePreviewDialogState extends State<ImagePreviewDialog> {
             onImageLoaded: _markOriginalReady,
             fallback: const SizedBox.expand(),
           )
-        else if (originalPath.isNotEmpty)
+        else if (_originalLoadAllowed && originalPath.isNotEmpty)
           AuthenticatedMediaImage(
             path: originalPath,
             fit: BoxFit.contain,

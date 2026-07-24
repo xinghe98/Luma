@@ -6,6 +6,7 @@ import '../../../shared/branding/brand_mark.dart';
 void showAboutLumaDialog(BuildContext context) {
   showDialog<void>(
     context: context,
+    animationStyle: AnimationStyle.noAnimation,
     builder: (context) {
       final theme = Theme.of(context);
       return AlertDialog(

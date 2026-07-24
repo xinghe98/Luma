@@ -18,7 +18,7 @@ COPY --from=build /out/luma-server /usr/local/bin/luma-server
 COPY configs/config.docker.yaml /etc/luma/config.yaml
 USER luma
 EXPOSE 8080
-VOLUME ["/data", "/media"]
+VOLUME ["/data"]
 STOPSIGNAL SIGTERM
 ENTRYPOINT ["luma-server"]
 CMD ["-config", "/etc/luma/config.yaml"]

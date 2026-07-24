@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/theme.dart';
 import '../../../data/models/media_item.dart';
+import '../../../data/models/media_types.dart';
 import '../../../shared/layout/section_header.dart';
 import '../../../shared/media/media_actions.dart';
 import '../../../shared/media/media_card.dart';
@@ -51,7 +52,9 @@ class HorizontalMediaSection extends StatelessWidget {
                   const SizedBox(width: LumaSpacing.md),
               itemBuilder: (context, index) {
                 final item = items[index];
-                final heroTag = '$heroPrefix-${item.id}';
+                final heroTag = item.type == MediaType.video
+                    ? null
+                    : '$heroPrefix-${item.id}';
                 return SizedBox(
                   width: LumaLayout.horizontalCardWidth,
                   child: MediaCard(

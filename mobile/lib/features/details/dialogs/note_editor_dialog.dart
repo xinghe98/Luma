@@ -4,6 +4,7 @@ Future<String?> showNoteEditorDialog(BuildContext context, String note) async {
   final controller = TextEditingController(text: note);
   final result = await showDialog<String>(
     context: context,
+    animationStyle: AnimationStyle.noAnimation,
     builder: (context) => AlertDialog(
       title: const Text('编辑笔记'),
       content: TextField(

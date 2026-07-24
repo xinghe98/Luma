@@ -4,22 +4,39 @@ import '../../../core/theme.dart';
 import '../../../shared/formatters/duration_formatter.dart';
 import '../player_interaction_controller.dart';
 
-class PlayerFeedbackHud extends StatelessWidget {
+class PlayerFeedbackHud extends StatefulWidget {
   const PlayerFeedbackHud({super.key, required this.interaction});
 
   final PlayerInteractionController interaction;
 
   @override
+  State<PlayerFeedbackHud> createState() => _PlayerFeedbackHudState();
+}
+
+class _PlayerFeedbackHudState extends State<PlayerFeedbackHud> {
+  /// 淡出时保留最后一帧内容，避免 hidden 占位图标闪一下。
+  _HudPresentation _lastPresentation = const _HudPresentation(
+    icon: Icons.fast_forward_rounded,
+    title: '',
+  );
+
+  @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
-      listenable: interaction,
+      listenable: widget.interaction,
       builder: (context, _) {
         final presentation = _presentation();
+        if (widget.interaction.hudVisible) {
+          _lastPresentation = presentation;
+        }
+        final shown = widget.interaction.hudVisible
+            ? presentation
+            : _lastPresentation;
         final reduceMotion = MediaQuery.disableAnimationsOf(context);
         final extras = context.luma;
         return IgnorePointer(
           child: AnimatedOpacity(
-            opacity: interaction.hudVisible ? 1 : 0,
+            opacity: widget.interaction.hudVisible ? 1 : 0,
             duration: reduceMotion ? Duration.zero : LumaMotion.fast,
             curve: LumaMotion.standard,
             child: Center(
@@ -39,31 +56,31 @@ class PlayerFeedbackHud extends StatelessWidget {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Icon(
-                          presentation.icon,
+                          shown.icon,
                           color: extras.onPlayerInk,
                           size: 28,
                         ),
                         const SizedBox(height: LumaSpacing.xs),
                         Text(
-                          presentation.title,
+                          shown.title,
                           textAlign: TextAlign.center,
                           style: Theme.of(context).textTheme.titleSmall
                               ?.copyWith(color: extras.onPlayerInk),
                         ),
-                        if (presentation.subtitle != null) ...[
+                        if (shown.subtitle != null) ...[
                           const SizedBox(height: LumaSpacing.xxs),
                           Text(
-                            presentation.subtitle!,
+                            shown.subtitle!,
                             style: Theme.of(context).textTheme.bodySmall
                                 ?.copyWith(color: extras.onPlayerInkMuted),
                           ),
                         ],
-                        if (presentation.progress != null) ...[
+                        if (shown.progress != null) ...[
                           const SizedBox(height: LumaSpacing.sm),
                           SizedBox(
                             width: 210,
                             child: LinearProgressIndicator(
-                              value: presentation.progress!.clamp(0, 1),
+                              value: shown.progress!.clamp(0, 1),
                               minHeight: 4,
                               borderRadius: BorderRadius.circular(
                                 LumaRadii.badge,
@@ -88,6 +105,7 @@ class PlayerFeedbackHud extends StatelessWidget {
   }
 
   _HudPresentation _presentation() {
+    final interaction = widget.interaction;
     switch (interaction.hudKind) {
       case PlayerHudKind.seek:
         final deltaSeconds = interaction.seekDelta.inSeconds;
@@ -140,10 +158,7 @@ class PlayerFeedbackHud extends StatelessWidget {
           subtitle: '松手恢复原速度',
         );
       case PlayerHudKind.hidden:
-        return const _HudPresentation(
-          icon: Icons.play_arrow_rounded,
-          title: '',
-        );
+        return _lastPresentation;
     }
   }
 }

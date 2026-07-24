@@ -5,6 +5,7 @@ import '../../app/controllers/media_controller.dart';
 import '../../core/extensions.dart';
 import '../../core/theme.dart';
 import '../../data/models/api_catalog.dart';
+import '../../data/models/media_item.dart';
 import '../../data/models/media_types.dart';
 import '../../shared/layout/scroll_to_top_app_bar_title.dart';
 import '../../shared/layout/section_header.dart';
@@ -32,9 +33,10 @@ class CatalogPage extends StatefulWidget {
   final ValueChanged<CatalogItem> onOpenCatalog;
   final MediaOpenCallback onOpenPersonalMedia;
   final VoidCallback onOpenSearch;
-  final VoidCallback onOpenMovies;
-  final VoidCallback onOpenSeries;
-  final VoidCallback onOpenPersonalVideos;
+  final ValueChanged<List<CatalogItem>> onOpenMovies;
+  final ValueChanged<List<CatalogItem>> onOpenSeries;
+  /// 打开完整个人视频库，并携带当前分区已经加载的条目作为首帧数据。
+  final ValueChanged<List<MediaItem>> onOpenPersonalVideos;
 
   @override
   State<CatalogPage> createState() => _CatalogPageState();
@@ -149,6 +151,8 @@ class _CatalogPageState extends State<CatalogPage>
             movies.items.isEmpty &&
             series.items.isEmpty &&
             personalItems.isEmpty;
+        void openPersonalVideos() =>
+            widget.onOpenPersonalVideos(personalItems);
         return Scaffold(
           appBar: AppBar(
             title: ScrollToTopAppBarTitle(
@@ -216,7 +220,7 @@ class _CatalogPageState extends State<CatalogPage>
                           key: _personalSectionKey,
                           child: _CatalogShelfPlaceholder(
                             title: '个人视频',
-                            onOpenAll: widget.onOpenPersonalVideos,
+                            onOpenAll: openPersonalVideos,
                           ),
                         ),
                       )
@@ -227,7 +231,7 @@ class _CatalogPageState extends State<CatalogPage>
                           child: _CatalogSectionIssue(
                             title: '个人视频',
                             onRetry: personalVideos.refresh,
-                            onOpenAll: widget.onOpenPersonalVideos,
+                            onOpenAll: openPersonalVideos,
                           ),
                         ),
                       )
@@ -237,7 +241,7 @@ class _CatalogPageState extends State<CatalogPage>
                           key: _personalSectionKey,
                           child: _CatalogSectionEmpty(
                             title: '个人视频',
-                            onOpenAll: widget.onOpenPersonalVideos,
+                            onOpenAll: openPersonalVideos,
                           ),
                         ),
                       )
@@ -247,7 +251,7 @@ class _CatalogPageState extends State<CatalogPage>
                           key: _personalSectionKey,
                           child: _SectionHeading(
                             title: '个人视频',
-                            onOpenAll: widget.onOpenPersonalVideos,
+                            onOpenAll: openPersonalVideos,
                           ),
                         ),
                       ),
@@ -289,11 +293,13 @@ class CatalogCollectionPage extends StatelessWidget {
   const CatalogCollectionPage({
     super.key,
     required this.kind,
+    required this.initialItems,
     required this.onOpenCatalog,
     required this.onOpenSearch,
   });
 
   final CatalogKind kind;
+  final List<CatalogItem> initialItems;
   final ValueChanged<CatalogItem> onOpenCatalog;
   final VoidCallback onOpenSearch;
 
@@ -309,7 +315,11 @@ class CatalogCollectionPage extends StatelessWidget {
         ),
       ],
     ),
-    body: CatalogCollectionBody(kind: kind, onOpenCatalog: onOpenCatalog),
+    body: CatalogCollectionBody(
+      kind: kind,
+      initialItems: initialItems,
+      onOpenCatalog: onOpenCatalog,
+    ),
   );
 }
 
@@ -317,10 +327,12 @@ class CatalogCollectionBody extends StatefulWidget {
   const CatalogCollectionBody({
     super.key,
     required this.kind,
+    required this.initialItems,
     required this.onOpenCatalog,
   });
 
   final CatalogKind kind;
+  final List<CatalogItem> initialItems;
   final ValueChanged<CatalogItem> onOpenCatalog;
 
   @override
@@ -340,6 +352,7 @@ class _CatalogCollectionBodyState extends State<CatalogCollectionBody>
     _controller ??= CatalogController(
       AppScope.of(context).catalog,
       kind: widget.kind,
+      initialItems: widget.initialItems,
     )..ensureLoaded();
   }
 
@@ -363,7 +376,8 @@ class _CatalogCollectionBodyState extends State<CatalogCollectionBody>
             cacheExtent: LumaLayout.scrollCacheExtent,
             physics: const AlwaysScrollableScrollPhysics(),
             slivers: [
-              if (controller.state == CatalogLoadState.loading)
+              if (controller.state == CatalogLoadState.loading &&
+                  controller.items.isEmpty)
                 const SliverPadding(
                   padding: EdgeInsets.fromLTRB(
                     LumaLayout.pagePaddingH,
@@ -375,7 +389,8 @@ class _CatalogCollectionBodyState extends State<CatalogCollectionBody>
                     child: PosterGridSkeleton(items: 10),
                   ),
                 )
-              else if (controller.state == CatalogLoadState.error)
+              else if (controller.state == CatalogLoadState.error &&
+                  controller.items.isEmpty)
                 SliverFillRemaining(
                   hasScrollBody: false,
                   child: ErrorState(onRetry: controller.load),
@@ -393,7 +408,11 @@ class _CatalogCollectionBodyState extends State<CatalogCollectionBody>
                     message: '在设置中把媒体源标记为对应类型，然后重新扫描。',
                   ),
                 )
-              else
+              else ...[
+                if (controller.state == CatalogLoadState.loading)
+                  const SliverToBoxAdapter(
+                    child: LinearProgressIndicator(minHeight: 2),
+                  ),
                 SliverPadding(
                   padding: const EdgeInsets.fromLTRB(
                     LumaLayout.pagePaddingH,
@@ -427,6 +446,7 @@ class _CatalogCollectionBodyState extends State<CatalogCollectionBody>
                     },
                   ),
                 ),
+              ],
             ],
           ),
         );
@@ -446,28 +466,29 @@ class _CatalogShelfSection extends StatelessWidget {
   final String title;
   final CatalogController controller;
   final ValueChanged<CatalogItem> onOpenCatalog;
-  final VoidCallback onOpenAll;
+  final ValueChanged<List<CatalogItem>> onOpenAll;
 
   @override
   Widget build(BuildContext context) {
+    void openAll() => onOpenAll(controller.items);
     if (controller.state == CatalogLoadState.error) {
       return _CatalogSectionIssue(
         title: title,
         onRetry: controller.load,
-        onOpenAll: onOpenAll,
+        onOpenAll: openAll,
       );
     }
     if (controller.state != CatalogLoadState.ready) {
-      return _CatalogShelfPlaceholder(title: title, onOpenAll: onOpenAll);
+      return _CatalogShelfPlaceholder(title: title, onOpenAll: openAll);
     }
     if (controller.items.isEmpty) {
-      return _CatalogSectionEmpty(title: title, onOpenAll: onOpenAll);
+      return _CatalogSectionEmpty(title: title, onOpenAll: openAll);
     }
     return _CatalogShelf(
       title: title,
       items: controller.items,
       onOpenCatalog: onOpenCatalog,
-      onOpenAll: onOpenAll,
+      onOpenAll: openAll,
     );
   }
 }
