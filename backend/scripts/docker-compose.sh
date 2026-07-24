@@ -10,6 +10,7 @@ GENERATED_DIR="$PROJECT_DIR/.cache/docker"
 GENERATED_CONFIG="$GENERATED_DIR/config.yaml"
 GENERATED_COMPOSE="$GENERATED_DIR/docker-compose.generated.yaml"
 ROOTS_FILE="$GENERATED_DIR/allowed-roots.yaml"
+MEDIA_ENTRIES_FILE="$GENERATED_DIR/media-entries"
 
 fail() {
     echo "luma docker: $*" >&2
@@ -36,6 +37,7 @@ set +a
 mkdir -p "$GENERATED_DIR"
 : > "$ROOTS_FILE"
 : > "$GENERATED_COMPOSE"
+printf '%s\n' "$LUMA_MEDIA_DIRS" | tr ',' '\n' > "$MEDIA_ENTRIES_FILE"
 
 {
     printf '%s\n' 'services:'
@@ -46,17 +48,11 @@ mkdir -p "$GENERATED_DIR"
     printf '\n'
 } > "$GENERATED_COMPOSE"
 
-generate_media_configuration() {
-old_ifs=$IFS
-IFS=','
-set -f
-set -- $LUMA_MEDIA_DIRS
-set +f
-IFS=$old_ifs
-[ "$#" -gt 0 ] || fail 'LUMA_MEDIA_DIRS must contain at least one directory'
-
 used_aliases=''
-for entry do
+media_count=0
+echo "Luma Docker configuration: version=$LUMA_VERSION port=$LUMA_PORT" >&2
+while IFS= read -r entry || [ -n "$entry" ]; do
+    [ -n "$entry" ] || fail 'LUMA_MEDIA_DIRS must not contain an empty entry'
     case "$entry" in
         *=*)
             host_path=${entry%%=*}
@@ -78,6 +74,7 @@ for entry do
     [ -d "$host_path" ] || fail "media directory does not exist: $host_path"
     used_aliases="$used_aliases $alias"
     container_path="/media/$alias"
+    media_count=$((media_count + 1))
 
     printf '    - ' >> "$ROOTS_FILE"
     yaml_quote "$container_path" >> "$ROOTS_FILE"
@@ -85,7 +82,9 @@ for entry do
     printf '      - ' >> "$GENERATED_COMPOSE"
     yaml_quote "$host_path:$container_path:ro" >> "$GENERATED_COMPOSE"
     printf '\n' >> "$GENERATED_COMPOSE"
-done
+    printf '  %s -> %s (read-only)\n' "$host_path" "$container_path" >&2
+done < "$MEDIA_ENTRIES_FILE"
+[ "$media_count" -gt 0 ] || fail 'LUMA_MEDIA_DIRS must contain at least one directory'
 
 while IFS= read -r line || [ -n "$line" ]; do
     case "$line" in
@@ -96,14 +95,6 @@ while IFS= read -r line || [ -n "$line" ]; do
         *) printf '%s\n' "$line" ;;
     esac
 done < "$PROJECT_DIR/configs/config.docker.yaml" > "$GENERATED_CONFIG"
-
-echo "Luma Docker configuration: version=$LUMA_VERSION port=$LUMA_PORT" >&2
-for entry do
-    printf '  %s -> /media/%s (read-only)\n' "${entry%%=*}" "${entry#*=}" >&2
-done
-}
-
-generate_media_configuration
 
 exec docker compose --env-file "$ENV_FILE" \
     -f "$PROJECT_DIR/docker-compose.yml" \
