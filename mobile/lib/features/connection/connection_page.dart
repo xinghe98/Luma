@@ -38,6 +38,8 @@ class _ConnectionPageState extends State<ConnectionPage> {
   }
 
   @override
+  /// Builds the connection form with an emphasized brand mark while preserving
+  /// accessible form controls and the saved-session recovery state.
   Widget build(BuildContext context) {
     final dependencies = AppScope.of(context);
     final controller = dependencies.connection;
@@ -61,23 +63,14 @@ class _ConnectionPageState extends State<ConnectionPage> {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       const Align(
-                        alignment: Alignment.centerLeft,
-                        child: BrandMark(
-                          variant: BrandMarkVariant.horizontal,
-                          height: 36,
-                        ),
+                        alignment: Alignment.center,
+                        child: _ConnectionBrandMark(),
                       ),
                       const SizedBox(height: LumaSpacing.xxl),
                       Text(
                         '连接你的轻影服务器',
-                        style: Theme.of(context).textTheme.headlineLarge,
-                      ),
-                      const SizedBox(height: LumaSpacing.sm),
-                      Text(
-                        '连接家庭服务器后，你的影像仍然只属于自己的网络。',
-                        style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
-                        ),
+                        textAlign: TextAlign.center,
+                        style: Theme.of(context).textTheme.headlineMedium,
                       ),
                       const SizedBox(height: LumaSpacing.xl),
                       ConnectionForm(
@@ -138,4 +131,29 @@ class _ConnectionPageState extends State<ConnectionPage> {
     }
     return (host: bare, port: '8080');
   }
+}
+
+/// Enlarges the visible horizontal mark by clipping the transparent padding
+/// embedded in the source asset, without consuming that padding in the layout.
+class _ConnectionBrandMark extends StatelessWidget {
+  const _ConnectionBrandMark();
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+    width: 240,
+    height: 72,
+    child: ClipRect(
+      child: Transform.scale(
+        alignment: Alignment.centerLeft,
+        scale: 2.5,
+        child: const Align(
+          alignment: Alignment.centerLeft,
+          child: BrandMark(
+            variant: BrandMarkVariant.horizontal,
+            height: 72,
+          ),
+        ),
+      ),
+    ),
+  );
 }

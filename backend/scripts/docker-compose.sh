@@ -46,6 +46,7 @@ mkdir -p "$GENERATED_DIR"
     printf '\n'
 } > "$GENERATED_COMPOSE"
 
+generate_media_configuration() {
 old_ifs=$IFS
 IFS=','
 set -f
@@ -100,6 +101,9 @@ echo "Luma Docker configuration: version=$LUMA_VERSION port=$LUMA_PORT" >&2
 for entry do
     printf '  %s -> /media/%s (read-only)\n' "${entry%%=*}" "${entry#*=}" >&2
 done
+}
+
+generate_media_configuration
 
 exec docker compose --env-file "$ENV_FILE" \
     -f "$PROJECT_DIR/docker-compose.yml" \

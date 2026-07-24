@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- API 21+ version of the branded launch surface. -->
+<!-- Pre-Flutter launch surface. The white lockup remains legible on graphite. -->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
     <item android:drawable="@color/luma_splash_background" />
     <item>

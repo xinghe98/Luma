@@ -8,6 +8,7 @@ import '../../core/theme.dart';
 import '../../shared/layout/constrained_page_list.dart';
 import '../../shared/layout/section_header.dart';
 import '../../shared/layout/scroll_to_top_app_bar_title.dart';
+import '../../shared/states/skeleton.dart';
 import 'dialogs/about_luma_dialog.dart';
 import 'dialogs/confirmation_dialog.dart';
 import 'dialogs/server_alias_dialog.dart';
@@ -32,6 +33,8 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   @override
+  /// Builds the current settings view and keeps a layout-stable placeholder
+  /// visible while a disconnect removes the server profile.
   Widget build(BuildContext context) {
     final dependencies = AppScope.of(context);
     final settings = dependencies.settings;
@@ -42,7 +45,15 @@ class _SettingsPageState extends State<SettingsPage> {
         dependencies.session,
       ]),
       builder: (context, _) {
-        final server = dependencies.session.server!;
+        final server = dependencies.session.server;
+        if (server == null) {
+          return Scaffold(
+            appBar: AppBar(
+              title: ScrollToTopAppBarTitle(title: '设置', controller: _scroll),
+            ),
+            body: const SettingsListSkeleton(items: 4),
+          );
+        }
         final canManageAccess =
             server.userRole == 'admin' &&
             server.capabilities.contains('users.manage') &&

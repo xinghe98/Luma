@@ -6,6 +6,7 @@ import 'app/app_dependencies.dart';
 import 'app/app_router.dart';
 import 'app/app_scope.dart';
 import 'core/theme.dart';
+import 'shared/branding/brand_mark.dart';
 import 'package:go_router/go_router.dart';
 
 Future<void> main() async {
@@ -64,8 +65,83 @@ class _LumaAppState extends State<LumaApp> {
           darkTheme: LumaTheme.dark(),
           themeMode: widget.dependencies.settings.themeMode,
           routerConfig: _router,
+          builder: (context, child) => _LaunchBrandOverlay(
+            child: child ?? const SizedBox.shrink(),
+          ),
         ),
       ),
     );
   }
+}
+
+/// Presents the complete Luma lockup for the first Flutter frame.
+///
+/// The native Android 12 splash can only safely show the compact symbol. This
+/// overlay waits for the full name mark to decode before presenting it, then
+/// dismisses independently of session restoration so a slow network never
+/// blocks entry.
+class _LaunchBrandOverlay extends StatefulWidget {
+  const _LaunchBrandOverlay({required this.child});
+
+  final Widget child;
+
+  @override
+  State<_LaunchBrandOverlay> createState() => _LaunchBrandOverlayState();
+}
+
+class _LaunchBrandOverlayState extends State<_LaunchBrandOverlay> {
+  static const _minimumPresentation = Duration(seconds: 1);
+
+  Timer? _dismissTimer;
+  bool _isVisible = true;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_dismissTimer != null) return;
+    final lockup = AssetImage(
+      BrandMark.assetFor(
+        variant: BrandMarkVariant.horizontal,
+        brightness: Theme.of(context).brightness,
+      ),
+    );
+    precacheImage(lockup, context).then<void>(
+      (_) => _startDismissTimer(),
+      onError: (_, _) => _startDismissTimer(),
+    );
+  }
+
+  /// Starts the display duration only after the lockup can be painted.
+  void _startDismissTimer() {
+    if (!mounted || _dismissTimer != null) return;
+    _dismissTimer = Timer(_minimumPresentation, () {
+      if (mounted) setState(() => _isVisible = false);
+    });
+  }
+
+  @override
+  void dispose() {
+    _dismissTimer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => Stack(
+    fit: StackFit.expand,
+    children: [
+      widget.child,
+      if (_isVisible)
+        IgnorePointer(
+          child: ColoredBox(
+            color: Theme.of(context).scaffoldBackgroundColor,
+            child: const Center(
+              child: BrandMark(
+                variant: BrandMarkVariant.horizontal,
+                height: 180,
+              ),
+            ),
+          ),
+        ),
+    ],
+  );
 }

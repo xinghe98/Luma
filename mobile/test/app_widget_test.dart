@@ -18,6 +18,7 @@ import 'package:luma/features/connection/connection_page.dart';
 import 'package:luma/features/search/widgets/search_results.dart';
 import 'package:luma/features/settings/settings_page.dart';
 import 'package:luma/main.dart';
+import 'package:luma/shared/branding/brand_mark.dart';
 import 'package:luma/shared/media/masonry_media_tile.dart';
 
 void main() {
@@ -31,6 +32,24 @@ void main() {
   ) async {
     await tester.pumpWidget(LumaApp(dependencies: createDependencies()));
     expect(find.text('连接你的轻影服务器'), findsOneWidget);
+    expect(
+      tester.widget<Text>(find.text('连接你的轻影服务器')).textAlign,
+      TextAlign.center,
+    );
+    expect(
+      tester
+          .widget<BrandMark>(
+            find.byWidgetPredicate(
+              (widget) => widget is BrandMark && widget.height == 72,
+            ),
+          )
+          .height,
+      72,
+    );
+    expect(
+      find.text('连接家庭服务器后，你的影像仍然只属于自己的网络。'),
+      findsNothing,
+    );
 
     // IP 为空时拼不出合法地址。
     await tester.enterText(find.byType(TextField).at(0), '');
@@ -274,6 +293,37 @@ void main() {
     await dependencies.updateServerAlias('家庭服务器');
     await tester.pump();
     expect(find.text('家庭服务器'), findsOneWidget);
+  });
+
+  testWidgets('settings remains safe while a disconnect clears the server', (
+    tester,
+  ) async {
+    final dependencies = AppDependencies(
+      mediaRepository: MockMediaRepository(),
+      connectionService: MockConnectionService(),
+      aliasStore: _WidgetAliasStore(),
+    );
+    addTearDown(dependencies.dispose);
+    dependencies.session.connect(
+      const ServerProfile(
+        name: 'server.local',
+        address: 'http://server.local:8080',
+        token: 'token',
+        hostName: 'server.local',
+      ),
+    );
+    await tester.pumpWidget(
+      AppScope(
+        dependencies: dependencies,
+        child: const MaterialApp(home: SettingsPage()),
+      ),
+    );
+
+    dependencies.session.disconnect();
+    await tester.pump();
+
+    expect(tester.takeException(), isNull);
+    expect(find.text('设置'), findsOneWidget);
   });
 
   testWidgets('cancelling the server alias dialog does not throw', (
