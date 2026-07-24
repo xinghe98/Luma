@@ -97,6 +97,7 @@ func NewRouter(params RouterParams) (http.Handler, error) {
 	admin := v1.Group("")
 	admin.Use(middleware.RequireAdmin())
 	admin.POST("/sources", params.Sources.Create)
+	admin.GET("/admin/media-roots", params.Sources.ListAvailableRoots)
 	admin.POST("/admin/media-sources", params.Sources.CreateManaged)
 	admin.PATCH("/sources/:id", params.Sources.Update)
 	admin.DELETE("/sources/:id", params.Sources.Delete)

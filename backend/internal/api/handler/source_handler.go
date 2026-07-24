@@ -37,6 +37,8 @@ type SourceHandler struct {
 // grants and initial scan. It is deliberately separate from legacy sources.
 type ManagedSourceUseCase interface {
 	Create(context.Context, service.ManagedMediaSourceCommand) (service.ManagedMediaSourceResult, error)
+	// ListAvailableRoots returns administrator-selectable configured media roots.
+	ListAvailableRoots() ([]string, error)
 }
 
 // NewSourceHandler 使用媒体源业务用例创建 Handler。
@@ -77,6 +79,22 @@ func (h *SourceHandler) CreateManaged(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusCreated, gin.H{"source": presentSource(created.Source), "scan_job": presentScanJob(created.Scan)})
+}
+
+// ListAvailableRoots handles GET /api/v1/admin/media-roots. This
+// administrator-only endpoint intentionally exposes paths only for selecting
+// a configured root when creating a media source.
+func (h *SourceHandler) ListAvailableRoots(c *gin.Context) {
+	if h.managed == nil {
+		response.Error(c, http.StatusNotImplemented, "NOT_IMPLEMENTED", "媒体源管理不可用", nil)
+		return
+	}
+	roots, err := h.managed.ListAvailableRoots()
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, "INTERNAL_ERROR", "internal server error", nil)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"items": roots})
 }
 
 // createSourceRequest 表示创建媒体源的 HTTP 请求体。

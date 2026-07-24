@@ -2,6 +2,7 @@
 import '../api/api_client.dart';
 import '../decoders/source_decoder.dart';
 import '../decoders/scan_job_decoder.dart';
+import '../decoders/media_root_decoder.dart';
 import '../decoders/decoder_utils.dart';
 import '../models/api_managed_source.dart';
 import '../models/api_source.dart';
@@ -17,6 +18,7 @@ final class ApiSourceRepository
   final ApiClient _client;
   final SourceDecoder _decoder = const SourceDecoder();
   final ScanJobDecoder _scanDecoder = const ScanJobDecoder();
+  final MediaRootDecoder _rootDecoder = const MediaRootDecoder();
   List<Source>? _cache;
 
   @override
@@ -53,6 +55,11 @@ final class ApiSourceRepository
       for (final item in _cache ?? await list()) item.id == id ? source : item,
     ];
     return source;
+  }
+
+  @override
+  Future<List<String>> listAvailableRoots() async {
+    return _rootDecoder.decodeList(await _client.getAvailableMediaRoots());
   }
 
   @override

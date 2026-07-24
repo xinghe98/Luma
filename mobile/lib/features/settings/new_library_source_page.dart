@@ -26,24 +26,39 @@ class NewLibrarySourcePage extends StatefulWidget {
 
 class _NewLibrarySourcePageState extends State<NewLibrarySourcePage> {
   final _name = TextEditingController();
-  final _path = TextEditingController();
   final _selectedUsers = <String>{};
   List<AccessUser>? _users;
+  List<String>? _roots;
   Object? _loadError;
+  Object? _rootsLoadError;
   bool _submitting = false;
   String _libraryKind = 'personal';
+  String? _selectedRoot;
 
   @override
   void initState() {
     super.initState();
     _loadUsers();
+    _loadRoots();
   }
 
   @override
   void dispose() {
     _name.dispose();
-    _path.dispose();
     super.dispose();
+  }
+
+  /// Loads the server-configured paths that an administrator may select.
+  /// A failure keeps the form visible and offers a local retry for this field.
+  Future<void> _loadRoots() async {
+    setState(() => _rootsLoadError = null);
+    try {
+      final roots = await widget.sources.listAvailableRoots();
+      if (!mounted) return;
+      setState(() => _roots = roots);
+    } on Object catch (error) {
+      if (mounted) setState(() => _rootsLoadError = error);
+    }
   }
 
   Future<void> _loadUsers() async {
@@ -64,13 +79,13 @@ class _NewLibrarySourcePageState extends State<NewLibrarySourcePage> {
   Future<void> _submit() async {
     if (_submitting) return;
     final name = _name.text.trim();
-    final rootPath = _path.text.trim();
+    final rootPath = _selectedRoot;
     if (name.isEmpty) {
       context.showLumaSnack('请输入媒体源名称');
       return;
     }
-    if (rootPath.isEmpty) {
-      context.showLumaSnack('请输入服务器上的绝对路径');
+    if (rootPath == null) {
+      context.showLumaSnack('请选择媒体目录');
       return;
     }
     setState(() => _submitting = true);
@@ -96,7 +111,7 @@ class _NewLibrarySourcePageState extends State<NewLibrarySourcePage> {
       padding: LumaLayout.pagePadding(top: LumaSpacing.sm),
       children: [
         Text(
-          '填写运行轻影服务的电脑可见路径。保存后会更新服务端配置，并立即开始首次扫描。',
+          '选择已由服务端配置的媒体目录。保存后会立即开始首次扫描。',
           style: TextStyle(
             color: Theme.of(context).colorScheme.onSurfaceVariant,
           ),
@@ -114,17 +129,37 @@ class _NewLibrarySourcePageState extends State<NewLibrarySourcePage> {
           ),
         ),
         const SizedBox(height: LumaSpacing.md),
-        TextField(
-          controller: _path,
-          enabled: !_submitting,
-          autocorrect: false,
-          textInputAction: TextInputAction.next,
-          decoration: const InputDecoration(
-            labelText: '服务端文件夹路径',
-            hintText: r'D:\Media\Family',
-            prefixIcon: Icon(Icons.folder_outlined),
+        if (_rootsLoadError != null)
+          TextButton.icon(
+            onPressed: _submitting ? null : _loadRoots,
+            icon: const Icon(Icons.refresh_rounded),
+            label: const Text('无法读取可用媒体目录，点击重试'),
+          )
+        else if (_roots == null)
+          const _RootSelectorSkeleton()
+        else if (_roots!.isEmpty)
+          Text(
+            '服务端尚未配置可用媒体目录。请在服务端的 security.allowed_roots 中添加目录后重试。',
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          )
+        else
+          DropdownButtonFormField<String>(
+            initialValue: _selectedRoot,
+            isExpanded: true,
+            decoration: const InputDecoration(
+              labelText: '媒体目录',
+              prefixIcon: Icon(Icons.folder_outlined),
+            ),
+            hint: const Text('选择已配置的媒体目录'),
+            items: _roots!
+                .map((root) => DropdownMenuItem(value: root, child: Text(root)))
+                .toList(growable: false),
+            onChanged: _submitting
+                ? null
+                : (root) => setState(() => _selectedRoot = root),
           ),
-        ),
         const SizedBox(height: LumaSpacing.lg),
         const SectionHeader(title: '视频用途'),
         const SizedBox(height: LumaSpacing.xs),
@@ -156,8 +191,8 @@ class _NewLibrarySourcePageState extends State<NewLibrarySourcePage> {
           )
         else if (_users == null)
           const Padding(
-            padding: EdgeInsets.all(LumaSpacing.md),
-            child: Center(child: CircularProgressIndicator()),
+            padding: EdgeInsets.symmetric(vertical: LumaSpacing.md),
+            child: LinearProgressIndicator(),
           )
         else if (_users!.isEmpty)
           Text(
@@ -186,7 +221,7 @@ class _NewLibrarySourcePageState extends State<NewLibrarySourcePage> {
           ),
         const SizedBox(height: LumaSpacing.lg),
         FilledButton.icon(
-          onPressed: _submitting ? null : _submit,
+          onPressed: _submitting || _roots?.isEmpty != false ? null : _submit,
           icon: _submitting
               ? const SizedBox.square(
                   dimension: 18,
@@ -197,5 +232,18 @@ class _NewLibrarySourcePageState extends State<NewLibrarySourcePage> {
         ),
       ],
     ),
+  );
+}
+
+class _RootSelectorSkeleton extends StatelessWidget {
+  const _RootSelectorSkeleton();
+
+  @override
+  Widget build(BuildContext context) => const InputDecorator(
+    decoration: InputDecoration(
+      labelText: '媒体目录',
+      prefixIcon: Icon(Icons.folder_outlined),
+    ),
+    child: LinearProgressIndicator(),
   );
 }

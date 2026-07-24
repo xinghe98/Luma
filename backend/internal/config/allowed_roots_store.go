@@ -33,6 +33,19 @@ func NewAllowedRootsStore(path string) (*AllowedRootsStore, error) {
 	return &AllowedRootsStore{path: path}, nil
 }
 
+// List returns the currently configured, resolved media roots without
+// modifying the configuration file. Callers must keep these server-local
+// paths within an administrator-only boundary.
+func (s *AllowedRootsStore) List() ([]string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	cfg, err := Load(s.path)
+	if err != nil {
+		return nil, err
+	}
+	return append([]string(nil), cfg.Security.AllowedRoots...), nil
+}
+
 // Add validates the complete resulting configuration, writes it atomically,
 // and returns both root sets for the in-memory policy update.
 func (s *AllowedRootsStore) Add(root string) (AllowedRootsUpdate, error) {

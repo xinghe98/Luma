@@ -155,7 +155,7 @@ curl http://127.0.0.1:8080/health
 
 ### 4. 创建媒体源并扫描
 
-容器内允许的媒体根目录由 `.env` 自动生成；上例中分别是 `/media/tv`、`/media/movies` 和 `/media/photos`。管理员可在 App 的“设置 → 媒体源”中使用其中一个目录，也可以通过 API 创建：
+容器内允许的媒体根目录由 `.env` 自动生成；上例中分别是 `/media/tv`、`/media/movies` 和 `/media/photos`。管理员可在 App 的“设置 → 媒体源”中从这些已配置目录选择一个，也可以通过 API 创建：
 
 ```bash
 export TOKEN='上一步读取的 Token'

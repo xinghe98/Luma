@@ -108,7 +108,7 @@ sh ./scripts/build.sh
 
 ### 本地扫描闭环
 
-以下请求均需使用首次启动生成的 Token。创建媒体源时 `root_path` 必须位于 `security.allowed_roots` 中，响应永远不会返回真实路径。
+以下请求均需使用首次启动生成的 Token。创建媒体源时 `root_path` 必须位于 `security.allowed_roots` 中；普通媒体源响应不会返回真实路径，管理员可通过 `GET /api/v1/admin/media-roots` 读取可选目录以供客户端选择。
 
 服务重启采用扫描恢复策略 A：启动时先将上次遗留的 `running` 扫描一次性标记为 `interrupted`，不提交该次扫描的 `missing`，也不自动重试；`pending` 扫描会继续由 Worker 领取。用户可在服务就绪后手动重新发起被中断来源的扫描。扫描与媒体处理恢复全部成功后 HTTP 才开始对外服务，因此就绪探测不会早于持久化状态恢复。
 
@@ -173,7 +173,7 @@ Flutter 客户端的 `ApiClient` 已封装下列后端接口，但当前 App 没
 
 | 后端能力 | 接口 | Flutter 当前状态 |
 | --- | --- | --- |
-| 创建媒体源 | `POST /api/v1/sources` | 已封装请求；缺少媒体源名称和根目录输入页面 |
+| 创建媒体源 | `GET /api/v1/admin/media-roots`、`POST /api/v1/admin/media-sources` | App 已提供名称、已配置目录选择、用途和成员授权页面 |
 | 编辑媒体源 | `PATCH /api/v1/sources/{id}` | 已封装请求；缺少名称、根目录和启用状态编辑入口 |
 | 禁用媒体源 | `DELETE /api/v1/sources/{id}` | 已封装请求；缺少媒体源列表、禁用确认和重新启用入口 |
 | 指定媒体源扫描 | `POST /api/v1/sources/{id}/scan` | 已封装并用于扫描；当前按钮会处理所有启用来源，缺少单来源选择入口 |

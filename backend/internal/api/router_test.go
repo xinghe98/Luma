@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -15,6 +16,7 @@ import (
 	"github.com/xinghe98/Luma/backend/internal/api/handler"
 	"github.com/xinghe98/Luma/backend/internal/domain"
 	"github.com/xinghe98/Luma/backend/internal/security"
+	"github.com/xinghe98/Luma/backend/internal/service"
 )
 
 // fakeSystemUseCase 为 Router 测试提供可预测的系统业务结果。
@@ -188,6 +190,16 @@ func (fakeSystemUseCase) Info(context.Context) (domain.SystemInfo, error) {
 	}, nil
 }
 
+type fakeManagedSourceUseCase struct{}
+
+func (fakeManagedSourceUseCase) Create(context.Context, service.ManagedMediaSourceCommand) (service.ManagedMediaSourceResult, error) {
+	return service.ManagedMediaSourceResult{}, nil
+}
+
+func (fakeManagedSourceUseCase) ListAvailableRoots() ([]string, error) {
+	return []string{"/media/family", "/media/movies"}, nil
+}
+
 // testRouter 创建注入测试替身的完整 Router。
 func testRouter(t *testing.T) http.Handler {
 	t.Helper()
@@ -200,7 +212,7 @@ func testRouter(t *testing.T) http.Handler {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sources, err := handler.NewSourceHandler(fakeSourceUseCase{})
+	sources, err := handler.NewSourceHandler(fakeSourceUseCase{}, fakeManagedSourceUseCase{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -431,6 +443,26 @@ func TestSourceAPIRejectsUnknownFieldsAndHidesRootPath(t *testing.T) {
 				t.Fatal("响应不得返回真实媒体源路径")
 			}
 		})
+	}
+}
+
+func TestAdminMediaRootsAreListedForAdministrators(t *testing.T) {
+	router := testRouter(t)
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/admin/media-roots", nil)
+	request.Header.Set("Authorization", "Bearer abcdefghijklmnopqrstuvwxyz123456")
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", recorder.Code, recorder.Body.String())
+	}
+	var body struct {
+		Items []string `json:"items"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(body.Items, []string{"/media/family", "/media/movies"}) {
+		t.Fatalf("items=%#v", body.Items)
 	}
 }
 

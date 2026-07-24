@@ -68,6 +68,12 @@ func NewManagedMediaSourceService(
 	return &ManagedMediaSourceService{sources: sources, access: access, scans: scans, config: store, roots: roots}, nil
 }
 
+// ListAvailableRoots returns the administrator-selectable media directories
+// configured by security.allowed_roots. It never creates or changes a root.
+func (s *ManagedMediaSourceService) ListAvailableRoots() ([]string, error) {
+	return s.config.List()
+}
+
 // Create persists the directory whitelist, makes it live, creates the source,
 // grants selected members and queues its first scan. A failed later step
 // removes the just-created source and restores the original whitelist.

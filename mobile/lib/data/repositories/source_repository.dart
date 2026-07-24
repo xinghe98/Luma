@@ -11,6 +11,10 @@ abstract interface class SourceRepository {
 abstract interface class MutableSourceRepository implements SourceRepository {
   Future<Source> updateLibraryKind(String id, String libraryKind);
 
+  /// Lists administrator-selectable paths from the server configuration.
+  /// Paths are server-local and are only used as values for source creation.
+  Future<List<String>> listAvailableRoots();
+
   /// Creates a server-local source, grants selected members and starts its scan.
   Future<ManagedSourceCreation> createManagedSource({
     required String name,

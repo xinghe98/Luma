@@ -57,6 +57,11 @@ final class ApiClient {
     },
   );
 
+  /// Loads the administrator-visible roots configured for media sources.
+  /// The response is used only to populate the source-creation picker.
+  Future<Map<String, dynamic>> getAvailableMediaRoots() =>
+      _json('GET', _api('/admin/media-roots'));
+
   Future<Map<String, dynamic>> updateSource(
     String id,
     Map<String, dynamic> changes,

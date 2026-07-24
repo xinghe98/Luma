@@ -7,6 +7,7 @@ import 'package:luma/data/api/api_client.dart';
 import 'package:luma/data/api/api_session.dart';
 import 'package:luma/data/api/api_session_interceptor.dart';
 import 'package:luma/data/repositories/api_media_repository.dart';
+import 'package:luma/data/repositories/api_source_repository.dart';
 import 'package:luma/data/repositories/source_repository.dart';
 import 'package:luma/data/models/api_source.dart';
 import 'package:luma/data/models/media_filter.dart';
@@ -227,6 +228,38 @@ void main() {
     );
   });
 
+  test(
+    'source repository loads configured media roots for the picker',
+    () async {
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      addTearDown(() => server.close(force: true));
+      server.listen((request) async {
+        expect(request.uri.path, '/custom/admin/media-roots');
+        expect(
+          request.headers.value(HttpHeaders.authorizationHeader),
+          'Bearer root-token',
+        );
+        await _json(request.response, {
+          'items': ['/media/family', '/media/movies'],
+        });
+      });
+      final session = ApiSession(
+        origin: 'http://${server.address.host}:${server.port}',
+        token: 'root-token',
+      );
+      final dio = Dio()..interceptors.add(ApiSessionInterceptor(session));
+      addTearDown(dio.close);
+      final repository = ApiSourceRepository(
+        ApiClient(dio, apiPrefix: '/custom/'),
+      );
+
+      expect(await repository.listAvailableRoots(), [
+        '/media/family',
+        '/media/movies',
+      ]);
+    },
+  );
+
   test('media count uses one authenticated aggregate request', () async {
     final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     addTearDown(() => server.close(force: true));
@@ -263,13 +296,9 @@ void main() {
         request.headers.value(HttpHeaders.authorizationHeader),
         'Bearer candidate-token',
       );
-      await _json(
-        request.response,
-        {
-          'error': {'code': 'UNAVAILABLE', 'message': 'offline'},
-        },
-        status: HttpStatus.serviceUnavailable,
-      );
+      await _json(request.response, {
+        'error': {'code': 'UNAVAILABLE', 'message': 'offline'},
+      }, status: HttpStatus.serviceUnavailable);
     });
     final active = ApiSession(
       origin: 'http://active.example.test',

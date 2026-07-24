@@ -63,6 +63,25 @@ paths:
         "400": { $ref: "#/components/responses/InvalidRequest" }
         "403": { $ref: "#/components/responses/ForbiddenPath" }
         "409": { $ref: "#/components/responses/Conflict" }
+  /api/v1/admin/media-roots:
+    get:
+      summary: 查询可用于新增媒体源的服务端目录
+      description: 仅管理员可调用。返回 security.allowed_roots 中已配置的目录，供客户端选择，普通媒体源接口不会返回真实路径。
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: 已配置的媒体根目录
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { type: string }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
   /api/v1/sources/{id}:
     parameters:
       - $ref: "#/components/parameters/SourceID"
