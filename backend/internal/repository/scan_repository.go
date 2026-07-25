@@ -21,6 +21,8 @@ type ScanRepository interface {
 	NeedsQuickHash(context.Context, string, domain.DiscoveredFile) (bool, error)
 	// ReconcileFile 按路径、文件 ID、快速指纹的优先级写入媒体索引。
 	ReconcileFile(context.Context, string, string, string, domain.DiscoveredFile, time.Time) (domain.ReconcileResult, error)
+	// ReconcileSidecar indexes a read-only NFO without creating media processing work.
+	ReconcileSidecar(context.Context, string, string, domain.DiscoveredFile, time.Time) error
 	// AddProgress 原子增加扫描任务统计计数。
 	AddProgress(context.Context, string, int64, int64, int64, time.Time) error
 	// MarkFileFailed 记录单文件失败并保留同路径索引的 last_seen，避免误标 missing。

@@ -16,6 +16,48 @@ func TestMatchMovieDirectory(t *testing.T) {
 	}
 }
 
+func TestMatchMovieReleaseFoldersAndProviderID(t *testing.T) {
+	tests := []struct {
+		name           string
+		relativePath   string
+		filename       string
+		title          string
+		year           int
+		provider       string
+		providerItemID string
+	}{
+		{
+			name: "website and release tags",
+			relativePath: "电影天堂www.dy2018.com.流浪地球2.2023.BD.国语中字/" +
+				"流浪地球2.2023.2160p.mkv",
+			filename: "流浪地球2.2023.2160p.mkv", title: "流浪地球2", year: 2023,
+		},
+		{
+			name:         "folder copied with video extension",
+			relativePath: "重庆森林.1994.BluRay.mkv/重庆森林.1994.BluRay.mkv",
+			filename:     "重庆森林.1994.BluRay.mkv", title: "重庆森林", year: 1994,
+		},
+		{
+			name:         "explicit tmdb identity",
+			relativePath: "沙丘 (2021) [tmdbid-438631]/Dune.2021.2160p.mkv",
+			filename:     "Dune.2021.2160p.mkv", title: "沙丘", year: 2021,
+			provider: "tmdb", providerItemID: "438631",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			match := Match(domain.CatalogCandidate{
+				MediaID: "m", SourceID: "s", LibraryKind: domain.LibraryKindMovies,
+				RelativePath: test.relativePath, Filename: test.filename,
+			})
+			if match.Title != test.title || match.Year == nil || *match.Year != test.year ||
+				match.Provider != test.provider || match.ProviderItemID != test.providerItemID {
+				t.Fatalf("match=%#v", match)
+			}
+		})
+	}
+}
+
 func TestMatchEpisode(t *testing.T) {
 	match := Match(domain.CatalogCandidate{MediaID: "m", SourceID: "s", LibraryKind: domain.LibraryKindTV,
 		RelativePath: "漫长的季节/Season 01/漫长的季节.S01E03.mp4", Filename: "漫长的季节.S01E03.mp4", MediaUpdatedAt: time.Now()})

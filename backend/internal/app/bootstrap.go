@@ -134,6 +134,25 @@ func (b *bootstrap) build(ctx context.Context) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
+	metadataWorkers, metadataRegistry, err := buildMetadataWorkers(
+		b.config.Metadata, catalogRepository, sourceRepository, localFactory, ids, clock, b.logger,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("创建影视刮削组件: %w", err)
+	}
+	if err := workerGroup.Add(metadataWorkers...); err != nil {
+		return nil, fmt.Errorf("注册影视刮削 Worker: %w", err)
+	}
+	metadataArtworkStore, err := storage.NewMetadataArtworkStore(b.config.Storage.CacheDir)
+	if err != nil {
+		return nil, fmt.Errorf("创建影视资料图片缓存: %w", err)
+	}
+	if err := catalogService.EnableMetadata(
+		catalogRepository, metadataRegistry, metadataArtworkStore,
+		metadataRequestTimeout(b.config.Metadata.RequestTimeout),
+	); err != nil {
+		return nil, fmt.Errorf("启用影视刮削服务: %w", err)
+	}
 	sourceService, err := service.NewSourceService(sourceRepository, pathPolicy, scanRepository, ids, clock)
 	if err != nil {
 		return nil, fmt.Errorf("create source service: %w", err)

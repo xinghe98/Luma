@@ -3,6 +3,7 @@ package sqlite
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -38,8 +39,11 @@ func (r *CatalogRepository) queryItems(ctx context.Context, request domain.Catal
 		args = append(args, request.Kind)
 	}
 	if request.Query != "" {
-		where += ` AND instr(lower(c.title), lower(?)) > 0`
-		args = append(args, request.Query)
+		where += ` AND (instr(lower(c.title), lower(?)) > 0 OR EXISTS (
+			SELECT 1 FROM catalog_titles search_title
+			WHERE search_title.catalog_item_id=c.id AND instr(lower(search_title.title), lower(?)) > 0
+		))`
+		args = append(args, request.Query, request.Query)
 	}
 	limit := request.Limit
 	if limit <= 0 {
@@ -128,7 +132,16 @@ func (r *CatalogRepository) queryItems(ctx context.Context, request domain.Catal
 			}
 		}
 	}
-	return items, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := r.attachCatalogMetadata(ctx, items); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 func (r *CatalogRepository) querySummaries(ctx context.Context, where string, args []any, limit int, userID string) ([]domain.CatalogItem, error) {
@@ -211,7 +224,53 @@ func (r *CatalogRepository) querySummaries(ctx context.Context, where string, ar
 		item.Completed = completed == 1
 		items = append(items, item)
 	}
-	return items, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := r.attachCatalogMetadata(ctx, items); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+func (r *CatalogRepository) attachCatalogMetadata(ctx context.Context, items []domain.CatalogItem) error {
+	for index := range items {
+		item := &items[index]
+		var original, overview, tagline, releaseDate, endDate, certification sql.NullString
+		var rating sql.NullFloat64
+		var genres, countries, studios, credits, external string
+		var errorCode, provider, providerItem sql.NullString
+		var locked int
+		err := r.db.QueryRowContext(ctx, `SELECT original_title,overview,tagline,release_date,end_date,
+			certification,community_rating,vote_count,genres_json,countries_json,studios_json,credits_json,
+			external_ids_json,metadata_status,metadata_revision,metadata_error_code,provider,provider_item_id,
+			identity_locked,COALESCE((SELECT id FROM catalog_artwork a WHERE a.catalog_item_id=catalog_items.id AND a.artwork_type='poster'),''),
+			COALESCE((SELECT id FROM catalog_artwork a WHERE a.catalog_item_id=catalog_items.id AND a.artwork_type='backdrop'),'')
+			FROM catalog_items WHERE id=?`, item.ID).
+			Scan(&original, &overview, &tagline, &releaseDate, &endDate, &certification, &rating,
+				&item.VoteCount, &genres, &countries, &studios, &credits, &external,
+				&item.MetadataStatus, &item.MetadataRevision, &errorCode, &provider, &providerItem,
+				&locked, &item.PosterArtworkID, &item.BackdropArtworkID)
+		if err != nil {
+			return err
+		}
+		item.OriginalTitle, item.Overview, item.Tagline = original.String, overview.String, tagline.String
+		item.ReleaseDate, item.EndDate, item.Certification = releaseDate.String, endDate.String, certification.String
+		if rating.Valid {
+			item.CommunityRating = &rating.Float64
+		}
+		item.MetadataErrorCode, item.Provider, item.ProviderItemID = errorCode.String, provider.String, providerItem.String
+		item.IdentityLocked = locked == 1
+		_ = json.Unmarshal([]byte(genres), &item.Genres)
+		_ = json.Unmarshal([]byte(countries), &item.Countries)
+		_ = json.Unmarshal([]byte(studios), &item.Studios)
+		_ = json.Unmarshal([]byte(credits), &item.Credits)
+		_ = json.Unmarshal([]byte(external), &item.ExternalIDs)
+	}
+	return nil
 }
 
 func catalogResolution(width, height sql.NullInt64) string {

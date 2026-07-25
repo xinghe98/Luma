@@ -181,6 +181,18 @@ func (r *ScanRepository) CompleteJob(ctx context.Context, jobID, sourceID string
 	if err != nil {
 		return fmt.Errorf("提交 missing 标记: %w", err)
 	}
+	sidecars, err := tx.ExecContext(ctx, `UPDATE catalog_sidecars SET status='missing',updated_at_ms=?
+		WHERE source_id=? AND COALESCE(last_seen_scan_id,'')<>? AND status<>'missing'`,
+		now.UnixMilli(), sourceID, jobID)
+	if err != nil {
+		return fmt.Errorf("提交 NFO missing 标记: %w", err)
+	}
+	if count, _ := sidecars.RowsAffected(); count > 0 {
+		if _, err := tx.ExecContext(ctx, `UPDATE catalog_items SET metadata_status='pending',updated_at_ms=?
+			WHERE source_id=?`, now.UnixMilli(), sourceID); err != nil {
+			return err
+		}
+	}
 	result, err = tx.ExecContext(ctx, `UPDATE jobs SET status = 'completed', finished_at_ms = ?,
         locked_at_ms = NULL, locked_by = NULL, updated_at_ms = ? WHERE id = ? AND status = 'running'`,
 		now.UnixMilli(), now.UnixMilli(), jobID)

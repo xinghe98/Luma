@@ -20,9 +20,29 @@ media:
   ffmpeg_path: ffmpeg
   ffprobe_path: ffprobe
   thumbnail_width: 640
-  scan_extensions: [mp4, mkv, mov, avi, webm, m4v, ts, jpg, jpeg, png, webp, gif, bmp]
+  scan_extensions: [mp4, mkv, mov, avi, webm, m4v, ts, jpg, jpeg, png, webp, gif, bmp, nfo]
 workers:
   scan: 1
   probe: 2
   thumbnail: 1
   lock_timeout: 10m
+metadata:
+  language: zh-CN
+  region: CN
+  fallback_languages: [en-US]
+  refresh_interval: 720h
+  request_timeout: 15s
+  workers: 1
+  requests_per_second: 4
+  auto_match_threshold: 90
+  auto_match_margin: 8
+  proxy_url: ""
+  providers:
+    nfo:
+      enabled: true
+    tmdb:
+      enabled: __LUMA_TMDB_ENABLED__
+      options:
+        access_token: __LUMA_TMDB_ACCESS_TOKEN__
+        api_base_url: https://api.themoviedb.org/3
+        image_base_url: https://image.tmdb.org/t/p/original

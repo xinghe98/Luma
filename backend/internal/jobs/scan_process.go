@@ -30,7 +30,7 @@ func (w *ScanWorker) process(ctx context.Context, job domain.ScanJob) error {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		if err := w.processFile(ctx, job, source.ID, mediaSource, file); err != nil {
+		if err := w.processFile(ctx, job, source.ID, source.LibraryKind, mediaSource, file); err != nil {
 			if errors.Is(err, context.Canceled) || errors.Is(ctx.Err(), context.Canceled) {
 				return err
 			}
@@ -57,8 +57,16 @@ func (w *ScanWorker) process(ctx context.Context, job domain.ScanJob) error {
 	return nil
 }
 
-func (w *ScanWorker) processFile(ctx context.Context, job domain.ScanJob, sourceID string,
+func (w *ScanWorker) processFile(ctx context.Context, job domain.ScanJob, sourceID, libraryKind string,
 	mediaSource storage.MediaSource, file domain.DiscoveredFile) error {
+	if file.MediaType == domain.MediaTypeSidecar {
+		if libraryKind == domain.LibraryKindMovies || libraryKind == domain.LibraryKindTV {
+			if err := w.scans.ReconcileSidecar(ctx, job.ID, sourceID, file, w.clock.Now()); err != nil {
+				return err
+			}
+		}
+		return w.scans.AddProgress(ctx, job.ID, 1, 1, 0, w.clock.Now())
+	}
 	needsHash, err := w.scans.NeedsQuickHash(ctx, sourceID, file)
 	if err != nil {
 		return err

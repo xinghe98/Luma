@@ -129,10 +129,22 @@ func (r *CatalogRepository) saveMatch(ctx context.Context, tx *sql.Tx, match dom
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET title = CASE WHEN catalog_items.locked = 1 THEN catalog_items.title ELSE excluded.title END,
 		match_status = CASE WHEN catalog_items.match_status = 'needs_review' OR excluded.match_status = 'needs_review' THEN 'needs_review' ELSE 'matched' END,
+		metadata_status = CASE
+			WHEN catalog_items.identity_locked = 0 AND catalog_items.title <> excluded.title THEN 'pending'
+			ELSE catalog_items.metadata_status
+		END,
 		updated_at_ms = excluded.updated_at_ms`, itemID, match.SourceID, match.Kind, match.Title, match.SortTitle,
 		nullableInt(match.Year), origin(match.Locked), match.Status, boolInt(match.Locked), nowMS, nowMS)
 	if err != nil {
 		return fmt.Errorf("保存作品: %w", err)
+	}
+	if match.Provider != "" && match.ProviderItemID != "" {
+		_, err = tx.ExecContext(ctx, `UPDATE catalog_items SET provider=?,provider_item_id=?,
+			metadata_status='pending',updated_at_ms=? WHERE id=? AND identity_locked=0`,
+			match.Provider, match.ProviderItemID, nowMS, itemID)
+		if err != nil {
+			return fmt.Errorf("保存作品 Provider 身份: %w", err)
+		}
 	}
 	var seasonID, episodeID any
 	if match.Kind == domain.CatalogKindSeries && match.SeasonNumber != nil && match.EpisodeNumber != nil {

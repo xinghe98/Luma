@@ -43,6 +43,15 @@ func TestOpenAPIIsValidYAML(t *testing.T) {
 			t.Fatalf("作品库 OpenAPI path 缺失: %s", path)
 		}
 	}
+	for _, path := range []string{
+		"/api/v1/catalog/artwork/{id}", "/api/v1/admin/catalog/{id}/candidates",
+		"/api/v1/admin/catalog/{id}/refresh", "/api/v1/admin/catalog/refresh",
+		"/api/v1/admin/catalog/{id}/identity", "/api/v1/admin/metadata/status",
+	} {
+		if paths[path] == nil {
+			t.Fatalf("影视刮削 OpenAPI path 缺失: %s", path)
+		}
+	}
 	components, ok := document["components"].(map[string]any)
 	if !ok {
 		t.Fatal("OpenAPI components 缺失")
@@ -98,6 +107,11 @@ func TestOpenAPIIsValidYAML(t *testing.T) {
 	for _, schema := range []string{"CatalogItem", "CatalogEpisode", "CatalogIssue", "UpdateCatalogMatch"} {
 		if schemas[schema] == nil {
 			t.Fatalf("作品库 schema 缺失: %s", schema)
+		}
+	}
+	for _, schema := range []string{"MetadataCandidate", "SelectMetadataIdentity", "MetadataProviderStatus"} {
+		if schemas[schema] == nil {
+			t.Fatalf("影视刮削 schema 缺失: %s", schema)
 		}
 	}
 }

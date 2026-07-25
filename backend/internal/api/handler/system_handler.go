@@ -42,7 +42,7 @@ func (h *SystemHandler) Info(c *gin.Context) {
 	principal := middleware.Principal(c)
 	capabilities := []string{"media.read", "user_data.write"}
 	if principal.IsAdmin() {
-		capabilities = append(capabilities, "sources.manage", "scans.manage", "catalog.manage", "users.manage")
+		capabilities = append(capabilities, "sources.manage", "scans.manage", "catalog.manage", "metadata.scrape.v1", "users.manage")
 	}
 	c.JSON(http.StatusOK, gin.H{
 		"version":      info.Version,

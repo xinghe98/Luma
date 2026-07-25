@@ -4,6 +4,7 @@ import 'decoder_utils.dart';
 final class CatalogDecoder {
   const CatalogDecoder();
 
+  /// 将作品响应解码为兼容旧服务端的本地模型。
   CatalogItem decode(Map<String, dynamic> json) => CatalogItem(
     id: requiredValue(json, 'id'),
     sourceId: requiredValue(json, 'source_id'),
@@ -28,6 +29,26 @@ final class CatalogDecoder {
     episodes: (json['episodes'] as List<Object?>? ?? const [])
         .map((value) => decodeEpisode(objectValue(value, 'episode')))
         .toList(growable: false),
+    originalTitle: optionalValue<String>(json, 'original_title') ?? '',
+    overview: optionalValue<String>(json, 'overview') ?? '',
+    tagline: optionalValue<String>(json, 'tagline') ?? '',
+    releaseDate: optionalValue<String>(json, 'release_date') ?? '',
+    endDate: optionalValue<String>(json, 'end_date') ?? '',
+    certification: optionalValue<String>(json, 'certification') ?? '',
+    communityRating: optionalValue<num>(json, 'community_rating')?.toDouble(),
+    voteCount: optionalValue<int>(json, 'vote_count') ?? 0,
+    genres: _decodeNamedValues(json['genres']),
+    countries: _decodeNamedValues(json['countries']),
+    studios: _decodeNamedValues(json['studios']),
+    credits: _decodeCredits(json['credits']),
+    externalIds: _decodeExternalIDs(json['external_ids']),
+    metadataStatus: optionalValue<String>(json, 'metadata_status') ?? '',
+    metadataRevision: optionalValue<int>(json, 'metadata_revision') ?? 1,
+    metadataErrorCode: optionalValue<String>(json, 'metadata_error_code') ?? '',
+    provider: optionalValue<String>(json, 'provider') ?? '',
+    providerItemId: optionalValue<String>(json, 'provider_item_id') ?? '',
+    identityLocked: optionalValue<bool>(json, 'identity_locked') ?? false,
+    backdropUrl: optionalValue<String>(json, 'backdrop_url') ?? '',
   );
 
   CatalogEpisode decodeEpisode(Map<String, dynamic> json) => CatalogEpisode(
@@ -62,4 +83,43 @@ final class CatalogDecoder {
     json,
     'items',
   ).map((value) => decodeIssue(objectValue(value, 'catalog issue'))).toList();
+
+  List<CatalogNamedValue> _decodeNamedValues(Object? value) {
+    if (value == null) return const [];
+    if (value is! List) throw const FormatException('Expected named value list');
+    return value
+        .map((item) => objectValue(item, 'catalog named value'))
+        .map(
+          (item) => CatalogNamedValue(
+            id: optionalValue<String>(item, 'id') ?? '',
+            name: requiredValue(item, 'name'),
+          ),
+        )
+        .toList(growable: false);
+  }
+
+  List<CatalogCredit> _decodeCredits(Object? value) {
+    if (value == null) return const [];
+    if (value is! List) throw const FormatException('Expected catalog credit list');
+    return value
+        .map((item) => objectValue(item, 'catalog credit'))
+        .map(
+          (item) => CatalogCredit(
+            personId: optionalValue<String>(item, 'person_id') ?? '',
+            name: requiredValue(item, 'name'),
+            role: optionalValue<String>(item, 'role') ?? '',
+            character: optionalValue<String>(item, 'character') ?? '',
+            order: optionalValue<int>(item, 'order') ?? 0,
+          ),
+        )
+        .toList(growable: false);
+  }
+
+  Map<String, String> _decodeExternalIDs(Object? value) {
+    if (value == null) return const {};
+    if (value is! Map) throw const FormatException('Expected external ID object');
+    return Map<String, String>.unmodifiable(
+      value.map((key, item) => MapEntry(key.toString(), item.toString())),
+    );
+  }
 }

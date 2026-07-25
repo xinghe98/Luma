@@ -12,18 +12,22 @@ import (
 	"github.com/xinghe98/Luma/backend/internal/domain"
 )
 
-const RuleVersion = 2
+const RuleVersion = 3
 
 var (
-	yearPattern            = regexp.MustCompile(`(?:^|[ ._\-\[(])(18\d{2}|19\d{2}|20\d{2}|21\d{2})(?:$|[ ._\-\])])`)
-	seasonEpisodePattern   = regexp.MustCompile(`(?i)(?:^|[ ._\-\[(])S(\d{1,2})E(\d{1,3})(?:$|[ ._\-\])])`)
-	chineseEpisodePattern  = regexp.MustCompile(`第[ ._\-]*(\d{1,3})[ ._\-]*集`)
-	episodeOnlyPattern     = regexp.MustCompile(`(?i)(?:^|[ ._\-\[(])EP?(\d{1,3})(?:$|[ ._\-\])])`)
-	seasonDirectoryPattern = regexp.MustCompile(`(?i)^(?:season|s)[ ._\-]*(\d{1,2})$`)
-	chineseSeasonPattern   = regexp.MustCompile(`^第[ ._\-]*(\d{1,2})[ ._\-]*季$`)
-	trailingDigitsPattern  = regexp.MustCompile(`([0-9]{1,3})$`)
-	noisePattern           = regexp.MustCompile(`(?i)(?:^|[ ._\-])(2160p|1080p|720p|480p|4k|uhd|bluray|blu-ray|web-dl|webrip|hdtv|x26[45]|hevc|av1)(?:$|[ ._\-])`)
-	releaseMetadataPattern = regexp.MustCompile(`(?i)(?:^|[ ._\-\[(])(18\d{2}|19\d{2}|20\d{2}|21\d{2}|4320p|2160p|hd1080p|1080p|720p|480p|4k|8k|uhd|hdr|dv|bluray|blu-ray|bd|web|web-dl|webrip|hdtv|remux|x26[45]|h26[45]|hevc|av1|aac|dts|ac3|mandarin|cantonese|chs|cht|eng|bdys|99mp4)(?:$|[ ._\-\])])`)
+	yearPattern                 = regexp.MustCompile(`(?:^|[ ._\-\[(])(18\d{2}|19\d{2}|20\d{2}|21\d{2})(?:$|[ ._\-\])])`)
+	seasonEpisodePattern        = regexp.MustCompile(`(?i)(?:^|[ ._\-\[(])S(\d{1,2})E(\d{1,3})(?:$|[ ._\-\])])`)
+	chineseEpisodePattern       = regexp.MustCompile(`第[ ._\-]*(\d{1,3})[ ._\-]*集`)
+	episodeOnlyPattern          = regexp.MustCompile(`(?i)(?:^|[ ._\-\[(])EP?(\d{1,3})(?:$|[ ._\-\])])`)
+	seasonDirectoryPattern      = regexp.MustCompile(`(?i)^(?:season|s)[ ._\-]*(\d{1,2})$`)
+	chineseSeasonPattern        = regexp.MustCompile(`^第[ ._\-]*(\d{1,2})[ ._\-]*季$`)
+	trailingDigitsPattern       = regexp.MustCompile(`([0-9]{1,3})$`)
+	noisePattern                = regexp.MustCompile(`(?i)(?:^|[ ._\-])(2160p|1080p|720p|480p|4k|uhd|bluray|blu-ray|web-dl|webrip|hdtv|x26[45]|hevc|av1)(?:$|[ ._\-])`)
+	releaseMetadataPattern      = regexp.MustCompile(`(?i)(?:^|[ ._\-\[(])(18\d{2}|19\d{2}|20\d{2}|21\d{2}|4320p|2160p|hd1080p|1080p|720p|480p|4k|8k|uhd|hdr|dv|bluray|blu-ray|bd|web|web-dl|webrip|hdtv|remux|x26[45]|h26[45]|hevc|av1|aac|dts|ac3|mandarin|cantonese|chs|cht|eng|bdys|99mp4)(?:$|[ ._\-\])])`)
+	providerIDPattern           = regexp.MustCompile(`(?i)\[(tmdbid)-([0-9]+)\]`)
+	websitePrefixPattern        = regexp.MustCompile(`(?i)^(?:电影天堂)?[ ._-]*www[ ._-]*[a-z0-9]+[ ._-]*(?:com|cn|net)[ ._-]*`)
+	movieReleasePattern         = regexp.MustCompile(`(?i)(?:^|[ ._\-\[(])(hd1080p|4320p|2160p|1080p|720p|480p|4k|8k|uhd|hdr|dv|bluray|blu-ray|bdrip|bd|web-dl|webrip|hdtv|remux|x26[45]|h26[45]|hevc|10bit|2audio|dts(?:-hd)?|aac|ac3|momo(?:hd)?|人人影视|国语中字|日语中字|中英字幕|中英双字|中文字幕|中字|双字|hk)(?:$|[ ._\-\])])`)
+	compactReleaseSuffixPattern = regexp.MustCompile(`(?i)(?:BD|HD|BDrip)?(?:国语|粤语|日语|英语|中英)?(?:中字|字幕|双字)+$`)
 )
 
 func Match(candidate domain.CatalogCandidate) domain.CatalogMatch {
@@ -38,12 +42,7 @@ func Match(candidate domain.CatalogCandidate) domain.CatalogMatch {
 	switch candidate.LibraryKind {
 	case domain.LibraryKindMovies:
 		match.Kind = domain.CatalogKindMovie
-		name := stem
-		if len(parts) > 1 {
-			name = parts[len(parts)-2]
-			match.Confidence = 95
-		}
-		match.Title, match.Year = cleanTitle(name)
+		match.Title, match.Year, match.Provider, match.ProviderItemID, match.Confidence = matchMovie(stem, parts)
 	case domain.LibraryKindTV:
 		match.Kind = domain.CatalogKindSeries
 		showName := stem
@@ -77,6 +76,64 @@ func Match(candidate domain.CatalogCandidate) domain.CatalogMatch {
 	}
 	match.SortTitle = NormalizeTitle(match.Title)
 	return match
+}
+
+func matchMovie(stem string, parts []string) (title string, year *int, provider, providerItemID string, confidence int) {
+	fileTitle, fileYear := cleanMovieTitle(stem)
+	title, year, confidence = fileTitle, fileYear, 75
+	if len(parts) > 1 {
+		parent := strings.TrimSpace(parts[len(parts)-2])
+		// Release folders copied from a filename frequently retain a video extension.
+		if extension := filepath.Ext(parent); isVideoExtension(extension) {
+			parent = strings.TrimSuffix(parent, extension)
+		}
+		parentTitle, parentYear := cleanMovieTitle(parent)
+		if parentTitle != "" {
+			title, confidence = parentTitle, 85
+			if parentYear != nil {
+				year = parentYear
+			} else if fileYear != nil {
+				year = fileYear
+			}
+			parentKey, fileKey := NormalizeTitle(parentTitle), NormalizeTitle(fileTitle)
+			if fileKey != "" && parentKey != "" &&
+				(strings.Contains(parentKey, fileKey) || strings.Contains(fileKey, parentKey)) {
+				confidence = 90
+				if len([]rune(fileTitle)) < len([]rune(parentTitle)) {
+					title = fileTitle
+				}
+			}
+		}
+	}
+	for _, value := range append([]string{stem}, parts...) {
+		if found := providerIDPattern.FindStringSubmatch(value); len(found) == 3 {
+			provider, providerItemID, confidence = "tmdb", found[2], 100
+			break
+		}
+	}
+	return title, year, provider, providerItemID, confidence
+}
+
+func cleanMovieTitle(value string) (string, *int) {
+	value = providerIDPattern.ReplaceAllString(value, " ")
+	value = strings.NewReplacer("[", " ", "]", " ", "(", " (", ")", ") ").Replace(value)
+	value = websitePrefixPattern.ReplaceAllString(strings.TrimSpace(value), "")
+	title, year := cleanTitle(value)
+	if location := movieReleasePattern.FindStringIndex(title); location != nil {
+		title = title[:location[0]]
+	}
+	title = compactReleaseSuffixPattern.ReplaceAllString(strings.TrimSpace(title), "")
+	title = strings.Trim(title, " ._-[]()")
+	return strings.Join(strings.Fields(title), " "), year
+}
+
+func isVideoExtension(extension string) bool {
+	switch strings.ToLower(extension) {
+	case ".mp4", ".mkv", ".mov", ".avi", ".webm", ".m4v", ".ts":
+		return true
+	default:
+		return false
+	}
 }
 
 func cleanTitle(value string) (string, *int) {

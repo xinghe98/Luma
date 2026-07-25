@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"time"
@@ -13,10 +14,13 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+var providerConfigIDPattern = regexp.MustCompile(`^[a-z][a-z0-9_-]{1,31}$`)
+
 // defaultExtensions 保存未显式配置时支持的媒体扩展名。
 var defaultExtensions = []string{
 	"mp4", "mkv", "mov", "avi", "webm", "m4v", "ts",
 	"jpg", "jpeg", "png", "webp", "gif", "bmp",
+	"nfo",
 }
 
 // Load 从 YAML 文件加载、规范化并校验配置。
@@ -70,6 +74,15 @@ func defaults() Config {
 			},
 		},
 		Workers: WorkersConfig{Scan: 1, Probe: 2, Thumbnail: 1, LockTimeout: 10 * time.Minute},
+		Metadata: MetadataConfig{
+			Language: "zh-CN", Region: "CN", FallbackLanguages: []string{"en-US"},
+			RefreshInterval: 30 * 24 * time.Hour, RequestTimeout: 15 * time.Second,
+			Workers: 1, RequestsPerSecond: 4, AutoMatchThreshold: 90, AutoMatchMargin: 8,
+			Providers: map[string]MetadataProviderConfig{
+				"nfo":  {Enabled: true},
+				"tmdb": {Enabled: false, Options: map[string]any{}},
+			},
+		},
 	}
 }
 
@@ -169,10 +182,39 @@ func Validate(cfg Config) error {
 	if cfg.Workers.Scan <= 0 || cfg.Workers.Probe <= 0 || cfg.Workers.Thumbnail <= 0 || cfg.Workers.LockTimeout <= 0 {
 		problems = append(problems, "worker counts and workers.lock_timeout must be positive")
 	}
+	if err := validateMetadata(cfg.Metadata); err != "" {
+		problems = append(problems, err)
+	}
 	if len(problems) > 0 {
 		return fmt.Errorf("invalid configuration: %s", strings.Join(problems, "; "))
 	}
 	return nil
+}
+
+// validateMetadata 校验 Provider 无关的刮削策略；实现私有 options 由 Provider 自己校验。
+func validateMetadata(cfg MetadataConfig) string {
+	if strings.TrimSpace(cfg.Language) == "" || strings.TrimSpace(cfg.Region) == "" {
+		return "metadata.language and metadata.region are required"
+	}
+	if cfg.RefreshInterval <= 0 || cfg.RequestTimeout <= 0 {
+		return "metadata.refresh_interval and metadata.request_timeout must be positive"
+	}
+	if cfg.Workers <= 0 || cfg.RequestsPerSecond <= 0 {
+		return "metadata.workers and metadata.requests_per_second must be positive"
+	}
+	if cfg.AutoMatchThreshold < 0 || cfg.AutoMatchThreshold > 100 ||
+		cfg.AutoMatchMargin < 0 || cfg.AutoMatchMargin > 100 {
+		return "metadata auto-match values must be between 0 and 100"
+	}
+	if len(cfg.Providers) == 0 {
+		return "metadata.providers must contain at least one provider"
+	}
+	for id := range cfg.Providers {
+		if !providerConfigIDPattern.MatchString(id) {
+			return fmt.Sprintf("metadata.providers contains invalid id %q", id)
+		}
+	}
+	return ""
 }
 
 // validateAutoScan 校验自动扫描策略；关闭时仍要求 mode/interval/debounce 合法，便于随时启用。

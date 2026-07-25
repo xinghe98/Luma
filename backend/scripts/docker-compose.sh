@@ -2,6 +2,7 @@
 # 根据 .env 生成 Luma Docker 的媒体挂载与运行时配置，并将参数转交给 Docker Compose。
 # 它与 docker-compose.yml、config.docker.yaml 协作；每次运行都会覆盖 backend/.cache/docker 中的派生文件。
 set -eu
+umask 077
 
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 PROJECT_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
@@ -33,6 +34,15 @@ set +a
 : "${LUMA_PORT:=8080}"
 : "${LUMA_VERSION:=dev}"
 : "${LUMA_MEDIA_DIRS:?set LUMA_MEDIA_DIRS in .env}"
+: "${LUMA_TMDB_ENABLED:=false}"
+: "${LUMA_TMDB_ACCESS_TOKEN:=}"
+
+case "$LUMA_TMDB_ENABLED" in
+    true | false) ;;
+    *) fail "LUMA_TMDB_ENABLED must be true or false" ;;
+esac
+[ "$LUMA_TMDB_ENABLED" = false ] || [ -n "$LUMA_TMDB_ACCESS_TOKEN" ] ||
+    fail "LUMA_TMDB_ACCESS_TOKEN is required when LUMA_TMDB_ENABLED=true"
 
 mkdir -p "$GENERATED_DIR"
 : > "$ROOTS_FILE"
@@ -91,6 +101,14 @@ while IFS= read -r line || [ -n "$line" ]; do
         '  allowed_roots:'*)
             printf '%s\n' '  allowed_roots:'
             cat "$ROOTS_FILE"
+            ;;
+        '      enabled: __LUMA_TMDB_ENABLED__')
+            printf '      enabled: %s\n' "$LUMA_TMDB_ENABLED"
+            ;;
+        '        access_token: __LUMA_TMDB_ACCESS_TOKEN__')
+            printf '%s' '        access_token: '
+            yaml_quote "$LUMA_TMDB_ACCESS_TOKEN"
+            printf '\n'
             ;;
         *) printf '%s\n' "$line" ;;
     esac

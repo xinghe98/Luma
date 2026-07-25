@@ -1,6 +1,6 @@
 # 本地媒体管理服务端 V1 架构与开发方案
 
-> 当前实现状态：阶段 1 至阶段 6 及首版影视作品层已落地。现已包含项目基建、增量扫描、元数据与缩略图、媒体查询、视频 Direct Play、图片原图浏览、电影/剧集聚合，以及收藏、标题、笔记、标签、播放进度和继续观看。用户数据写入使用 revision 乐观锁，用户数据与标签关系在同一事务中更新。
+> 当前实现状态：阶段 1 至阶段 6、影视作品层及后端影视刮削基础设施已落地。现已包含项目基建、增量扫描、媒体探测与缩略图、媒体查询、视频 Direct Play、图片原图浏览、电影/剧集聚合、NFO/TMDb 丰富资料，以及收藏、标题、笔记、标签、播放进度和继续观看。用户数据写入使用 revision 乐观锁，用户数据与标签关系在同一事务中更新。
 
 ## 快速开始
 
@@ -106,6 +106,46 @@ sh ./scripts/build.sh
 
 `configs/config.example.yaml` 是入库的配置模板；首次开发前将其复制为已被 Git 忽略的 `configs/config.yaml`，后续仅修改本地配置。Windows 可使用 `scripts/dev.ps1`、`scripts/build.ps1`。如需提前安装 Air，可执行 `go install github.com/air-verse/air@v1.62.0`。生产运行应复制示例配置并显式传入路径，不要直接依赖当前工作目录。
 
+### 影视识别与刮削配置
+
+刮削配置位于实际运行 YAML 的 `metadata` 节点，完整字段和部署文件对照见根目录 `README.md` 的“配置影视刮削”。三份入库模板分别是：
+
+- `configs/config.example.yaml`：Linux/通用及本地开发模板；
+- `configs/config.windows.example.yaml`：Windows 模板；
+- `configs/config.docker.yaml`：Docker 生成模板，其中 TMDb 占位符由 `scripts/docker-compose.sh` 从 `.env` 安全替换。
+
+Docker 部署者只配置 `.env` 的 `LUMA_TMDB_ENABLED` 与 `LUMA_TMDB_ACCESS_TOKEN`。直接部署则在私有 YAML 中设置 `metadata.providers.tmdb.enabled` 和 `metadata.providers.tmdb.options.access_token`。启用 TMDb 但 Token 为空、Provider options 含未知字段、API/图片基址不是 HTTPS，服务会拒绝启动。配置文件和健康接口不会回显 Token。
+
+NFO Provider 默认开启。Scanner 将 `.nfo` 单独写入 `catalog_sidecars`，不会把它创建为可播放媒体，也不会修改侧车。只选择标准工作级文件：
+
+- 电影：`movie.nfo`，以及与视频同名的 `.nfo`（同名文件优先级更高）；
+- 电视剧：剧集顶层目录的 `tvshow.nfo`。
+
+NFO 可补充本地字段和 `tmdb` 外部 ID；配置 TMDb 后可直接按该 ID 获取线上详情。没有 TMDb 时，NFO 本身仍可独立形成作品资料。
+
+### Scraper 接口和接入约束
+
+可接入刮削器的唯一公共 Go 契约位于 `pkg/scraper/provider.go`。实现至少需要提供基础 `Provider`：
+
+```go
+type Provider interface {
+    Descriptor() Descriptor
+}
+```
+
+并按实际能力选择实现 `Searcher`、`ExternalIDResolver`、`WorkFetcher`、`SeasonFetcher`、`EpisodeFetcher`、`ArtworkFetcher`、`SidecarParser`、`HealthChecker`。`Descriptor.Capabilities` 必须与实现的可选接口严格一致，注册表会在启动时拒绝少报、多报、重复 ID 或不支持目标媒体类型的实现。
+
+接入一个新 Provider 需要：
+
+1. 在 `internal/providers/<id>` 实现上述公共接口，只返回 `pkg/scraper` 的标准 DTO，不向 Domain/API 泄露私有响应。
+2. 在 `internal/app/metadata.go` 显式构造并注册实现；Luma 不通过配置动态加载任意代码。
+3. 在私有配置的 `metadata.providers.<id>` 下增加 `enabled` 和实现所需 `options`，并由实现严格校验未知字段和凭据。
+4. 为接口能力、错误分类、超时/取消、凭据不泄露和归一化结果补测试。
+
+在线实现必须使用 Luma 注入的 `http.Client`，从而统一接受请求超时、代理和 `requests_per_second` 限速；图片引用必须保持不透明，由鉴权后的 `/api/v1/catalog/artwork/{id}` 代理读取。Provider 错误使用 `scraper.ProviderError` 分类为未授权、不存在、限流、临时失败、无效响应或不支持，后台任务据此决定安全重试。
+
+人工锁定不是普通刮削的前置步骤。系统以标题、年份和目录共识评分，高置信时自动确认；低置信结果保存在 `catalog_match_candidates`。管理员选择候选后只锁定 Provider 身份，身份锁不会阻止该记录按 `refresh_interval` 更新。
+
 ### 本地扫描闭环
 
 以下请求均需使用首次启动生成的 Token。创建媒体源时 `root_path` 必须位于 `security.allowed_roots` 中；普通媒体源响应不会返回真实路径，管理员可通过 `GET /api/v1/admin/media-roots` 读取可选目录以供客户端选择。
@@ -132,6 +172,11 @@ GET   /api/v1/catalog?kind=movie|series
 GET   /api/v1/catalog/{id}
 GET   /api/v1/catalog/issues
 PATCH /api/v1/catalog/media/{media_id}
+GET   /api/v1/catalog/artwork/{artwork_id}
+GET   /api/v1/admin/catalog/{id}/candidates
+POST  /api/v1/admin/catalog/{id}/refresh
+PUT   /api/v1/admin/catalog/{id}/identity
+GET   /api/v1/admin/metadata/status
 ```
 
 作品整理只写入 SQLite 索引，不移动或修改原始文件。人工匹配和忽略状态会锁定保存；重新扫描只重算未锁定且发生变化的文件。
@@ -249,8 +294,6 @@ Config / Logger
 * HLS 自适应码率
 * 原生 SMB 客户端
 * AI 图片识别
-* 影视信息在线刮削
-* 演员和影片数据库
 * 多用户权限隔离
 * 公网访问
 * 自动删除或移动原始文件

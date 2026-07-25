@@ -668,6 +668,111 @@ paths:
                   items: { type: array, items: { $ref: "#/components/schemas/CatalogItem" } }
         "400": { $ref: "#/components/responses/InvalidRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+  /api/v1/catalog/artwork/{id}:
+    get:
+      summary: 读取作品海报或背景图
+      description: 首次读取时由服务端向所属 Provider 获取并缓存；不会向客户端暴露 Provider 凭据或原始图片 URL。
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string } }
+        - { in: header, name: If-None-Match, schema: { type: string } }
+      responses:
+        "200":
+          description: 图片内容
+          headers:
+            ETag: { schema: { type: string } }
+          content:
+            image/jpeg: { schema: { type: string, format: binary } }
+            image/png: { schema: { type: string, format: binary } }
+            image/webp: { schema: { type: string, format: binary } }
+        "304": { description: 客户端缓存仍有效 }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/v1/admin/catalog/{id}/candidates:
+    get:
+      summary: 查询待人工确认的统一刮削候选（仅管理员）
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: 已持久化的低置信候选
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/MetadataCandidate" } }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/v1/admin/catalog/{id}/refresh:
+    post:
+      summary: 重新排队刮削一个作品（仅管理员）
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string } }
+      responses:
+        "202":
+          description: 已排队
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MetadataQueueResult" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/v1/admin/catalog/refresh:
+    post:
+      summary: 重新排队刮削全部作品或一个来源（仅管理员）
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                source_id: { type: string }
+      responses:
+        "202":
+          description: 已排队
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MetadataQueueResult" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/v1/admin/catalog/{id}/identity:
+    put:
+      summary: 选择并锁定作品的 Provider 身份（仅管理员）
+      description: 人工锁定不是自动刮削前置条件；只有低置信或错误匹配时才调用。
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SelectMetadataIdentity" }
+      responses:
+        "204": { description: 身份已锁定并排队刷新 }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /api/v1/admin/metadata/status:
+    get:
+      summary: 查询已注册刮削器能力和健康状态（仅管理员）
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: 不包含 Token、代理凭据或原始 Provider URL
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/MetadataProviderStatus" } }
+        "403": { $ref: "#/components/responses/Forbidden" }
   /api/v1/admin/users:
     get:
       summary: 查询用户（仅管理员）
@@ -1084,14 +1189,33 @@ components:
         thumbnail_url: { type: string }
     CatalogItem:
       type: object
-      required: [id, source_id, kind, title, year, match_status, media_count, episode_count, completed_count, playable_media_id, thumbnail_url, poster_url, duration_ms, resolution, progress_ms, completed, updated_at]
+      required: [id, source_id, kind, title, original_title, year, release_date, end_date, certification, community_rating, vote_count, genres, match_status, metadata_status, metadata_revision, metadata_error_code, provider, provider_item_id, identity_locked, media_count, episode_count, completed_count, playable_media_id, thumbnail_url, poster_url, backdrop_url, duration_ms, resolution, progress_ms, completed, updated_at]
       properties:
         id: { type: string }
         source_id: { type: string }
         kind: { type: string, enum: [movie, series] }
         title: { type: string }
+        original_title: { type: string }
         year: { type: [integer, "null"] }
+        overview: { type: string }
+        tagline: { type: string }
+        release_date: { type: string, description: Provider 返回的 ISO 日期；缺失时为空字符串。 }
+        end_date: { type: string }
+        certification: { type: string }
+        community_rating: { type: [number, "null"], minimum: 0 }
+        vote_count: { type: integer, minimum: 0 }
+        genres: { type: array, items: { $ref: "#/components/schemas/CatalogNamedValue" } }
+        countries: { type: array, items: { $ref: "#/components/schemas/CatalogNamedValue" } }
+        studios: { type: array, items: { $ref: "#/components/schemas/CatalogNamedValue" } }
+        credits: { type: array, items: { $ref: "#/components/schemas/CatalogCredit" } }
+        external_ids: { type: object, additionalProperties: { type: string } }
         match_status: { type: string, enum: [matched, needs_review] }
+        metadata_status: { type: string, enum: [pending, refreshing, ready, needs_review, failed] }
+        metadata_revision: { type: integer, minimum: 1 }
+        metadata_error_code: { type: string }
+        provider: { type: string }
+        provider_item_id: { type: string }
+        identity_locked: { type: boolean }
         media_count: { type: integer, minimum: 1 }
         episode_count: { type: integer, minimum: 0 }
         completed_count: { type: integer, minimum: 0 }
@@ -1100,12 +1224,65 @@ components:
         poster_url:
           type: string
           description: 优先使用作品目录 poster/folder/cover 图片，否则回退到代表视频帧。
+        backdrop_url: { type: string }
         duration_ms: { type: [integer, "null"], format: int64, minimum: 0 }
         resolution: { type: string, description: 当前可播放视频的宽高，尚未探测时为空字符串。 }
         progress_ms: { type: integer, format: int64, minimum: 0 }
         completed: { type: boolean }
         updated_at: { type: string, format: date-time }
         episodes: { type: array, items: { $ref: "#/components/schemas/CatalogEpisode" } }
+    CatalogNamedValue:
+      type: object
+      required: [name]
+      properties:
+        id: { type: string }
+        name: { type: string }
+    CatalogCredit:
+      type: object
+      required: [name, order]
+      properties:
+        provider_person_id: { type: string }
+        name: { type: string }
+        character: { type: string }
+        department: { type: string }
+        job: { type: string }
+        order: { type: integer, minimum: 0 }
+    MetadataCandidate:
+      type: object
+      required: [id, provider, provider_item_id, title, original_title, year, overview, score, reasons]
+      properties:
+        id: { type: string }
+        provider: { type: string }
+        provider_item_id: { type: string }
+        title: { type: string }
+        original_title: { type: string }
+        year: { type: [integer, "null"] }
+        overview: { type: string }
+        score: { type: integer, minimum: 0, maximum: 100 }
+        reasons: { type: array, items: { type: string } }
+    MetadataQueueResult:
+      type: object
+      required: [queued_count]
+      properties:
+        queued_count: { type: integer, minimum: 0 }
+    SelectMetadataIdentity:
+      type: object
+      additionalProperties: false
+      required: [provider, provider_item_id, base_revision]
+      properties:
+        provider: { type: string, minLength: 1, maxLength: 32 }
+        provider_item_id: { type: string, minLength: 1, maxLength: 256 }
+        base_revision: { type: integer, minimum: 1 }
+    MetadataProviderStatus:
+      type: object
+      required: [id, name, enabled, capabilities, available, message]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        enabled: { type: boolean }
+        capabilities: { type: array, items: { type: string } }
+        available: { type: boolean }
+        message: { type: string }
     CatalogIssue:
       type: object
       required: [media_id, filename, source_id, library_kind, suggested_title, season_number, episode_number]

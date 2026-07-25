@@ -90,7 +90,9 @@ class _CatalogDetailPageState extends State<CatalogDetailPage> {
                               child: AspectRatio(
                                 aspectRatio: 16 / 9,
                                 child: AuthenticatedMediaImage(
-                                  path: item.thumbnailUrl,
+                                  path: item.backdropUrl.isEmpty
+                                      ? item.thumbnailUrl
+                                      : item.backdropUrl,
                                   fallback: ColoredBox(
                                     color: Theme.of(
                                       context,
@@ -119,6 +121,42 @@ class _CatalogDetailPageState extends State<CatalogDetailPage> {
                                 ).colorScheme.onSurfaceVariant,
                               ),
                             ),
+                            if (item.overview.isNotEmpty) ...[
+                              const SizedBox(height: LumaSpacing.md),
+                              Text(item.overview),
+                            ],
+                            if (item.genres.isNotEmpty ||
+                                item.communityRating != null ||
+                                item.certification.isNotEmpty) ...[
+                              const SizedBox(height: LumaSpacing.md),
+                              _MetadataSummary(item: item),
+                            ],
+                            if (item.credits.isNotEmpty) ...[
+                              const SizedBox(height: LumaSpacing.lg),
+                              Text(
+                                '演职员',
+                                style: Theme.of(context).textTheme.titleMedium,
+                              ),
+                              const SizedBox(height: LumaSpacing.xs),
+                              Text(
+                                item.credits
+                                    .take(6)
+                                    .map((credit) => credit.character.isEmpty
+                                        ? credit.name
+                                        : '${credit.name} · ${credit.character}')
+                                    .join('、'),
+                                style: TextStyle(
+                                  color: Theme.of(
+                                    context,
+                                  ).colorScheme.onSurfaceVariant,
+                                ),
+                              ),
+                            ],
+                            if (item.metadataStatus.isNotEmpty &&
+                                item.metadataStatus != 'ready') ...[
+                              const SizedBox(height: LumaSpacing.md),
+                              _MetadataStatus(status: item.metadataStatus),
+                            ],
                             const SizedBox(height: LumaSpacing.lg),
                             FilledButton.icon(
                               onPressed: item.playableMediaId.isEmpty
@@ -200,6 +238,47 @@ class _CatalogDetailPageState extends State<CatalogDetailPage> {
       '已看 ${item.completedCount} 集',
       if (item.resolution.isNotEmpty) '下集 ${item.resolution}',
     ].join(' · ');
+  }
+}
+
+class _MetadataSummary extends StatelessWidget {
+  const _MetadataSummary({required this.item});
+
+  final CatalogItem item;
+
+  @override
+  Widget build(BuildContext context) {
+    final details = [
+      ...item.genres.map((genre) => genre.name),
+      if (item.communityRating != null)
+        '评分 ${item.communityRating!.toStringAsFixed(1)}',
+      if (item.certification.isNotEmpty) item.certification,
+    ];
+    return Text(
+      details.join(' · '),
+      style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+    );
+  }
+}
+
+class _MetadataStatus extends StatelessWidget {
+  const _MetadataStatus({required this.status});
+
+  final String status;
+
+  @override
+  Widget build(BuildContext context) {
+    final message = switch (status) {
+      'pending' => '资料等待更新',
+      'refreshing' => '资料正在更新',
+      'needs_review' => '资料匹配需要确认',
+      'failed' => '资料暂时无法更新',
+      _ => '资料状态更新中',
+    };
+    return Text(
+      message,
+      style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+    );
   }
 }
 

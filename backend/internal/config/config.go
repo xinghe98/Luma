@@ -16,6 +16,8 @@ type Config struct {
 	Media MediaConfig `yaml:"media"`
 	// Workers 保存后台任务并发配置。
 	Workers WorkersConfig `yaml:"workers"`
+	// Metadata 保存影视刮削 Provider、语言和网络策略。
+	Metadata MetadataConfig `yaml:"metadata"`
 }
 
 // ServerConfig 表示 HTTP 服务监听地址和超时配置。
@@ -111,4 +113,38 @@ type WorkersConfig struct {
 	Thumbnail int `yaml:"thumbnail"`
 	// LockTimeout 是任务锁失效时间。
 	LockTimeout time.Duration `yaml:"lock_timeout"`
+}
+
+// MetadataConfig 表示作品元数据刮削的通用策略和 Provider 配置。
+type MetadataConfig struct {
+	// Language 是在线元数据首选语言。
+	Language string `yaml:"language"`
+	// Region 是上映分级和地区化搜索使用的国家或地区。
+	Region string `yaml:"region"`
+	// FallbackLanguages 是首选语言缺失时依次尝试的语言。
+	FallbackLanguages []string `yaml:"fallback_languages"`
+	// RefreshInterval 是已确认作品自动刷新资料的周期。
+	RefreshInterval time.Duration `yaml:"refresh_interval"`
+	// RequestTimeout 限制单次 Provider 网络请求时长。
+	RequestTimeout time.Duration `yaml:"request_timeout"`
+	// Workers 是并发刮削 Worker 数。
+	Workers int `yaml:"workers"`
+	// RequestsPerSecond 是全部在线 Provider 的进程级请求速率上限。
+	RequestsPerSecond int `yaml:"requests_per_second"`
+	// AutoMatchThreshold 是普通搜索自动确认所需的最低分数。
+	AutoMatchThreshold int `yaml:"auto_match_threshold"`
+	// AutoMatchMargin 是第一候选领先第二候选的最低分差。
+	AutoMatchMargin int `yaml:"auto_match_margin"`
+	// ProxyURL 是可选 HTTP/HTTPS 代理；空值使用 Go 标准环境代理。
+	ProxyURL string `yaml:"proxy_url"`
+	// Providers 保存按稳定 ID 命名的 Provider 开关和不透明配置。
+	Providers map[string]MetadataProviderConfig `yaml:"providers"`
+}
+
+// MetadataProviderConfig 保存核心可识别的 Provider 开关和实现私有选项。
+type MetadataProviderConfig struct {
+	// Enabled 控制 Provider 是否注册并参与刮削。
+	Enabled bool `yaml:"enabled"`
+	// Options 由对应 Provider 实现严格解析。
+	Options map[string]any `yaml:"options"`
 }

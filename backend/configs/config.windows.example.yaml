@@ -30,7 +30,7 @@ media:
   ffmpeg_path: 'C:\Tools\ffmpeg\bin\ffmpeg.exe'
   ffprobe_path: 'C:\Tools\ffmpeg\bin\ffprobe.exe'
   thumbnail_width: 640
-  scan_extensions: [mp4, mkv, mov, avi, webm, m4v, ts, jpg, jpeg, png, webp, gif, bmp]
+  scan_extensions: [mp4, mkv, mov, avi, webm, m4v, ts, jpg, jpeg, png, webp, gif, bmp, nfo]
 
 # Worker 数量控制后台媒体处理的资源占用。
 workers:
@@ -38,3 +38,25 @@ workers:
   probe: 2
   thumbnail: 1
   lock_timeout: 10m
+
+# TMDb 在部分网络环境不可直连；必要时填写本机 HTTP 代理。
+metadata:
+  language: zh-CN
+  region: CN
+  fallback_languages: [en-US]
+  refresh_interval: 720h
+  request_timeout: 15s
+  workers: 1
+  requests_per_second: 4
+  auto_match_threshold: 90
+  auto_match_margin: 8
+  proxy_url: 'http://127.0.0.1:7890'
+  providers:
+    nfo:
+      enabled: true
+    tmdb:
+      enabled: false
+      options:
+        access_token: ''
+        api_base_url: https://api.themoviedb.org/3
+        image_base_url: https://image.tmdb.org/t/p/original

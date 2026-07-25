@@ -7,6 +7,8 @@ const (
 	MediaTypeVideo = "video"
 	// MediaTypeImage 表示图片文件，对应 media_items.media_type = image。
 	MediaTypeImage = "image"
+	// MediaTypeSidecar identifies read-only NFO files that never enter media_items.
+	MediaTypeSidecar = "sidecar"
 
 	// MediaStatusDiscovered 表示已入库、尚未探测，对应 media_items.status = discovered。
 	MediaStatusDiscovered = "discovered"

@@ -67,5 +67,6 @@ func defaultMediaExtensions() map[string]string {
 		"jpg": domain.MediaTypeImage, "jpeg": domain.MediaTypeImage,
 		"png": domain.MediaTypeImage, "webp": domain.MediaTypeImage,
 		"gif": domain.MediaTypeImage, "bmp": domain.MediaTypeImage,
+		"nfo": domain.MediaTypeSidecar,
 	}
 }

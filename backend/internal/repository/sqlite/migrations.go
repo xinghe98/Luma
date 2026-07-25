@@ -33,6 +33,7 @@ var allMigrations = []migration{
 	{version: 10, name: "010_access_control", sql: migrations.AccessControl},
 	{version: 11, name: "011_image_library", sql: migrations.ImageLibrary},
 	{version: 12, name: "012_access_idempotency", sql: migrations.AccessIdempotency},
+	{version: 13, name: "013_catalog_metadata", sql: migrations.CatalogMetadata},
 }
 
 // migrate 在单个事务中幂等应用数据库迁移并确保默认用户存在。

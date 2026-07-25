@@ -13,7 +13,72 @@ Movies/流浪地球 2 (2023)/movie.mkv
 TV/漫长的季节/Season 01/漫长的季节.S01E01.mkv
 ```
 
-电影优先使用上级目录作为作品名，电视剧识别 `SxxExx`。无法可靠识别、重复版本或重复集数会进入“设置 → 待整理文件”，人工修正会被锁定，后续扫描不会覆盖。首版仍采用 Direct Play，不包含字幕选择和实时转码。
+电影优先使用上级目录作为作品名，并清理常见发布站点、年份、分辨率、编码和语言标记；目录或文件名中的 `[tmdbid-123]` 可作为明确身份。电视剧识别 `SxxExx`、`E03`、`EP03`、`第3集`、受约束的纯数字集号，以及 `Season 02`、`S02`、`第2季`、`Specials` 等季目录。无法可靠识别、重复版本、重复集数或相互冲突的标记会进入待整理。首版仍采用 Direct Play，不包含字幕选择和实时转码。
+
+目录识别后，后端会异步读取标准 `movie.nfo`、同名电影 NFO 或 `tvshow.nfo`，并可选连接 TMDb 获取简介、类型、评分、演职员、海报和背景图。高置信结果自动确认；人工锁定不是刮削前置条件，只在候选不确定或匹配错误时使用。原始 SMB/本地媒体和 NFO 始终只读，下载图片只写入 `storage.cache_dir`。
+
+## 配置影视刮削
+
+直接运行二进制时，修改实际传给 `luma-server -config` 的 YAML：
+
+- 本地开发：复制 `backend/configs/config.example.yaml` 为被 Git 忽略的 `backend/configs/config.yaml`，修改后者。
+- Windows：以 `backend/configs/config.windows.example.yaml` 为模板复制一份实际配置。
+- Linux：以 `backend/configs/config.example.yaml` 为模板复制到例如 `/etc/luma/config.yaml`。
+- Docker：只修改 `backend/.env`；`backend/scripts/docker-compose.sh` 会根据 `backend/configs/config.docker.yaml` 生成 `.cache/docker/config.yaml`，不要手改生成文件。
+
+本地 NFO 默认启用。要让扫描发现后来新增的 NFO，`media.scan_extensions` 必须包含 `nfo`，新增 NFO 后执行一次正常目录扫描：
+
+```yaml
+media:
+  scan_extensions: [mp4, mkv, mov, avi, webm, m4v, ts, jpg, jpeg, png, webp, gif, bmp, nfo]
+
+metadata:
+  language: zh-CN
+  region: CN
+  fallback_languages: [en-US]
+  refresh_interval: 720h
+  request_timeout: 15s
+  workers: 1
+  requests_per_second: 4
+  auto_match_threshold: 90
+  auto_match_margin: 8
+  proxy_url: ""
+  providers:
+    nfo:
+      enabled: true
+    tmdb:
+      enabled: true
+      options:
+        access_token: "TMDb Read Access Token"
+        api_base_url: https://api.themoviedb.org/3
+        image_base_url: https://image.tmdb.org/t/p/original
+```
+
+各字段作用：
+
+| 字段 | 作用 |
+| --- | --- |
+| `language` / `region` / `fallback_languages` | 首选资料语言、地区及回退语言 |
+| `refresh_interval` | 已匹配作品自动刷新周期 |
+| `request_timeout` | 单次 Provider 操作超时 |
+| `workers` | 后台刮削并发数 |
+| `requests_per_second` | 全部在线 Provider 共用的进程级请求速率上限 |
+| `auto_match_threshold` | 第一候选达到此分数才允许自动确认 |
+| `auto_match_margin` | 第一候选至少领先第二候选的分差 |
+| `proxy_url` | 可选 HTTP/HTTPS 代理；空值使用 Go 标准环境代理 |
+| `providers.nfo.enabled` | 是否读取已扫描到的标准工作级 NFO |
+| `providers.tmdb.enabled` | 是否注册 TMDb 在线刮削器 |
+| `providers.tmdb.options.access_token` | TMDb API Read Access Token（v4）；启用时必填 |
+| `api_base_url` / `image_base_url` | TMDb HTTPS API 和图片基址，通常保持默认 |
+
+Docker 在 `backend/.env` 中使用：
+
+```env
+LUMA_TMDB_ENABLED=true
+LUMA_TMDB_ACCESS_TOKEN=你的_Read_Access_Token
+```
+
+真实 Token 不应提交到 Git。修改配置后重启服务即可；数据库迁移会自动执行，现有未锁定作品会进入持久化刮削队列，不需要重新挂载 SMB。只有需要发现新文件或新 NFO 时才需要目录扫描。
 
 ## 项目结构
 

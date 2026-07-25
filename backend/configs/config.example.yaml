@@ -29,7 +29,7 @@ media:
   ffmpeg_path: ffmpeg
   ffprobe_path: ffprobe
   thumbnail_width: 640
-  scan_extensions: [mp4, mkv, mov, avi, webm, m4v, ts, jpg, jpeg, png, webp, gif, bmp]
+  scan_extensions: [mp4, mkv, mov, avi, webm, m4v, ts, jpg, jpeg, png, webp, gif, bmp, nfo]
   # 自动扫描默认开启：服务端在文件变更（debounce）与定时周期触发全量扫描；
   # 仍走既有 ScanService/ScanWorker，每源同一时间最多一条 active 任务。
   # mode: hybrid=目录监听+定时兜底；poll=仅定时；watch=仅监听（Docker/NAS 可能漏事件）。
@@ -45,3 +45,25 @@ workers:
   probe: 2
   thumbnail: 1
   lock_timeout: 10m
+
+# 影视刮削默认只读取本地 NFO。启用 TMDb 时必须填写 Read Access Token。
+metadata:
+  language: zh-CN
+  region: CN
+  fallback_languages: [en-US]
+  refresh_interval: 720h
+  request_timeout: 15s
+  workers: 1
+  requests_per_second: 4
+  auto_match_threshold: 90
+  auto_match_margin: 8
+  proxy_url: ""
+  providers:
+    nfo:
+      enabled: true
+    tmdb:
+      enabled: false
+      options:
+        access_token: ""
+        api_base_url: https://api.themoviedb.org/3
+        image_base_url: https://image.tmdb.org/t/p/original

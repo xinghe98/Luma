@@ -1,5 +1,30 @@
 enum CatalogKind { movie, series }
 
+/// CatalogNamedValue 表示作品资料中的类型、国家或制作公司等具名条目。
+final class CatalogNamedValue {
+  const CatalogNamedValue({required this.id, required this.name});
+
+  final String id;
+  final String name;
+}
+
+/// CatalogCredit 表示作品资料中的单个演员或幕后人员。
+final class CatalogCredit {
+  const CatalogCredit({
+    required this.personId,
+    required this.name,
+    required this.role,
+    required this.character,
+    required this.order,
+  });
+
+  final String personId;
+  final String name;
+  final String role;
+  final String character;
+  final int order;
+}
+
 final class CatalogEpisode {
   const CatalogEpisode({
     required this.id,
@@ -26,6 +51,7 @@ final class CatalogEpisode {
   final String thumbnailUrl;
 }
 
+/// CatalogItem 表示可播放作品及其可选的刮削资料。
 final class CatalogItem {
   const CatalogItem({
     required this.id,
@@ -45,6 +71,26 @@ final class CatalogItem {
     required this.completed,
     required this.updatedAt,
     this.episodes = const [],
+    this.originalTitle = '',
+    this.overview = '',
+    this.tagline = '',
+    this.releaseDate = '',
+    this.endDate = '',
+    this.certification = '',
+    this.communityRating,
+    this.voteCount = 0,
+    this.genres = const [],
+    this.countries = const [],
+    this.studios = const [],
+    this.credits = const [],
+    this.externalIds = const {},
+    this.metadataStatus = '',
+    this.metadataRevision = 1,
+    this.metadataErrorCode = '',
+    this.provider = '',
+    this.providerItemId = '',
+    this.identityLocked = false,
+    this.backdropUrl = '',
   });
 
   final String id;
@@ -64,6 +110,26 @@ final class CatalogItem {
   final bool completed;
   final DateTime updatedAt;
   final List<CatalogEpisode> episodes;
+  final String originalTitle;
+  final String overview;
+  final String tagline;
+  final String releaseDate;
+  final String endDate;
+  final String certification;
+  final double? communityRating;
+  final int voteCount;
+  final List<CatalogNamedValue> genres;
+  final List<CatalogNamedValue> countries;
+  final List<CatalogNamedValue> studios;
+  final List<CatalogCredit> credits;
+  final Map<String, String> externalIds;
+  final String metadataStatus;
+  final int metadataRevision;
+  final String metadataErrorCode;
+  final String provider;
+  final String providerItemId;
+  final bool identityLocked;
+  final String backdropUrl;
 
   double get progress => durationMs == null || durationMs == 0
       ? 0

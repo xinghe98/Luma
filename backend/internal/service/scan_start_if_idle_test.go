@@ -51,6 +51,9 @@ func (s *startIfIdleScans) NeedsQuickHash(context.Context, string, domain.Discov
 func (s *startIfIdleScans) ReconcileFile(context.Context, string, string, string, domain.DiscoveredFile, time.Time) (domain.ReconcileResult, error) {
 	return domain.ReconcileResult{}, nil
 }
+func (s *startIfIdleScans) ReconcileSidecar(context.Context, string, string, domain.DiscoveredFile, time.Time) error {
+	return nil
+}
 func (s *startIfIdleScans) MarkFileFailed(context.Context, string, string, domain.DiscoveredFile, time.Time) error {
 	return nil
 }
