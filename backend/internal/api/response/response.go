@@ -36,15 +36,13 @@ func Error(c *gin.Context, status int, code, message string, details any) {
 func FromError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, domain.ErrUnauthorized):
-		Error(c, http.StatusUnauthorized, "UNAUTHORIZED", "valid bearer token required", nil)
+		Error(c, http.StatusUnauthorized, "UNAUTHORIZED", "valid bearer session required", nil)
 	case errors.Is(err, domain.ErrForbidden):
 		Error(c, http.StatusForbidden, "FORBIDDEN", "没有执行此操作的权限", nil)
 	case errors.Is(err, domain.ErrUserNotFound):
 		Error(c, http.StatusNotFound, "USER_NOT_FOUND", "用户不存在", nil)
-	case errors.Is(err, domain.ErrTokenNotFound):
-		Error(c, http.StatusNotFound, "TOKEN_NOT_FOUND", "访问令牌不存在", nil)
-	case errors.Is(err, domain.ErrIdempotencySecretUnavailable):
-		Error(c, http.StatusConflict, "IDEMPOTENCY_SECRET_UNAVAILABLE", "令牌已创建，但明文无法安全重放；请在成员详情中吊销后重新签发", nil)
+	case errors.Is(err, domain.ErrSessionNotFound):
+		Error(c, http.StatusNotFound, "SESSION_NOT_FOUND", "登录设备不存在", nil)
 	case errors.Is(err, domain.ErrInvalidRequest):
 		Error(c, http.StatusBadRequest, "INVALID_REQUEST", err.Error(), nil)
 	case errors.Is(err, domain.ErrForbiddenPath):

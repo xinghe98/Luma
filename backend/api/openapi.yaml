@@ -16,6 +16,28 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Health"
+  /api/v1/auth/login:
+    post:
+      summary: 使用用户名和密码创建设备会话
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/LoginRequest" }
+      responses:
+        "200":
+          description: 登录成功；session_token 仅在此响应中返回
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LoginResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /api/v1/auth/logout:
+    post:
+      summary: 撤销当前设备会话
+      security: [{ bearerAuth: [] }]
+      responses:
+        "204": { description: 已退出登录 }
+        "401": { $ref: "#/components/responses/Unauthorized" }
   /api/v1/system/info:
     get:
       summary: 查询服务端运行信息
@@ -835,25 +857,9 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/AccessUser" }
         "403": { $ref: "#/components/responses/Forbidden" }
-  /api/v1/admin/users/{id}/tokens:
-    get:
-      summary: 查询成员令牌元数据（仅管理员）
-      security: [{ bearerAuth: [] }]
-      parameters:
-        - { in: path, name: id, required: true, schema: { type: string } }
-      responses:
-        "200":
-          description: 不包含令牌明文
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [items]
-                properties:
-                  items: { type: array, items: { $ref: "#/components/schemas/AccessToken" } }
-        "403": { $ref: "#/components/responses/Forbidden" }
-    post:
-      summary: 签发成员令牌（仅管理员，明文只返回一次）
+  /api/v1/admin/users/{id}/password:
+    put:
+      summary: 重置成员密码并撤销其所有设备会话（仅管理员）
       security: [{ bearerAuth: [] }]
       parameters:
         - { in: path, name: id, required: true, schema: { type: string } }
@@ -864,29 +870,32 @@ paths:
             schema:
               type: object
               additionalProperties: false
-              required: [name]
+              required: [password]
               properties:
-                name: { type: string, minLength: 1, maxLength: 80 }
-                expires_at: { type: [string, "null"], format: date-time }
-                request_id:
-                  type: string
-                  maxLength: 128
-                  description: 客户端为一次签发操作生成并在网络重试时复用的不透明幂等键。
+                password: { type: string, minLength: 3 }
       responses:
-        "201":
-          description: 已签发；token 字段不会再次返回
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/IssuedAccessToken" }
-        "409":
-          description: 令牌已创建但服务重启后无法安全重放一次性明文；不得以新 request_id 自动重试。
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/Error" }
+        "204": { description: 密码已更新，既有设备会话已撤销 }
         "403": { $ref: "#/components/responses/Forbidden" }
-  /api/v1/admin/tokens/{id}:
+  /api/v1/admin/users/{id}/sessions:
+    get:
+      summary: 查询成员已登录设备（仅管理员）
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: 不包含会话密钥
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/Session" } }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/v1/admin/sessions/{id}:
     delete:
-      summary: 吊销成员令牌（仅管理员）
+      summary: 撤销指定登录设备会话（仅管理员）
       security: [{ bearerAuth: [] }]
       parameters:
         - { in: path, name: id, required: true, schema: { type: string } }
@@ -1024,35 +1033,45 @@ components:
           items: { type: string }
     AccessUser:
       type: object
-      required: [id, name, role, enabled, online, created_at, updated_at]
+      required: [id, name, username, role, enabled, online, created_at, updated_at]
       properties:
         id: { type: string }
         name: { type: string }
+        username: { type: string }
         role: { type: string, enum: [admin, member] }
         enabled: { type: boolean }
         online: { type: boolean, description: 最近 2 分钟内有已认证服务端访问。 }
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
-    AccessToken:
+    Session:
       type: object
-      required: [id, user_id, name, token_prefix, expires_at, revoked_at, created_at]
+      required: [id, user_id, name, expires_at, revoked_at, created_at]
       properties:
         id: { type: string }
         user_id: { type: string }
         name: { type: string }
-        token_prefix: { type: string }
         expires_at: { type: [string, "null"], format: date-time }
         revoked_at: { type: [string, "null"], format: date-time }
         created_at: { type: string, format: date-time }
-    IssuedAccessToken:
-      allOf:
-        - $ref: "#/components/schemas/AccessToken"
-        - type: object
-          required: [token]
-          properties:
-            token:
-              type: string
-              description: 仅在签发响应中出现一次的明文令牌。
+    LoginRequest:
+      type: object
+      required: [username, password]
+      additionalProperties: false
+      properties:
+        username: { type: string, minLength: 3, maxLength: 32 }
+        password: { type: string, minLength: 3 }
+        device_name: { type: string, minLength: 1, maxLength: 80 }
+    LoginResponse:
+      type: object
+      required: [session_token, token_type, expires_at, user]
+      properties:
+        session_token: { type: string, description: 仅在登录响应中返回一次的设备会话密钥。 }
+        token_type: { type: string, enum: [Bearer] }
+        expires_at:
+          type: [string, "null"]
+          format: date-time
+          description: 当前会话永久有效，固定返回 null。
+        user: { $ref: "#/components/schemas/AccessUser" }
     Error:
       type: object
       required: [error]
@@ -1442,7 +1461,7 @@ components:
       schema: { type: string, minLength: 1 }
   responses:
     Unauthorized:
-      description: API Token 缺失或无效
+      description: 会话缺失、无效、过期或已撤销
       content:
         application/json:
           schema:

@@ -39,10 +39,8 @@ func (c ServerConfig) Address() string {
 	return netJoinHostPort(c.Host, c.Port)
 }
 
-// SecurityConfig 表示 API 认证和本地路径访问边界配置。
+// SecurityConfig 表示账号登录和本地路径访问边界配置。
 type SecurityConfig struct {
-	// APITokenFile 是为兼容旧配置保留的废弃字段，不再参与认证。
-	APITokenFile string `yaml:"api_token_file"`
 	// AdminUsername 是首次初始化本地管理员时使用的登录名。
 	AdminUsername string `yaml:"admin_username"`
 	// AdminPasswordFile 保存首次初始化管理员的密码。

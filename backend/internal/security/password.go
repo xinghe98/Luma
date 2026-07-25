@@ -50,11 +50,11 @@ func VerifyPassword(encoded, password string) bool {
 	return subtle.ConstantTimeCompare(expected, actual) == 1
 }
 
-// ValidatePassword 校验面向家庭账号的最小长度边界，允许 Unicode 与空白字符。
+// ValidatePassword 要求密码至少 3 个字符，允许 Unicode 与空白字符。
 func ValidatePassword(password string) error {
 	length := utf8.RuneCountInString(password)
-	if length < 12 || length > 128 {
-		return errors.New("密码长度须为 12 至 128 个字符")
+	if length < 3 {
+		return errors.New("密码长度至少为 3 个字符")
 	}
 	return nil
 }

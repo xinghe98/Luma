@@ -90,7 +90,6 @@ func defaults() Config {
 // resolvePaths 将配置中的相对路径转换为相对配置文件目录的绝对路径。
 func resolvePaths(cfg *Config, base string) error {
 	paths := []*string{
-		&cfg.Security.APITokenFile,
 		&cfg.Security.AdminPasswordFile,
 		&cfg.Database.Path,
 		&cfg.Storage.ThumbnailDir,

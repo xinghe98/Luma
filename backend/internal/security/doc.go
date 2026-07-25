@@ -1,2 +1,2 @@
-// Package security 提供 API Token 的生成、存储、比较和认证能力。
+// Package security 提供密码摘要、初始管理员密码和登录会话安全能力。
 package security

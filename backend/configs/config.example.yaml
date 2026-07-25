@@ -6,9 +6,10 @@ server:
   idle_timeout: 60s
   shutdown_timeout: 30s
 
-# API Token 不直接写入 YAML，而是存放在独立安全文件中。
+# 管理员初始密码不写入 YAML，而是存放在独立安全文件中。
 security:
-  api_token_file: ../data/secrets/api_token
+  admin_username: admin
+  admin_password_file: ../data/secrets/admin_password
   allowed_origins: []
   allowed_roots:
     - ../data/media

@@ -20,18 +20,19 @@ func NewAccessRepository(db *sql.DB) (*AccessRepository, error) {
 	return &AccessRepository{db: db}, nil
 }
 
-func (r *AccessRepository) FindPrincipalByTokenHash(ctx context.Context, hash string, now time.Time) (domain.Principal, error) {
+// FindPrincipalBySessionSecretHash 查询仍有效的设备会话对应身份。
+func (r *AccessRepository) FindPrincipalBySessionSecretHash(ctx context.Context, hash string, now time.Time) (domain.Principal, error) {
 	var principal domain.Principal
-	err := r.db.QueryRowContext(ctx, `SELECT t.id, u.id, u.name, u.role FROM api_tokens t
-		JOIN users u ON u.id = t.user_id
-		WHERE t.token_hash = ? AND t.kind = 'session' AND t.revoked_at_ms IS NULL AND u.enabled = 1
-		AND (t.expires_at_ms IS NULL OR t.expires_at_ms > ?)`, hash, now.UnixMilli()).Scan(
+	err := r.db.QueryRowContext(ctx, `SELECT s.id, u.id, u.name, u.role FROM sessions s
+		JOIN users u ON u.id = s.user_id
+		WHERE s.secret_hash = ? AND s.revoked_at_ms IS NULL AND u.enabled = 1
+		AND (s.expires_at_ms IS NULL OR s.expires_at_ms > ?)`, hash, now.UnixMilli()).Scan(
 		&principal.CredentialID, &principal.UserID, &principal.Name, &principal.Role)
 	if errors.Is(err, sql.ErrNoRows) {
 		return domain.Principal{}, domain.ErrUnauthorized
 	}
 	if err != nil {
-		return domain.Principal{}, fmt.Errorf("查询访问令牌: %w", err)
+		return domain.Principal{}, fmt.Errorf("查询登录会话: %w", err)
 	}
 	return principal, nil
 }
@@ -121,56 +122,60 @@ func (r *AccessRepository) UpdatePassword(ctx context.Context, userID, passwordH
 	return requireAffected(result, domain.ErrUserNotFound)
 }
 
-func (r *AccessRepository) ListSessions(ctx context.Context, userID string) ([]domain.APIToken, error) {
+// ListSessions 返回指定账号的全部设备会话，不读取密钥摘要。
+func (r *AccessRepository) ListSessions(ctx context.Context, userID string) ([]domain.Session, error) {
 	if _, err := r.GetUser(ctx, userID); err != nil {
 		return nil, err
 	}
-	rows, err := r.db.QueryContext(ctx, `SELECT id, user_id, name, kind, token_prefix, expires_at_ms,
-		revoked_at_ms, created_at_ms, updated_at_ms FROM api_tokens WHERE user_id = ? AND kind = 'session' ORDER BY created_at_ms DESC`, userID)
+	rows, err := r.db.QueryContext(ctx, `SELECT id, user_id, name, secret_prefix, expires_at_ms,
+		revoked_at_ms, created_at_ms, updated_at_ms FROM sessions WHERE user_id = ? ORDER BY created_at_ms DESC`, userID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	tokens := []domain.APIToken{}
+	sessions := []domain.Session{}
 	for rows.Next() {
-		var token domain.APIToken
+		var session domain.Session
 		var expires, revoked sql.NullInt64
 		var created, updated int64
-		if err := rows.Scan(&token.ID, &token.UserID, &token.Name, &token.Kind, &token.TokenPrefix, &expires, &revoked, &created, &updated); err != nil {
+		if err := rows.Scan(&session.ID, &session.UserID, &session.Name, &session.SecretPrefix, &expires, &revoked, &created, &updated); err != nil {
 			return nil, err
 		}
-		token.ExpiresAt = nullableTime(expires)
-		token.RevokedAt = nullableTime(revoked)
-		token.CreatedAt = time.UnixMilli(created).UTC()
-		token.UpdatedAt = time.UnixMilli(updated).UTC()
-		tokens = append(tokens, token)
+		session.ExpiresAt = nullableTime(expires)
+		session.RevokedAt = nullableTime(revoked)
+		session.CreatedAt = time.UnixMilli(created).UTC()
+		session.UpdatedAt = time.UnixMilli(updated).UTC()
+		sessions = append(sessions, session)
 	}
-	return tokens, rows.Err()
+	return sessions, rows.Err()
 }
 
-func (r *AccessRepository) CreateSession(ctx context.Context, token domain.APIToken) error {
-	_, err := r.db.ExecContext(ctx, `INSERT INTO api_tokens(id, request_id, user_id, name, kind, token_hash, token_prefix,
-		expires_at_ms, created_at_ms, updated_at_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		token.ID, nullableText(token.RequestID), token.UserID, token.Name, "session", token.TokenHash, token.TokenPrefix, nullableTimeMS(token.ExpiresAt),
-		token.CreatedAt.UnixMilli(), token.UpdatedAt.UnixMilli())
+// CreateSession 保存登录成功产生的会话摘要，明文密钥不落库。
+func (r *AccessRepository) CreateSession(ctx context.Context, session domain.Session) error {
+	_, err := r.db.ExecContext(ctx, `INSERT INTO sessions(id, user_id, name, secret_hash, secret_prefix,
+		expires_at_ms, created_at_ms, updated_at_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		session.ID, session.UserID, session.Name, session.SecretHash, session.SecretPrefix, nullableTimeMS(session.ExpiresAt),
+		session.CreatedAt.UnixMilli(), session.UpdatedAt.UnixMilli())
 	if err != nil {
 		return fmt.Errorf("创建登录会话: %w", err)
 	}
 	return nil
 }
 
+// RevokeSession 使指定设备会话立即失效，不删除审计元数据。
 func (r *AccessRepository) RevokeSession(ctx context.Context, id string, now time.Time) error {
-	result, err := r.db.ExecContext(ctx, `UPDATE api_tokens SET revoked_at_ms = ?, updated_at_ms = ?
-		WHERE id = ? AND kind = 'session' AND revoked_at_ms IS NULL`, now.UnixMilli(), now.UnixMilli(), id)
+	result, err := r.db.ExecContext(ctx, `UPDATE sessions SET revoked_at_ms = ?, updated_at_ms = ?
+		WHERE id = ? AND revoked_at_ms IS NULL`, now.UnixMilli(), now.UnixMilli(), id)
 	if err != nil {
 		return err
 	}
-	return requireAffected(result, domain.ErrTokenNotFound)
+	return requireAffected(result, domain.ErrSessionNotFound)
 }
 
+// RevokeUserSessions 使指定账号的全部有效设备会话立即失效。
 func (r *AccessRepository) RevokeUserSessions(ctx context.Context, userID string, now time.Time) error {
-	_, err := r.db.ExecContext(ctx, `UPDATE api_tokens SET revoked_at_ms = ?, updated_at_ms = ?
-		WHERE user_id = ? AND kind = 'session' AND revoked_at_ms IS NULL`, now.UnixMilli(), now.UnixMilli(), userID)
+	_, err := r.db.ExecContext(ctx, `UPDATE sessions SET revoked_at_ms = ?, updated_at_ms = ?
+		WHERE user_id = ? AND revoked_at_ms IS NULL`, now.UnixMilli(), now.UnixMilli(), userID)
 	return err
 }
 

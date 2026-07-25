@@ -68,7 +68,11 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 	h.clearFailure(key)
-	c.JSON(http.StatusOK, gin.H{"session_token": issued.Secret, "token_type": "Bearer", "expires_at": issued.Session.ExpiresAt.UTC().Format(time.RFC3339Nano), "user": presentAccessUser(issued.User)})
+	var expiresAt any
+	if issued.Session.ExpiresAt != nil {
+		expiresAt = issued.Session.ExpiresAt.UTC().Format(time.RFC3339Nano)
+	}
+	c.JSON(http.StatusOK, gin.H{"session_token": issued.Secret, "token_type": "Bearer", "expires_at": expiresAt, "user": presentAccessUser(issued.User)})
 }
 
 // Logout 撤销认证中间件识别出的当前设备会话。

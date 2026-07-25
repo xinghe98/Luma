@@ -17,7 +17,8 @@ func TestLoadAppliesDefaultsAndResolvesPaths(t *testing.T) {
 	}
 	content := `
 security:
-  api_token_file: data/token
+  admin_username: admin
+  admin_password_file: data/admin_password
   allowed_roots: [media]
 database:
   path: data/media.db
@@ -51,7 +52,8 @@ func TestAutoScanDefaultsAndValidation(t *testing.T) {
 	path := filepath.Join(base, "config.yaml")
 	content := `
 security:
-  api_token_file: data/token
+  admin_username: admin
+  admin_password_file: data/admin_password
   allowed_roots: [media]
 database:
   path: data/media.db

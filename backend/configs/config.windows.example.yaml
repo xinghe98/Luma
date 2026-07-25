@@ -8,13 +8,14 @@ server:
 
 # Windows 路径使用 YAML 单引号，避免反斜杠转义。
 security:
-  api_token_file: 'C:\ProgramData\Luma\secrets\api_token'
+  admin_username: admin
+  admin_password_file: 'C:\ProgramData\Luma\secrets\admin_password'
   allowed_origins: []
   allowed_roots:
     - 'D:\Media'
     - '\\NAS\Videos'
 
-# 数据库和 Token 建议放在服务账户可写的 ProgramData 目录。
+# 数据库、管理员密码文件和衍生数据建议放在服务账户可写的 ProgramData 目录。
 database:
   path: 'C:\ProgramData\Luma\media.db'
   busy_timeout_ms: 5000

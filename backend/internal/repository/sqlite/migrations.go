@@ -37,6 +37,8 @@ var allMigrations = []migration{
 	{version: 14, name: "014_catalog_detail", sql: migrations.CatalogDetail},
 	{version: 15, name: "015_account_sessions", sql: migrations.AccountSessions},
 	{version: 16, name: "016_scan_metadata_runs", sql: migrations.ScanMetadataRuns},
+	{version: 17, name: "017_sessions", sql: migrations.Sessions},
+	{version: 18, name: "018_permanent_sessions", sql: migrations.PermanentSessions},
 }
 
 // migrate 在单个事务中幂等应用数据库迁移并确保默认用户存在。

@@ -1,5 +1,3 @@
-import 'package:flutter/foundation.dart';
-
 import '../api/api_client.dart';
 import '../api/api_exception.dart';
 import '../api/api_session.dart';
@@ -10,6 +8,7 @@ import '../repositories/source_repository.dart';
 import '../storage/credential_store.dart';
 import '../storage/server_alias_store.dart';
 import 'connection_service.dart';
+import 'device_name_resolver.dart';
 
 final class ApiConnectionService implements ConnectionService {
   ApiConnectionService({
@@ -18,17 +17,20 @@ final class ApiConnectionService implements ConnectionService {
     required CredentialStore credentialStore,
     required ServerAliasStore aliasStore,
     SourceRepository? sourceRepository,
+    DeviceNameResolver? deviceNameResolver,
   }) : _client = client,
        _apiSession = apiSession,
        _credentialStore = credentialStore,
        _aliasStore = aliasStore,
-       _sourceRepository = sourceRepository;
+       _sourceRepository = sourceRepository,
+       _deviceNameResolver = deviceNameResolver ?? PlatformDeviceNameResolver();
 
   final ApiClient _client;
   final ApiSession _apiSession;
   final CredentialStore _credentialStore;
   final ServerAliasStore _aliasStore;
   final SourceRepository? _sourceRepository;
+  final DeviceNameResolver _deviceNameResolver;
   final SystemInfoDecoder _systemDecoder = const SystemInfoDecoder();
   int _operation = 0;
   Future<void> _credentialQueue = Future<void>.value();
@@ -56,11 +58,13 @@ final class ApiConnectionService implements ConnectionService {
     final origin = normalizeOrigin(uri);
     final unauthenticated = _client.isolatedFor(ApiSession(origin: origin));
     try {
+      final deviceName = await _deviceNameResolver.resolve();
+      if (operation != _operation) return ConnectionResult.unreachable;
       await unauthenticated.getHealth();
       final login = await unauthenticated.login(
         credentials.username.trim(),
         credentials.password,
-        deviceName: 'Luma ${defaultTargetPlatform.name}',
+        deviceName: deviceName,
       );
       final sessionToken = login['session_token'];
       if (sessionToken is! String || sessionToken.isEmpty) {

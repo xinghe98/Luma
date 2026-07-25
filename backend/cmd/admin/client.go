@@ -15,9 +15,9 @@ import (
 )
 
 type client struct {
-	origin string
-	token  string
-	http   *http.Client
+	origin  string
+	session string
+	http    *http.Client
 }
 
 func (c client) call(method, endpoint string, body any) error {
@@ -61,7 +61,62 @@ func (c client) request(method, endpoint string, body any) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	request.Header.Set("Authorization", "Bearer "+c.token)
+	request.Header.Set("Authorization", "Bearer "+c.session)
+	if body != nil {
+		request.Header.Set("Content-Type", "application/json")
+	}
+	response, err := c.http.Do(request)
+	if err != nil {
+		return nil, err
+	}
+	defer response.Body.Close()
+	data, err := io.ReadAll(io.LimitReader(response.Body, 1<<20))
+	if err != nil {
+		return nil, err
+	}
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return nil, fmt.Errorf("HTTP %s: %s", response.Status, strings.TrimSpace(string(data)))
+	}
+	return data, nil
+}
+
+// login 仅在命令启动时提交管理员密码，后续请求复用内存中的会话。
+func (c *client) login(username, password string) error {
+	if strings.TrimSpace(username) == "" || password == "" {
+		return errors.New("set LUMA_ADMIN_USERNAME and LUMA_ADMIN_PASSWORD_FILE or provide -username and -password-file")
+	}
+	data, err := c.requestWithoutAuthorization(http.MethodPost, "/api/v1/auth/login", map[string]string{
+		"username": username, "password": password, "device_name": "luma-admin",
+	})
+	if err != nil {
+		return err
+	}
+	var result struct {
+		SessionToken string `json:"session_token"`
+	}
+	if err := json.Unmarshal(data, &result); err != nil {
+		return err
+	}
+	if result.SessionToken == "" {
+		return errors.New("login response did not include a session")
+	}
+	c.session = result.SessionToken
+	return nil
+}
+
+func (c client) requestWithoutAuthorization(method, endpoint string, body any) ([]byte, error) {
+	var reader io.Reader
+	if body != nil {
+		data, err := json.Marshal(body)
+		if err != nil {
+			return nil, err
+		}
+		reader = bytes.NewReader(data)
+	}
+	request, err := http.NewRequest(method, c.origin+endpoint, reader)
+	if err != nil {
+		return nil, err
+	}
 	if body != nil {
 		request.Header.Set("Content-Type", "application/json")
 	}
@@ -89,12 +144,9 @@ func printJSON(value any) error {
 	return nil
 }
 
-func readAdminToken(filename string) (string, error) {
-	if value := strings.TrimSpace(os.Getenv("LUMA_ADMIN_TOKEN")); value != "" {
-		return value, nil
-	}
+func readAdminPassword(filename string) (string, error) {
 	if strings.TrimSpace(filename) == "" {
-		return "", errors.New("set LUMA_ADMIN_TOKEN or provide -token-file")
+		return "", errors.New("set LUMA_ADMIN_PASSWORD_FILE or provide -password-file")
 	}
 	data, err := os.ReadFile(filename)
 	if err != nil {
@@ -102,7 +154,7 @@ func readAdminToken(filename string) (string, error) {
 	}
 	value := strings.TrimSpace(string(data))
 	if value == "" {
-		return "", errors.New("administrator token file is empty")
+		return "", errors.New("administrator password file is empty")
 	}
 	return value, nil
 }

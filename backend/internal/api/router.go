@@ -37,11 +37,11 @@ type RouterParams struct {
 	Tags *handler.TagHandler
 	// Catalog 处理电影、剧集和待整理文件。
 	Catalog *handler.CatalogHandler
-	// Access 处理管理员成员、令牌和媒体源授权接口。
+	// Access 处理管理员成员、登录设备和媒体源授权接口。
 	Access *handler.AccessHandler
 	// Auth 处理公开登录和受保护登出接口。
 	Auth *handler.AuthHandler
-	// Authenticator 验证 API Bearer Token。
+	// Authenticator 验证 API Bearer 会话。
 	Authenticator middleware.BearerAuthenticator
 }
 
@@ -76,7 +76,7 @@ func NewRouter(params RouterParams) (http.Handler, error) {
 	v1 := engine.Group("/api/v1")
 	v1.POST("/auth/login", params.Auth.Login)
 	protected := v1.Group("")
-	protected.Use(middleware.TokenAuth(params.Authenticator))
+	protected.Use(middleware.SessionAuth(params.Authenticator))
 	protected.POST("/auth/logout", params.Auth.Logout)
 	protected.GET("/system/info", params.System.Info)
 	protected.GET("/sources", params.Sources.List)
@@ -133,7 +133,7 @@ func NewRouter(params RouterParams) (http.Handler, error) {
 			_, authenticated := params.Authenticator.AuthenticateAuthorization(c.Request.Context(), c.GetHeader("Authorization"))
 			if strings.HasPrefix(c.Request.URL.Path, "/api/") && !authenticated {
 				c.Header("WWW-Authenticate", "Bearer")
-				response.Error(c, http.StatusUnauthorized, "UNAUTHORIZED", "valid bearer token required", nil)
+				response.Error(c, http.StatusUnauthorized, "UNAUTHORIZED", "valid bearer session required", nil)
 				return
 			}
 			response.Error(c, status, code, message, nil)

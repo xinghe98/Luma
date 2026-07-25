@@ -18,7 +18,7 @@ func TestAllowedRootsStoreAddsAndRestoresOneDirectory(t *testing.T) {
 		t.Fatal(err)
 	}
 	path := filepath.Join(base, "config.yaml")
-	content := "# Keep this comment while updating only allowed_roots.\nsecurity:\n  api_token_file: data/token\n  allowed_roots:\n    - " + first + "\ndatabase:\n  path: data/media.db\nstorage:\n  thumbnail_dir: data/thumbnails\n  cache_dir: data/cache\n"
+	content := "# Keep this comment while updating only allowed_roots.\nsecurity:\n  admin_username: admin\n  admin_password_file: data/admin_password\n  allowed_roots:\n    - " + first + "\ndatabase:\n  path: data/media.db\nstorage:\n  thumbnail_dir: data/thumbnails\n  cache_dir: data/cache\n"
 	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
 		t.Fatal(err)
 	}

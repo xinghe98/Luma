@@ -15,9 +15,17 @@ import (
 
 	"github.com/xinghe98/Luma/backend/internal/api/handler"
 	"github.com/xinghe98/Luma/backend/internal/domain"
-	"github.com/xinghe98/Luma/backend/internal/security"
 	"github.com/xinghe98/Luma/backend/internal/service"
 )
+
+type fakeSessionAuthenticator struct{}
+
+func (fakeSessionAuthenticator) AuthenticateAuthorization(_ context.Context, authorization string) (domain.Principal, bool) {
+	if authorization != "Bearer test-session" {
+		return domain.Principal{}, false
+	}
+	return domain.Principal{UserID: "user_local", Name: "Local User", Role: domain.RoleAdmin}, true
+}
 
 // fakeSystemUseCase 为 Router 测试提供可预测的系统业务结果。
 type fakeSystemUseCase struct{}
@@ -68,8 +76,8 @@ func (fakeAccessUseCase) UpdateUser(context.Context, string, *string, *bool) (do
 	return domain.User{ID: "user_test", Role: domain.RoleMember, Enabled: true}, nil
 }
 func (fakeAccessUseCase) ResetPassword(context.Context, string, string) error { return nil }
-func (fakeAccessUseCase) ListSessions(context.Context, string) ([]domain.APIToken, error) {
-	return []domain.APIToken{}, nil
+func (fakeAccessUseCase) ListSessions(context.Context, string) ([]domain.Session, error) {
+	return []domain.Session{}, nil
 }
 func (fakeAccessUseCase) RevokeSession(context.Context, string) error { return nil }
 func (fakeAccessUseCase) ListGrants(context.Context, string) ([]string, error) {
@@ -253,15 +261,11 @@ func testRouter(t *testing.T) http.Handler {
 	if err != nil {
 		t.Fatal(err)
 	}
-	authenticator, err := security.NewTokenAuthenticator("abcdefghijklmnopqrstuvwxyz123456")
-	if err != nil {
-		t.Fatal(err)
-	}
 	router, err := NewRouter(RouterParams{
 		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
 		Health: health, System: system, Sources: sources, Scans: scans, Media: media, Stream: stream,
 		UserData: userData, Tags: tags, Catalog: catalogHandler, Access: accessHandler, Auth: authHandler,
-		Authenticator: authenticator,
+		Authenticator: fakeSessionAuthenticator{},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -311,7 +315,7 @@ func TestStreamRouteSupportsRangeHeadAndConditionalRequests(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			request := httptest.NewRequest(test.method, "/api/v1/media/media_test/stream", nil)
-			request.Header.Set("Authorization", "Bearer abcdefghijklmnopqrstuvwxyz123456")
+			request.Header.Set("Authorization", "Bearer test-session")
 			request.Header.Set("Range", test.rangeHeader)
 			request.Header.Set("If-None-Match", test.ifNoneMatch)
 			request.Header.Set("If-Modified-Since", test.ifModifiedSince)
@@ -359,7 +363,7 @@ func TestOriginalRouteSupportsAuthenticatedRangeAndHead(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			request := httptest.NewRequest(test.method, "/api/v1/media/media_test/original", nil)
-			request.Header.Set("Authorization", "Bearer abcdefghijklmnopqrstuvwxyz123456")
+			request.Header.Set("Authorization", "Bearer test-session")
 			request.Header.Set("Range", test.rangeHeader)
 			request.Header.Set("If-None-Match", test.ifNoneMatch)
 			recorder := httptest.NewRecorder()
@@ -393,8 +397,8 @@ func TestHealthDoesNotRequireAuthentication(t *testing.T) {
 	}
 }
 
-// TestAPIRequiresValidToken 验证业务 API 拒绝缺失或错误的 Token。
-func TestAPIRequiresValidToken(t *testing.T) {
+// TestAPIRequiresValidSession 验证业务 API 拒绝缺失或错误的会话。
+func TestAPIRequiresValidSession(t *testing.T) {
 	router := testRouter(t)
 	for name, authorization := range map[string]struct {
 		// header 是请求携带的认证头。
@@ -404,7 +408,7 @@ func TestAPIRequiresValidToken(t *testing.T) {
 	}{
 		"missing": {"", http.StatusUnauthorized},
 		"wrong":   {"Bearer wrong", http.StatusUnauthorized},
-		"valid":   {"Bearer abcdefghijklmnopqrstuvwxyz123456", http.StatusOK},
+		"valid":   {"Bearer test-session", http.StatusOK},
 	} {
 		t.Run(name, func(t *testing.T) {
 			req := httptest.NewRequest(http.MethodGet, "/api/v1/system/info", nil)
@@ -441,7 +445,7 @@ func TestSourceAPIRejectsUnknownFieldsAndHidesRootPath(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			request := httptest.NewRequest(http.MethodPost, "/api/v1/sources", strings.NewReader(body.body))
-			request.Header.Set("Authorization", "Bearer abcdefghijklmnopqrstuvwxyz123456")
+			request.Header.Set("Authorization", "Bearer test-session")
 			request.Header.Set("Content-Type", "application/json")
 			recorder := httptest.NewRecorder()
 			router.ServeHTTP(recorder, request)
@@ -458,7 +462,7 @@ func TestSourceAPIRejectsUnknownFieldsAndHidesRootPath(t *testing.T) {
 func TestAdminMediaRootsAreListedForAdministrators(t *testing.T) {
 	router := testRouter(t)
 	request := httptest.NewRequest(http.MethodGet, "/api/v1/admin/media-roots", nil)
-	request.Header.Set("Authorization", "Bearer abcdefghijklmnopqrstuvwxyz123456")
+	request.Header.Set("Authorization", "Bearer test-session")
 	recorder := httptest.NewRecorder()
 	router.ServeHTTP(recorder, request)
 	if recorder.Code != http.StatusOK {
@@ -485,7 +489,7 @@ func TestMediaRoutesRequireAuthAndSupportThumbnailRevalidation(t *testing.T) {
 	}
 
 	request := httptest.NewRequest(http.MethodGet, "/api/v1/media/media_test/thumbnail", nil)
-	request.Header.Set("Authorization", "Bearer abcdefghijklmnopqrstuvwxyz123456")
+	request.Header.Set("Authorization", "Bearer test-session")
 	request.Header.Set("If-None-Match", `"etag"`)
 	recorder := httptest.NewRecorder()
 	router.ServeHTTP(recorder, request)
@@ -510,7 +514,7 @@ func TestMediaListRejectsInvalidLimitAndDoesNotExposePaths(t *testing.T) {
 		{url: "/api/v1/media", status: http.StatusOK},
 	} {
 		request := httptest.NewRequest(http.MethodGet, test.url, nil)
-		request.Header.Set("Authorization", "Bearer abcdefghijklmnopqrstuvwxyz123456")
+		request.Header.Set("Authorization", "Bearer test-session")
 		recorder := httptest.NewRecorder()
 		router.ServeHTTP(recorder, request)
 		if recorder.Code != test.status {
@@ -531,7 +535,7 @@ func TestCatalogRoutesRequireAuthAndExposeStableShapes(t *testing.T) {
 	}
 
 	request := httptest.NewRequest(http.MethodGet, "/api/v1/catalog/catalog_test", nil)
-	request.Header.Set("Authorization", "Bearer abcdefghijklmnopqrstuvwxyz123456")
+	request.Header.Set("Authorization", "Bearer test-session")
 	responseRecorder := httptest.NewRecorder()
 	router.ServeHTTP(responseRecorder, request)
 	if responseRecorder.Code != http.StatusOK {
@@ -546,7 +550,7 @@ func TestCatalogRoutesRequireAuthAndExposeStableShapes(t *testing.T) {
 	}
 
 	update := httptest.NewRequest(http.MethodPatch, "/api/v1/catalog/media/media_test", strings.NewReader(`{"ignored":true}`))
-	update.Header.Set("Authorization", "Bearer abcdefghijklmnopqrstuvwxyz123456")
+	update.Header.Set("Authorization", "Bearer test-session")
 	update.Header.Set("Content-Type", "application/json")
 	updated := httptest.NewRecorder()
 	router.ServeHTTP(updated, update)
@@ -588,7 +592,7 @@ func TestStage6RoutesRequireAuthAndValidateWrites(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			request := httptest.NewRequest(test.method, test.path, strings.NewReader(test.body))
-			request.Header.Set("Authorization", "Bearer abcdefghijklmnopqrstuvwxyz123456")
+			request.Header.Set("Authorization", "Bearer test-session")
 			if test.body != "" {
 				request.Header.Set("Content-Type", "application/json")
 			}

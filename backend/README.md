@@ -23,53 +23,27 @@ Copy-Item configs/config.example.yaml configs/config.yaml
 
 开发脚本优先使用 `PATH` 中已安装的 `air`；如果本机尚未安装，则自动通过 `go run github.com/air-verse/air@v1.62.0` 使用固定版本。修改 `cmd`、`internal`、`configs`、`migrations` 或 `api` 下的 Go、YAML、SQL 文件后，Air 会重新构建并重启 API 服务。临时二进制和 Air 日志位于 `.cache/air`，退出时自动清理。生产环境仍直接运行构建后的 `luma-server`，不使用 Air。
 
-服务首次启动会在 `data/secrets/api_token` 生成 API Token。`GET /health` 无需认证，其余 `/api/v1` 接口需发送 `Authorization: Bearer <token>`。本地示例媒体目录是 `data/media`，服务端只读它；SQLite、Token 和衍生数据写入独立的 `data` 子目录。
+服务首次启动会创建 `data/secrets/admin_password`，其中保存一次性的本地管理员初始密码。`GET /health` 无需认证；客户端通过用户名和密码登录，随后以服务端签发的会话访问 API。本地示例媒体目录是 `data/media`，服务端只读它；SQLite 和衍生数据写入独立的 `data` 子目录。
 
-### 多用户、Token 与媒体源授权
+### 多用户、登录会话与媒体源授权
 
-根 Token 对应内置 `user_local` 管理员，保留全部管理权限。不要把根 Token 发给成员；通过 `luma-admin` 创建成员，为成员显式授权一个或多个媒体源，再为每台设备签发独立 Token。成员无授权时默认看不到任何来源，越权访问媒体 ID、缩略图或流地址也统一按不存在处理。
-
-日常签发优先使用封装好的脚本。它们会自动构建缺失的 `dist/luma-admin(.exe)`，并组合执行创建成员、来源授权和 Token 签发：
-
-```powershell
-.\scripts\issue-family-token.ps1 `
-  -Name 'Alice' `
-  -SourceId 'source_movies','source_family' `
-  -TokenName 'Alice 手机' `
-  -ExpiresAt '2027-01-01T00:00:00Z'
-```
-
-```bash
-sh ./scripts/issue-family-token.sh \
-  --name 'Alice' \
-  --source source_movies \
-  --source source_family \
-  --token-name 'Alice 手机' \
-  --expires 2027-01-01T00:00:00Z
-```
-
-使用已有成员时，以 PowerShell 的 `-UserId USER_ID` 或 Shell 的 `--user-id USER_ID` 替代姓名参数。通过 `-Server` / `--server`、`-AdminTokenFile` / `--admin-token-file` 可覆盖默认的回环地址和 `data/secrets/api_token`。最终 JSON 中的 `issued_token.token` 只显示一次；如果授权中途失败，错误会列出已经完成的来源，使用 `UserId` 重试即可，重复授权是幂等的。
+内置 `user_local` 是管理员账号。管理员用 `security.admin_username` 和初始密码登录后，可在 App 中创建成员、设置用户名和密码、分配媒体源并管理其登录设备。成员无授权时默认看不到任何来源，越权访问媒体 ID、缩略图或流地址也统一按不存在处理。
 
 ```bash
 go build -o dist/luma-admin ./cmd/admin
 
-dist/luma-admin -token-file data/secrets/api_token sources list
-dist/luma-admin -token-file data/secrets/api_token users list
-dist/luma-admin -token-file data/secrets/api_token users create -name "Alice"
-dist/luma-admin -token-file data/secrets/api_token grants add -user USER_ID -source SOURCE_ID
-dist/luma-admin -token-file data/secrets/api_token grants list -user USER_ID
-dist/luma-admin -token-file data/secrets/api_token tokens create -user USER_ID -name "Alice phone"
-dist/luma-admin -token-file data/secrets/api_token tokens list -user USER_ID
-dist/luma-admin -token-file data/secrets/api_token tokens revoke -id TOKEN_ID
-dist/luma-admin -token-file data/secrets/api_token grants remove -user USER_ID -source SOURCE_ID
-dist/luma-admin -token-file data/secrets/api_token users update -id USER_ID -enabled=false
+dist/luma-admin -username admin -password-file data/secrets/admin_password sources list
+dist/luma-admin -username admin -password-file data/secrets/admin_password users list
+dist/luma-admin -username admin -password-file data/secrets/admin_password users create -name "Alice" -username alice -password-file ./alice-password.txt
+dist/luma-admin -username admin -password-file data/secrets/admin_password grants add -user USER_ID -source SOURCE_ID
+dist/luma-admin -username admin -password-file data/secrets/admin_password sessions list -user USER_ID
+dist/luma-admin -username admin -password-file data/secrets/admin_password sessions revoke -id SESSION_ID
+dist/luma-admin -username admin -password-file data/secrets/admin_password users reset-password -id USER_ID -password-file ./new-password.txt
 ```
 
-也可通过 `LUMA_ADMIN_TOKEN` 或 `LUMA_ADMIN_TOKEN_FILE` 提供管理员凭据。所有全局参数必须写在 `users`、`tokens`、`grants` 之前。`tokens create` 可加 `-expires 2027-01-01T00:00:00Z`；返回 JSON 的 `token` 明文只显示一次，数据库仅保存摘要。管理员 API 位于 `/api/v1/admin/*`，完整请求体和响应见 `api/openapi.yaml`。
+也可通过 `LUMA_ADMIN_USERNAME` 和 `LUMA_ADMIN_PASSWORD_FILE` 提供管理员凭据。所有全局参数必须写在命令之前。管理员 API 位于 `/api/v1/admin/*`，完整请求体和响应见 `api/openapi.yaml`。
 
-远程管理必须使用 HTTPS。CLI 会拒绝对非回环主机使用明文 HTTP，除非显式传入 `-allow-insecure`。吊销 Token 后下一次请求立即失效；禁用用户会同时使该用户的全部 Token 失效。`allowed_roots` 支持 YAML 列表中的多个本地盘符或 UNC 根目录，但它只负责路径白名单，成员可见性以 `source_grants` 为准。
-
-根 Token 轮换必须在服务停止时进行。使用 `openssl rand -hex 32`（Linux）或 PowerShell 7 的 `[Convert]::ToHexString([Security.Cryptography.RandomNumberGenerator]::GetBytes(32)).ToLowerInvariant()` 生成至少 32 字符且不含空白的新值，覆盖 `api_token_file` 后限制文件权限并重启。不要用 UUID、时间戳、用户名或手工密码作为 Token。
+远程管理必须使用 HTTPS。CLI 会拒绝对非回环主机使用明文 HTTP，除非显式传入 `-allow-insecure`。登录设备会话默认永久有效；撤销会话、重置密码或禁用用户都会使对应设备立即失效。`allowed_roots` 支持 YAML 列表中的多个本地盘符或 UNC 根目录，但它只负责路径白名单，成员可见性以 `source_grants` 为准。
 
 ### 自动扫描
 
@@ -114,7 +88,7 @@ sh ./scripts/build.sh
 - `configs/config.windows.example.yaml`：Windows 模板；
 - `configs/config.docker.yaml`：Docker 生成模板，其中 TMDb 占位符由 `scripts/docker-compose.sh` 从 `.env` 安全替换。
 
-Docker 部署者只配置 `.env` 的 `LUMA_TMDB_ENABLED` 与 `LUMA_TMDB_ACCESS_TOKEN`。直接部署则在私有 YAML 中设置 `metadata.providers.tmdb.enabled` 和 `metadata.providers.tmdb.options.access_token`。启用 TMDb 但 Token 为空、Provider options 含未知字段、API/图片基址不是 HTTPS，服务会拒绝启动。配置文件和健康接口不会回显 Token。
+Docker 部署者只配置 `.env` 的 `LUMA_TMDB_ENABLED` 与 `LUMA_TMDB_ACCESS_TOKEN`。直接部署则在私有 YAML 中设置 `metadata.providers.tmdb.enabled` 和 `metadata.providers.tmdb.options.access_token`。启用 TMDb 但访问密钥为空、Provider options 含未知字段、API/图片基址不是 HTTPS，服务会拒绝启动。配置文件和健康接口不会回显该密钥。
 
 NFO Provider 默认开启。Scanner 将 `.nfo` 单独写入 `catalog_sidecars`，不会把它创建为可播放媒体，也不会修改侧车。只选择标准工作级文件：
 
@@ -148,21 +122,21 @@ type Provider interface {
 
 ### 本地扫描闭环
 
-以下请求均需使用首次启动生成的 Token。创建媒体源时 `root_path` 必须位于 `security.allowed_roots` 中；普通媒体源响应不会返回真实路径，管理员可通过 `GET /api/v1/admin/media-roots` 读取可选目录以供客户端选择。
+以下请求均需携带管理员登录后取得的会话。创建媒体源时 `root_path` 必须位于 `security.allowed_roots` 中；普通媒体源响应不会返回真实路径，管理员可通过 `GET /api/v1/admin/media-roots` 读取可选目录以供客户端选择。
 
 服务重启采用扫描恢复策略 A：启动时先将上次遗留的 `running` 扫描一次性标记为 `interrupted`，不提交该次扫描的 `missing`，也不自动重试；`pending` 扫描会继续由 Worker 领取。用户可在服务就绪后手动重新发起被中断来源的扫描。扫描与媒体处理恢复全部成功后 HTTP 才开始对外服务，因此就绪探测不会早于持久化状态恢复。
 
 ```bash
 curl -X POST http://127.0.0.1:8080/api/v1/sources \
-  -H "Authorization: Bearer ${TOKEN}" \
+  -H "Authorization: Bearer ${SESSION_TOKEN}" \
   -H "Content-Type: application/json" \
   -d '{"name":"本地媒体","root_path":"/media","library_kind":"personal"}'
 
 curl -X POST http://127.0.0.1:8080/api/v1/sources/{source_id}/scan \
-  -H "Authorization: Bearer ${TOKEN}"
+  -H "Authorization: Bearer ${SESSION_TOKEN}"
 
 curl http://127.0.0.1:8080/api/v1/scan-jobs/{scan_id} \
-  -H "Authorization: Bearer ${TOKEN}"
+  -H "Authorization: Bearer ${SESSION_TOKEN}"
 ```
 
 `library_kind` 仅指定目录中视频的用途，可取 `personal`、`movies` 或 `tv`，为空时默认为 `personal`。目录及其子目录中的图片会自动出现在图片库，并继续按媒体源授权控制可见性。旧版 `photos` 来源会在升级时迁为 `personal`。电影源推荐 `片名 (年份)/视频文件`，电视剧源推荐 `剧名/Season 01/剧名.S01E01.mkv`。作品库端点为：
@@ -183,30 +157,30 @@ GET   /api/v1/admin/metadata/status
 
 ### 媒体查询
 
-媒体只读端点均需 Bearer Token。列表默认排除 `missing` 媒体，以及已禁用或软删除来源下的媒体。`sort=duration` 仅含 duration 已稳定的行；`sort=file_size` 仅含 `ready`/`failed`。无 ready 缩略图时 `thumbnail_url` 为空字符串；视频使用 `stream_url`，图片使用 `original_url`，不适用的字段为 `null`。
+媒体只读端点均需 Bearer 会话。列表默认排除 `missing` 媒体，以及已禁用或软删除来源下的媒体。`sort=duration` 仅含 duration 已稳定的行；`sort=file_size` 仅含 `ready`/`failed`。无 ready 缩略图时 `thumbnail_url` 为空字符串；视频使用 `stream_url`，图片使用 `original_url`，不适用的字段为 `null`。
 
 ```bash
 curl "http://127.0.0.1:8080/api/v1/media?type=video&sort=created_at&order=desc&limit=50" \
-  -H "Authorization: Bearer ${TOKEN}"
+  -H "Authorization: Bearer ${SESSION_TOKEN}"
 
 curl http://127.0.0.1:8080/api/v1/media/{media_id} \
-  -H "Authorization: Bearer ${TOKEN}"
+  -H "Authorization: Bearer ${SESSION_TOKEN}"
 
 curl http://127.0.0.1:8080/api/v1/media/{media_id}/thumbnail \
-  -H "Authorization: Bearer ${TOKEN}" \
+  -H "Authorization: Bearer ${SESSION_TOKEN}" \
   -H 'If-None-Match: "previous-etag"' \
   --output thumbnail.jpg
 
 curl -I http://127.0.0.1:8080/api/v1/media/{media_id}/stream \
-  -H "Authorization: Bearer ${TOKEN}"
+  -H "Authorization: Bearer ${SESSION_TOKEN}"
 
 curl http://127.0.0.1:8080/api/v1/media/{media_id}/stream \
-  -H "Authorization: Bearer ${TOKEN}" \
+  -H "Authorization: Bearer ${SESSION_TOKEN}" \
   -H "Range: bytes=0-1048575" \
   --output video.part
 
 curl http://127.0.0.1:8080/api/v1/media/{image_id}/original \
-  -H "Authorization: Bearer ${TOKEN}" \
+  -H "Authorization: Bearer ${SESSION_TOKEN}" \
   --output original.jpg
 ```
 
@@ -236,7 +210,7 @@ Flutter 客户端的 `ApiClient` 已封装下列后端接口，但当前 App 没
 
 ```text
 Config / Logger
-→ PathPolicy / SQLite Repositories / TokenAuthenticator / LocalSourceFactory
+→ PathPolicy / SQLite Repositories / SessionAuthenticator / LocalSourceFactory
 → SystemService / SourceService / ScanService / MediaService / StreamService
 → LocalScanner / ScanWorker
 → HealthHandler / SystemHandler / SourceHandler / ScanHandler / MediaHandler / StreamHandler
@@ -264,7 +238,7 @@ Config / Logger
 
 第一版只支持单用户和本地目录，不处理实时转码、原生 SMB 和复杂权限。
 
-虽然第一版是单用户和局域网优先，服务端仍必须提供最低限度的 API Token 认证和媒体目录白名单，避免局域网中的未授权设备读取任意文件。
+虽然第一版是单用户和局域网优先，服务端仍必须提供账号密码登录、可撤销会话和媒体目录白名单，避免局域网中的未授权设备读取任意文件。
 
 ---
 
@@ -401,7 +375,7 @@ POST /api/v1/sources/{id}/scan
 
 ### 5.8 最低限度安全
 
-除 `/health` 外，所有 API 默认要求 Bearer Token。媒体源根目录必须位于配置的允许目录中；所有文件访问都必须阻止 `..`、绝对路径注入和符号链接逃逸。
+除 `/health` 与登录接口外，所有 API 默认要求 Bearer 会话。媒体源根目录必须位于配置的允许目录中；所有文件访问都必须阻止 `..`、绝对路径注入和符号链接逃逸。
 
 ### 5.9 Web 框架边界
 
@@ -933,7 +907,7 @@ Request ID
 → Recovery
 → Structured Logging
 → CORS（仅配置了 Web 来源时）
-→ API Token（仅 /api/v1）
+→ 会话认证（仅 /api/v1，登录接口除外）
 → Handler
 ```
 
@@ -1117,7 +1091,7 @@ C:\ProgramData\Luma\
 └── secrets\
 ```
 
-数据库、WAL、缓存和缩略图不能放在只读媒体目录或网络共享中。Token 文件需要限制为运行服务的账户和管理员可读；不能假设 `chmod 0600` 在 Windows 上等同于完整 ACL 控制。
+数据库、WAL、缓存和缩略图不能放在只读媒体目录或网络共享中。管理员初始密码文件需要限制为运行服务的账户和管理员可读；不能假设 `chmod 0600` 在 Windows 上等同于完整 ACL 控制。
 
 #### 构建、运行和服务
 
@@ -1504,10 +1478,10 @@ missing 媒体：保留媒体 ID、用户数据和资产记录
 除 `/health` 外，所有接口必须携带：
 
 ```http
-Authorization: Bearer {api_token}
+Authorization: Bearer {session_token}
 ```
 
-第一版中通过 Token 的请求统一映射到 `user_local`。以后增加多用户认证时，认证主体映射到不同 `user_id`，业务表和接口结构无需重建。
+登录后的会话请求映射到对应 `user_id`。管理员与成员共享同一认证链路，权限和媒体可见性由用户角色与来源授权共同决定。
 
 API 契约使用 OpenAPI 维护，Flutter 客户端和服务端以同一份契约为准。字段删除或语义变化必须通过新的 API 版本完成。
 
@@ -1744,7 +1718,8 @@ server:
   shutdown_timeout: 30s
 
 security:
-  api_token_file: /data/secrets/api_token
+  admin_username: admin
+  admin_password_file: /data/secrets/admin_password
   allowed_origins: []
   allowed_roots:
     - /media
@@ -1784,7 +1759,7 @@ workers:
   lock_timeout: 10m
 ```
 
-首次启动时，如果 Token 文件不存在，服务端生成高强度随机 Token，并以仅服务进程可读的权限保存。Token 不写入普通日志，也不直接存入 YAML。
+首次启动时，如果管理员初始密码文件不存在，服务端生成高强度随机密码，并以仅服务进程可读的权限保存。密码不写入普通日志，也不直接存入 YAML。
 
 `allowed_origins` 为空时不发送 CORS 允许头。移动 App 不依赖浏览器 CORS；只有明确部署 Web 客户端时才配置允许来源。
 
@@ -1799,7 +1774,8 @@ server:
   shutdown_timeout: 30s
 
 security:
-  api_token_file: 'C:\ProgramData\Luma\secrets\api_token'
+  admin_username: admin
+  admin_password_file: 'C:\ProgramData\Luma\secrets\admin_password'
   allowed_origins: []
   allowed_roots:
     - 'D:\Media'
@@ -1851,7 +1827,7 @@ Docker 部署的唯一用户配置入口是 `.env`。`LUMA_MEDIA_DIRS` 使用 `/
 ├── media.db
 ├── thumbnails/
 ├── cache/
-└── secrets/api_token
+└── secrets/admin_password
 ```
 
 ### 12.2 Windows
@@ -1862,7 +1838,6 @@ Windows 发布包：
 luma-server-windows-amd64.zip
 ├── luma-server.exe
 ├── luma-admin.exe
-├── issue-family-token.ps1
 ├── config.example.yaml
 ├── install-service.ps1
 ├── uninstall-service.ps1
@@ -1889,7 +1864,7 @@ luma-server-windows-amd64.zip
 安装脚本默认使用 Windows 服务的 `LocalSystem` 账户，并将二进制复制到稳定的 `C:\Program Files\Luma`。生产环境建议在服务管理器中改用专用低权限账户。该账户需要：
 
 * 数据目录读写权限
-* Token 文件读取权限
+* 管理员初始密码文件读取权限
 * 本地或 UNC 媒体目录只读权限
 * ffmpeg 和 ffprobe 执行权限
 
@@ -1914,7 +1889,7 @@ luma-server-windows-amd64.zip
 * 数据库迁移
 * `/health`
 * 默认用户 `user_local`
-* API Token 生成和认证中间件
+* 账号密码登录、会话签发和认证中间件
 * 媒体目录白名单
 * WAL、foreign_keys 和 busy_timeout
 * 优雅退出
@@ -2103,7 +2078,7 @@ WebP
 * `..` 路径穿越
 * 绝对路径注入
 * 指向媒体源外部的符号链接
-* 未认证和错误 Token 请求
+* 未认证、错误会话和已撤销会话请求
 * 多个客户端同时播放
 * SQLite 写入繁忙和并发任务领取
 * Cursor 并列排序和翻页期间新增媒体
@@ -2141,7 +2116,7 @@ WebP
 * 服务重启后任务能够恢复或安全重试
 * 服务端不修改原始媒体文件
 * 数据库不保存可迁移数据目录中的绝对资产路径
-* 除健康检查外的接口需要 API Token
+* 除健康检查与登录外的接口需要有效会话
 * 无法读取允许目录之外的文件
 * Windows x64 可以直接运行、扫描本地盘符和 UNC 来源
 * Linux 和 Windows 测试矩阵均通过

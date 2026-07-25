@@ -16,18 +16,18 @@ type BearerAuthenticator interface {
 	AuthenticateAuthorization(context.Context, string) (domain.Principal, bool)
 }
 
-// TokenAuth 创建要求有效 Bearer Token 的 Gin 中间件。
-func TokenAuth(authenticator BearerAuthenticator) gin.HandlerFunc {
+// SessionAuth 创建要求有效 Bearer 会话的 Gin 中间件。
+func SessionAuth(authenticator BearerAuthenticator) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if authenticator == nil {
 			c.Header("WWW-Authenticate", "Bearer")
-			response.Error(c, http.StatusUnauthorized, "UNAUTHORIZED", "valid bearer token required", nil)
+			response.Error(c, http.StatusUnauthorized, "UNAUTHORIZED", "valid bearer session required", nil)
 			return
 		}
 		principal, ok := authenticator.AuthenticateAuthorization(c.Request.Context(), c.GetHeader("Authorization"))
 		if !ok {
 			c.Header("WWW-Authenticate", "Bearer")
-			response.Error(c, http.StatusUnauthorized, "UNAUTHORIZED", "valid bearer token required", nil)
+			response.Error(c, http.StatusUnauthorized, "UNAUTHORIZED", "valid bearer session required", nil)
 			return
 		}
 		c.Set("principal", principal)

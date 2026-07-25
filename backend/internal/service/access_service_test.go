@@ -49,6 +49,9 @@ func TestAccessServiceIdempotentWritesReplayWithoutDuplicating(t *testing.T) {
 	if err != nil || firstSession.Session.UserID != firstUser.ID || firstSession.Secret == "" {
 		t.Fatalf("session=%#v error=%v", firstSession, err)
 	}
+	if firstSession.Session.ExpiresAt != nil {
+		t.Fatalf("permanent session expires at %v", firstSession.Session.ExpiresAt)
+	}
 	sessions, err := service.ListSessions(ctx, firstUser.ID)
 	if err != nil || len(sessions) != 1 {
 		t.Fatalf("sessions=%#v error=%v", sessions, err)

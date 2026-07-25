@@ -19,23 +19,27 @@ func main() {
 func run(args []string) error {
 	global := flag.NewFlagSet("luma-admin", flag.ContinueOnError)
 	server := global.String("server", "http://127.0.0.1:8080", "Luma server origin")
-	tokenFile := global.String("token-file", os.Getenv("LUMA_ADMIN_TOKEN_FILE"), "file containing the administrator token")
+	username := global.String("username", os.Getenv("LUMA_ADMIN_USERNAME"), "administrator username")
+	passwordFile := global.String("password-file", os.Getenv("LUMA_ADMIN_PASSWORD_FILE"), "file containing the administrator password")
 	allowInsecure := global.Bool("allow-insecure", false, "allow plain HTTP to a non-loopback host")
 	if err := global.Parse(args); err != nil {
 		return err
 	}
 	remaining := global.Args()
 	if len(remaining) < 2 {
-		return errors.New("usage: luma-admin [global flags] family issue | sources|users|tokens|grants <action>")
+		return errors.New("usage: luma-admin [global flags] sources|users|sessions|grants <action>")
 	}
 	origin, err := validateAdminOrigin(*server, *allowInsecure)
 	if err != nil {
 		return err
 	}
-	token, err := readAdminToken(*tokenFile)
+	password, err := readAdminPassword(*passwordFile)
 	if err != nil {
 		return err
 	}
-	c := client{origin: origin, token: token, http: &http.Client{Timeout: 15 * time.Second}}
+	c := client{origin: origin, http: &http.Client{Timeout: 15 * time.Second}}
+	if err := c.login(*username, password); err != nil {
+		return err
+	}
 	return dispatch(c, remaining[0], remaining[1], remaining[2:])
 }

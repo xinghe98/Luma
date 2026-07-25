@@ -31,30 +31,23 @@ type User struct {
 	UpdatedAt    time.Time
 }
 
-// APIToken 保存令牌元数据。TokenHash 永远不得出现在 API 响应或日志中。
-type APIToken struct {
-	ID          string
-	RequestID   string
-	UserID      string
-	Name        string
-	Kind        string
-	TokenHash   string
-	TokenPrefix string
-	ExpiresAt   *time.Time
-	RevokedAt   *time.Time
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+// Session 保存登录设备会话元数据。密钥摘要永远不得出现在 API 响应或日志中。
+type Session struct {
+	ID           string
+	RequestID    string
+	UserID       string
+	Name         string
+	SecretHash   string
+	SecretPrefix string
+	ExpiresAt    *time.Time
+	RevokedAt    *time.Time
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
 }
 
 // IssuedSession 只在登录成功时携带一次会话明文。
 type IssuedSession struct {
-	Session APIToken
+	Session Session
 	Secret  string
 	User    User
-}
-
-// IssuedToken 只在创建响应中携带一次明文令牌。
-type IssuedToken struct {
-	Token  APIToken
-	Secret string
 }

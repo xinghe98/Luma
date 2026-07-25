@@ -7,15 +7,12 @@ import (
 	"fmt"
 	"strings"
 	"sync"
-	"time"
 	"unicode/utf8"
 
 	"github.com/xinghe98/Luma/backend/internal/domain"
 	"github.com/xinghe98/Luma/backend/internal/repository"
 	"github.com/xinghe98/Luma/backend/internal/security"
 )
-
-const sessionLifetime = 30 * 24 * time.Hour
 
 // AccessService 管理成员、登录会话和媒体源授权。
 type AccessService struct {
@@ -145,7 +142,7 @@ func (s *AccessService) UpdateUser(ctx context.Context, id string, name *string,
 	return user, nil
 }
 
-// Login 验证账号密码并创建有效期固定的独立设备会话。
+// Login 验证账号密码并创建永久有效、可撤销的独立设备会话。
 func (s *AccessService) Login(ctx context.Context, username, password, deviceName string) (domain.IssuedSession, error) {
 	username, err := normalizeUsername(username)
 	if err != nil {
@@ -162,7 +159,7 @@ func (s *AccessService) Login(ctx context.Context, username, password, deviceNam
 	if utf8.RuneCountInString(deviceName) > 80 {
 		return domain.IssuedSession{}, fmt.Errorf("%w: 设备名称最多 80 个字符", domain.ErrInvalidRequest)
 	}
-	secret, err := security.GenerateToken()
+	secret, err := security.GenerateSessionSecret()
 	if err != nil {
 		return domain.IssuedSession{}, err
 	}
@@ -171,9 +168,8 @@ func (s *AccessService) Login(ctx context.Context, username, password, deviceNam
 		return domain.IssuedSession{}, err
 	}
 	now := s.clock.Now().UTC()
-	expires := now.Add(sessionLifetime)
 	prefix := secret[:min(8, len(secret))]
-	session := domain.APIToken{ID: id, UserID: user.ID, Name: deviceName, Kind: "session", TokenHash: security.HashToken(secret), TokenPrefix: prefix, ExpiresAt: &expires, CreatedAt: now, UpdatedAt: now}
+	session := domain.Session{ID: id, UserID: user.ID, Name: deviceName, SecretHash: security.HashSessionSecret(secret), SecretPrefix: prefix, CreatedAt: now, UpdatedAt: now}
 	if err := s.repository.CreateSession(ctx, session); err != nil {
 		return domain.IssuedSession{}, err
 	}
@@ -181,7 +177,7 @@ func (s *AccessService) Login(ctx context.Context, username, password, deviceNam
 	return domain.IssuedSession{Session: session, Secret: secret, User: user}, nil
 }
 
-// Logout 撤销当前会话；根凭据或旧令牌无法进入此路径。
+// Logout 撤销当前会话；只有已认证设备会话能够进入此路径。
 func (s *AccessService) Logout(ctx context.Context, credentialID string) error {
 	if strings.TrimSpace(credentialID) == "" {
 		return domain.ErrUnauthorized
@@ -203,7 +199,7 @@ func (s *AccessService) ResetPassword(ctx context.Context, userID, password stri
 }
 
 // ListSessions 返回成员所有登录设备，不返回会话明文。
-func (s *AccessService) ListSessions(ctx context.Context, userID string) ([]domain.APIToken, error) {
+func (s *AccessService) ListSessions(ctx context.Context, userID string) ([]domain.Session, error) {
 	return s.repository.ListSessions(ctx, strings.TrimSpace(userID))
 }
 

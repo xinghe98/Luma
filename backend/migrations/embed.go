@@ -70,6 +70,16 @@ var AccountSessions string
 //go:embed 016_scan_metadata_runs.sql
 var ScanMetadataRuns string
 
+// Sessions 保存登录设备会话，替换历史令牌表。
+//
+//go:embed 017_sessions.sql
+var Sessions string
+
+// PermanentSessions 移除旧设备会话的到期时间。
+//
+//go:embed 018_permanent_sessions.sql
+var PermanentSessions string
+
 // CatalogMetadata 保存可扩展 Provider 刮削、候选与丰富作品资料结构。
 //
 //go:embed 013_catalog_metadata.sql

@@ -47,8 +47,6 @@ var (
 	ErrForbidden = errors.New("forbidden")
 	// ErrUserNotFound 表示成员不存在。
 	ErrUserNotFound = errors.New("user not found")
-	// ErrTokenNotFound 表示成员令牌不存在。
-	ErrTokenNotFound = errors.New("token not found")
-	// ErrIdempotencySecretUnavailable 表示令牌已创建，但服务重启后无法安全重放一次性明文。
-	ErrIdempotencySecretUnavailable = errors.New("idempotency secret unavailable")
+	// ErrSessionNotFound 表示登录设备会话不存在。
+	ErrSessionNotFound = errors.New("session not found")
 )

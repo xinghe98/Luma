@@ -11,7 +11,7 @@ import (
 
 // PrincipalLookup 只暴露认证所需的摘要查询，避免安全层依赖具体数据库。
 type PrincipalLookup interface {
-	FindPrincipalByTokenHash(context.Context, string, time.Time) (domain.Principal, error)
+	FindPrincipalBySessionSecretHash(context.Context, string, time.Time) (domain.Principal, error)
 }
 
 type ActivityRecorder interface {
@@ -40,7 +40,7 @@ func (a *AccessAuthenticator) AuthenticateAuthorization(ctx context.Context, aut
 	if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") || a.lookup == nil {
 		return domain.Principal{}, false
 	}
-	principal, err := a.lookup.FindPrincipalByTokenHash(ctx, HashToken(parts[1]), time.Now().UTC())
+	principal, err := a.lookup.FindPrincipalBySessionSecretHash(ctx, HashSessionSecret(parts[1]), time.Now().UTC())
 	if err != nil {
 		return domain.Principal{}, false
 	}

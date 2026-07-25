@@ -20,7 +20,7 @@ type AccessUseCase interface {
 	CreateUser(context.Context, string, string, string) (domain.User, error)
 	UpdateUser(context.Context, string, *string, *bool) (domain.User, error)
 	ResetPassword(context.Context, string, string) error
-	ListSessions(context.Context, string) ([]domain.APIToken, error)
+	ListSessions(context.Context, string) ([]domain.Session, error)
 	RevokeSession(context.Context, string) error
 	ListGrants(context.Context, string) ([]string, error)
 	GrantSource(context.Context, string, string) error
@@ -192,7 +192,7 @@ func presentAccessUser(user domain.User) accessUserJSON {
 	return accessUserJSON{ID: user.ID, Name: user.Name, Username: user.Username, Role: user.Role, Enabled: user.Enabled, Online: user.Online, CreatedAt: user.CreatedAt.UTC().Format(time.RFC3339Nano), UpdatedAt: user.UpdatedAt.UTC().Format(time.RFC3339Nano)}
 }
 
-func presentSession(session domain.APIToken) sessionJSON {
+func presentSession(session domain.Session) sessionJSON {
 	result := sessionJSON{ID: session.ID, UserID: session.UserID, Name: session.Name, CreatedAt: session.CreatedAt.UTC().Format(time.RFC3339Nano)}
 	if session.ExpiresAt != nil {
 		value := session.ExpiresAt.UTC().Format(time.RFC3339Nano)

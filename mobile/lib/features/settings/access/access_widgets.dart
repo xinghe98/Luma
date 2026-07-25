@@ -17,11 +17,14 @@ class LoginSessionTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final expiresAt = session.expiresAt;
     final status = session.isRevoked
         ? '已撤销'
-        : session.isExpired
+        : expiresAt == null
+        ? '长期有效'
+        : !expiresAt.isAfter(DateTime.now())
         ? '已过期'
-        : '至 ${formatAccessDate(context, session.expiresAt!)}';
+        : '至 ${formatAccessDate(context, expiresAt)}';
     return ListTile(
       contentPadding: EdgeInsets.zero,
       leading: const Icon(Icons.devices_outlined),

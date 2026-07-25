@@ -100,7 +100,7 @@ class _NewMemberPageState extends State<NewMemberPage> {
           enableSuggestions: false,
           decoration: const InputDecoration(
             labelText: '初始密码',
-            helperText: '至少 12 个字符',
+            helperText: '至少 3 个字符',
             prefixIcon: Icon(Icons.lock_outline_rounded),
           ),
         ),

@@ -210,49 +210,13 @@ class _MemberDetailPageState extends State<MemberDetailPage> {
   }
 
   Future<void> _resetPassword() async {
-    final password = TextEditingController();
-    final confirmation = TextEditingController();
     final next = await showDialog<String>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('重置密码'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: password,
-              obscureText: true,
-              decoration: const InputDecoration(labelText: '新密码'),
-            ),
-            TextField(
-              controller: confirmation,
-              obscureText: true,
-              decoration: const InputDecoration(labelText: '确认密码'),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(
-              context,
-              password.text == confirmation.text ? password.text : '',
-            ),
-            child: const Text('确认'),
-          ),
-        ],
-      ),
+      // 取消或点遮罩后立即移除遮罩，避免退场动画与 controller 生命周期冲突。
+      animationStyle: AnimationStyle.noAnimation,
+      builder: (_) => const _ResetPasswordDialog(),
     );
-    password.dispose();
-    confirmation.dispose();
     if (!mounted || next == null) return;
-    if (next.isEmpty) {
-      context.showLumaSnack('两次输入的密码不一致');
-      return;
-    }
     setState(() => _savingUser = true);
     try {
       await widget.access.resetPassword(_user.id, next);
@@ -263,4 +227,83 @@ class _MemberDetailPageState extends State<MemberDetailPage> {
       if (mounted) setState(() => _savingUser = false);
     }
   }
+}
+
+/// 重置密码弹窗；自行持有输入控制器，在 State.dispose 中释放。
+class _ResetPasswordDialog extends StatefulWidget {
+  const _ResetPasswordDialog();
+
+  @override
+  State<_ResetPasswordDialog> createState() => _ResetPasswordDialogState();
+}
+
+class _ResetPasswordDialogState extends State<_ResetPasswordDialog> {
+  late final TextEditingController _password;
+  late final TextEditingController _confirmation;
+
+  @override
+  void initState() {
+    super.initState();
+    _password = TextEditingController();
+    _confirmation = TextEditingController();
+  }
+
+  @override
+  void dispose() {
+    _password.dispose();
+    _confirmation.dispose();
+    super.dispose();
+  }
+
+  /// 校验两次密码一致且长度足够后关闭弹窗并返回新密码。
+  void _confirm() {
+    final password = _password.text;
+    final confirmation = _confirmation.text;
+    if (password != confirmation) {
+      context.showLumaSnack('两次输入的密码不一致');
+      return;
+    }
+    if (password.length < 3) {
+      context.showLumaSnack('密码至少 3 个字符');
+      return;
+    }
+    Navigator.pop(context, password);
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: const Text('重置密码'),
+    content: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        TextField(
+          controller: _password,
+          obscureText: true,
+          autofocus: true,
+          autocorrect: false,
+          enableSuggestions: false,
+          decoration: const InputDecoration(
+            labelText: '新密码',
+            helperText: '至少 3 个字符',
+          ),
+        ),
+        const SizedBox(height: LumaSpacing.sm),
+        TextField(
+          controller: _confirmation,
+          obscureText: true,
+          autocorrect: false,
+          enableSuggestions: false,
+          decoration: const InputDecoration(labelText: '确认密码'),
+          onSubmitted: (_) => _confirm(),
+        ),
+      ],
+    ),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.pop(context),
+        child: const Text('取消'),
+      ),
+      FilledButton(onPressed: _confirm, child: const Text('确认')),
+    ],
+  );
 }
