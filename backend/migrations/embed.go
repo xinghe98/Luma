@@ -60,6 +60,16 @@ var ImageLibrary string
 //go:embed 012_access_idempotency.sql
 var AccessIdempotency string
 
+// AccountSessions 将旧令牌认证迁移为用户名密码登录后的会话。
+//
+//go:embed 015_account_sessions.sql
+var AccountSessions string
+
+// ScanMetadataRuns 保存扫描后影视资料任务的运行记录。
+//
+//go:embed 016_scan_metadata_runs.sql
+var ScanMetadataRuns string
+
 // CatalogMetadata 保存可扩展 Provider 刮削、候选与丰富作品资料结构。
 //
 //go:embed 013_catalog_metadata.sql

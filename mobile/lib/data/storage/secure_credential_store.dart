@@ -6,7 +6,8 @@ final class SecureCredentialStore implements CredentialStore {
   const SecureCredentialStore(this._storage);
 
   static const _originKey = 'luma.api.origin';
-  static const _tokenKey = 'luma.api.token';
+  static const _legacyTokenKey = 'luma.api.token';
+  static const _sessionKey = 'luma.api.session';
 
   final FlutterSecureStorage _storage;
 
@@ -15,17 +16,22 @@ final class SecureCredentialStore implements CredentialStore {
     final values = await _storage.readAll();
     final origin = values[_originKey];
     if (origin == null || origin.isEmpty) return null;
-    return StoredCredentials(origin: origin, token: values[_tokenKey]);
+    // 旧 Token 认证已废弃，升级后必须重新登录。
+    if (values[_sessionKey] == null && values[_legacyTokenKey] != null) {
+      await _storage.delete(key: _legacyTokenKey);
+      return null;
+    }
+    return StoredCredentials(origin: origin, sessionToken: values[_sessionKey]);
   }
 
   @override
   Future<void> write(StoredCredentials credentials) async {
     await _storage.write(key: _originKey, value: credentials.origin);
-    final token = credentials.token;
+    final token = credentials.sessionToken;
     if (token == null || token.isEmpty) {
-      await _storage.delete(key: _tokenKey);
+      await _storage.delete(key: _sessionKey);
     } else {
-      await _storage.write(key: _tokenKey, value: token);
+      await _storage.write(key: _sessionKey, value: token);
     }
   }
 
@@ -33,7 +39,8 @@ final class SecureCredentialStore implements CredentialStore {
   Future<void> clear() async {
     await Future.wait([
       _storage.delete(key: _originKey),
-      _storage.delete(key: _tokenKey),
+      _storage.delete(key: _legacyTokenKey),
+      _storage.delete(key: _sessionKey),
     ]);
   }
 }

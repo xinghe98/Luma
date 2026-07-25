@@ -68,15 +68,24 @@ void main() {
   test('connection service returns all states', () async {
     final service = MockConnectionService();
     expect(
-      await service.test('http://192.168.1.10:8096', 'test-token'),
+      await service.login(
+        'http://192.168.1.10:8096',
+        const LoginCredentials(username: 'test', password: 'test-password'),
+      ),
       ConnectionResult.success,
     );
     expect(
-      await service.test('http://luma-offline.local:8096', 'test-token'),
+      await service.login(
+        'http://luma-offline.local:8096',
+        const LoginCredentials(username: 'test', password: 'test-password'),
+      ),
       ConnectionResult.unreachable,
     );
     expect(
-      await service.test('not-an-address', 'test-token'),
+      await service.login(
+        'not-an-address',
+        const LoginCredentials(username: 'test', password: 'test-password'),
+      ),
       ConnectionResult.invalidAddress,
     );
   });

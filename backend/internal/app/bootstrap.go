@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"path/filepath"
 	"time"
 
 	"github.com/xinghe98/Luma/backend/internal/api"
@@ -67,13 +68,6 @@ func (b *bootstrap) build(ctx context.Context) (*App, error) {
 	}
 	b.cleanups.Push("database", database.Close)
 
-	token, created, err := security.LoadOrCreateToken(b.config.Security.APITokenFile)
-	if err != nil {
-		return nil, err
-	}
-	if created {
-		b.logger.Info("API token file created", "path", b.config.Security.APITokenFile)
-	}
 	systemService, err := service.NewSystemService(b.version, database)
 	if err != nil {
 		return nil, fmt.Errorf("create system service: %w", err)
@@ -87,7 +81,7 @@ func (b *bootstrap) build(ctx context.Context) (*App, error) {
 		return nil, fmt.Errorf("创建访问控制 Repository: %w", err)
 	}
 	activeUsers := presence.New(time.Now)
-	authenticator, err := security.NewAccessAuthenticator(token, accessRepository, activeUsers)
+	authenticator, err := security.NewAccessAuthenticator(accessRepository, activeUsers)
 	if err != nil {
 		return nil, fmt.Errorf("create API authenticator: %w", err)
 	}
@@ -125,17 +119,37 @@ func (b *bootstrap) build(ctx context.Context) (*App, error) {
 	if err != nil {
 		return nil, fmt.Errorf("创建访问控制服务: %w", err)
 	}
+	adminPasswordFile := b.config.Security.AdminPasswordFile
+	adminUsername := b.config.Security.AdminUsername
+	if adminUsername == "" {
+		adminUsername = "admin"
+	}
+	if adminPasswordFile == "" {
+		adminPasswordFile = filepath.Join(filepath.Dir(b.config.Database.Path), "secrets", "admin_password")
+	}
+	bootstrapPassword, created, err := security.LoadOrCreateBootstrapPassword(adminPasswordFile)
+	if err != nil {
+		return nil, err
+	}
+	initialized, err := accessService.EnsureBootstrapAdmin(ctx, adminUsername, bootstrapPassword)
+	if err != nil {
+		return nil, fmt.Errorf("初始化管理员账号: %w", err)
+	}
+	if created && initialized {
+		b.logger.Info("管理员初始密码文件已创建", "path", adminPasswordFile)
+	}
 	localFactory, err := storage.NewLocalFactory(platform.OSFileIdentifier{}, clock)
 	if err != nil {
 		return nil, fmt.Errorf("创建本地媒体源工厂: %w", err)
 	}
-	catalogSignal := jobs.NewSignal()
+	catalogSignal := jobs.NewCatalogSyncSignal()
+	metadataSignal := jobs.NewSignal()
 	workerGroup, scanSignal, err := b.buildWorkers(database, sourceRepository, scanRepository, localFactory, ids, clock, catalogSignal)
 	if err != nil {
 		return nil, err
 	}
 	metadataWorkers, metadataRegistry, err := buildMetadataWorkers(
-		b.config.Metadata, catalogRepository, sourceRepository, localFactory, ids, clock, b.logger,
+		b.config.Metadata, catalogRepository, sourceRepository, localFactory, ids, clock, b.logger, metadataSignal,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("创建影视刮削组件: %w", err)
@@ -185,7 +199,7 @@ func (b *bootstrap) build(ctx context.Context) (*App, error) {
 	if err != nil {
 		return nil, fmt.Errorf("创建媒体服务: %w", err)
 	}
-	catalogSynchronizer, err := jobs.NewCatalogSynchronizer(catalogService, catalogSignal, b.logger)
+	catalogSynchronizer, err := jobs.NewCatalogSynchronizer(catalogService, catalogSignal, catalogRepository, metadataSignal, b.logger)
 	if err != nil {
 		return nil, fmt.Errorf("创建作品库后台整理器: %w", err)
 	}
@@ -232,6 +246,10 @@ func (b *bootstrap) build(ctx context.Context) (*App, error) {
 	if err != nil {
 		return nil, fmt.Errorf("创建访问控制 Handler: %w", err)
 	}
+	authHandler, err := handler.NewAuthHandler(accessService)
+	if err != nil {
+		return nil, fmt.Errorf("创建认证 Handler: %w", err)
+	}
 	streamHandler, err := handler.NewStreamHandler(streamService)
 	if err != nil {
 		return nil, fmt.Errorf("创建原始媒体 Handler: %w", err)
@@ -248,7 +266,7 @@ func (b *bootstrap) build(ctx context.Context) (*App, error) {
 		Logger: b.logger, AllowedOrigins: b.config.Security.AllowedOrigins,
 		Health: healthHandler, System: systemHandler, Sources: sourceHandler,
 		Scans: scanHandler, Media: mediaHandler, Stream: streamHandler,
-		UserData: userDataHandler, Tags: tagHandler, Catalog: catalogHandler, Access: accessHandler,
+		UserData: userDataHandler, Tags: tagHandler, Catalog: catalogHandler, Access: accessHandler, Auth: authHandler,
 		Authenticator: authenticator,
 	})
 	if err != nil {

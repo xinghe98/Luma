@@ -6,6 +6,7 @@ import '../../core/theme.dart';
 import '../../shared/branding/brand_mark.dart';
 import 'widgets/connection_form.dart';
 import 'widgets/recent_servers.dart';
+import '../../data/services/connection_service.dart';
 
 class ConnectionPage extends StatefulWidget {
   const ConnectionPage({super.key});
@@ -17,14 +18,16 @@ class ConnectionPage extends StatefulWidget {
 class _ConnectionPageState extends State<ConnectionPage> {
   final _host = TextEditingController();
   final _port = TextEditingController(text: '8080');
-  final _token = TextEditingController();
+  final _username = TextEditingController();
+  final _password = TextEditingController();
   static const _connectionScheme = 'http';
 
   @override
   void dispose() {
     _host.dispose();
     _port.dispose();
-    _token.dispose();
+    _username.dispose();
+    _password.dispose();
     super.dispose();
   }
 
@@ -75,11 +78,18 @@ class _ConnectionPageState extends State<ConnectionPage> {
                         controller: controller,
                         hostController: _host,
                         portController: _port,
-                        tokenController: _token,
+                        usernameController: _username,
+                        passwordController: _password,
                         enabled: !restoring,
                         onConnect: () {
                           FocusScope.of(context).unfocus();
-                          controller.connect(_serverAddress, _token.text);
+                          controller.connect(
+                            _serverAddress,
+                            LoginCredentials(
+                              username: _username.text,
+                              password: _password.text,
+                            ),
+                          );
                         },
                       ),
                       if (restoring) ...[
@@ -144,10 +154,7 @@ class _ConnectionBrandMark extends StatelessWidget {
         scale: 2.5,
         child: const Align(
           alignment: Alignment.centerLeft,
-          child: BrandMark(
-            variant: BrandMarkVariant.horizontal,
-            height: 72,
-          ),
+          child: BrandMark(variant: BrandMarkVariant.horizontal, height: 72),
         ),
       ),
     ),

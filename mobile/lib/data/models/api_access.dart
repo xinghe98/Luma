@@ -2,6 +2,7 @@ final class AccessUser {
   const AccessUser({
     required this.id,
     required this.name,
+    required this.username,
     required this.role,
     required this.enabled,
     this.online = false,
@@ -11,6 +12,7 @@ final class AccessUser {
 
   final String id;
   final String name;
+  final String username;
   final String role;
   final bool enabled;
   final bool online;
@@ -20,12 +22,12 @@ final class AccessUser {
   bool get isAdmin => role == 'admin';
 }
 
-final class AccessToken {
-  const AccessToken({
+/// LoginSession 表示管理员可撤销的一台已登录设备。
+final class LoginSession {
+  const LoginSession({
     required this.id,
     required this.userId,
     required this.name,
-    required this.tokenPrefix,
     required this.expiresAt,
     required this.revokedAt,
     required this.createdAt,
@@ -34,7 +36,6 @@ final class AccessToken {
   final String id;
   final String userId;
   final String name;
-  final String tokenPrefix;
   final DateTime? expiresAt;
   final DateTime? revokedAt;
   final DateTime createdAt;
@@ -45,27 +46,4 @@ final class AccessToken {
     final expiration = expiresAt;
     return expiration != null && !expiration.isAfter(DateTime.now());
   }
-}
-
-final class IssuedAccessToken {
-  const IssuedAccessToken({
-    required this.id,
-    required this.userId,
-    required this.name,
-    required this.tokenPrefix,
-    required this.expiresAt,
-    required this.revokedAt,
-    required this.createdAt,
-    required this.token,
-  });
-
-  final String id;
-  final String userId;
-  final String name;
-  final String tokenPrefix;
-  final DateTime? expiresAt;
-  final DateTime? revokedAt;
-  final DateTime createdAt;
-
-  final String token;
 }

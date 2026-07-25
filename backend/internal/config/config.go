@@ -41,8 +41,12 @@ func (c ServerConfig) Address() string {
 
 // SecurityConfig 表示 API 认证和本地路径访问边界配置。
 type SecurityConfig struct {
-	// APITokenFile 是 API Token 的安全存储文件。
+	// APITokenFile 是为兼容旧配置保留的废弃字段，不再参与认证。
 	APITokenFile string `yaml:"api_token_file"`
+	// AdminUsername 是首次初始化本地管理员时使用的登录名。
+	AdminUsername string `yaml:"admin_username"`
+	// AdminPasswordFile 保存首次初始化管理员的密码。
+	AdminPasswordFile string `yaml:"admin_password_file"`
 	// AllowedOrigins 是允许访问 API 的浏览器来源列表。
 	AllowedOrigins []string `yaml:"allowed_origins"`
 	// AllowedRoots 是可以添加为媒体源的根目录白名单。

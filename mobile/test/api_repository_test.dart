@@ -314,9 +314,12 @@ void main() {
       aliasStore: const _MemoryAliasStore(),
     );
 
-    final result = await service.test(
+    final result = await service.login(
       'http://${server.address.host}:${server.port}',
-      'candidate-token',
+      const LoginCredentials(
+        username: 'candidate',
+        password: 'candidate-password',
+      ),
     );
 
     expect(result, ConnectionResult.unreachable);

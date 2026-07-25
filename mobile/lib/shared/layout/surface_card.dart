@@ -24,8 +24,7 @@ class SurfaceCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final borderRadius = BorderRadius.circular(radius);
-    final color =
-        Theme.of(context).cardTheme.color ?? scheme.surfaceContainer;
+    final color = Theme.of(context).cardTheme.color ?? scheme.surfaceContainer;
 
     final content = Padding(padding: padding, child: child);
 
@@ -40,11 +39,7 @@ class SurfaceCard extends StatelessWidget {
           : null,
       child: onTap == null
           ? content
-          : InkWell(
-              onTap: onTap,
-              borderRadius: borderRadius,
-              child: content,
-            ),
+          : InkWell(onTap: onTap, borderRadius: borderRadius, child: content),
     );
   }
 }

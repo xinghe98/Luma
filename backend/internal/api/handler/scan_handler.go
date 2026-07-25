@@ -67,6 +67,26 @@ type scanJobResponse struct {
 	UpdatedAt string `json:"updated_at"`
 	// Processing 由 media_items 按 last_seen_scan_id 聚合的处理进度。
 	Processing processingSummaryResponse `json:"processing"`
+	// Metadata 由本次扫描关联的影视资料任务聚合的进度。
+	Metadata metadataSummaryResponse `json:"metadata"`
+}
+
+// metadataSummaryResponse 对应 domain.MetadataSummary。
+type metadataSummaryResponse struct {
+	// Status 为 waiting、running、completed 或 completed_with_errors。
+	Status string `json:"status"`
+	// Total 本次扫描需处理的作品数。
+	Total int64 `json:"total"`
+	// Pending 等待刮削的作品数。
+	Pending int64 `json:"pending"`
+	// Refreshing 正在联网匹配的作品数。
+	Refreshing int64 `json:"refreshing"`
+	// Ready 已写入资料的作品数。
+	Ready int64 `json:"ready"`
+	// Unmatched 无可自动采用候选的作品数。
+	Unmatched int64 `json:"unmatched"`
+	// Failed 最终失败的作品数。
+	Failed int64 `json:"failed"`
 }
 
 // processingSummaryResponse 对应 domain.ProcessingSummary。
@@ -126,6 +146,7 @@ func presentScanJob(job domain.ScanJob) scanJobResponse {
 		CreatedAt:  job.CreatedAt.UTC().Format(time.RFC3339Nano),
 		UpdatedAt:  job.UpdatedAt.UTC().Format(time.RFC3339Nano),
 		Processing: presentProcessingSummary(job.Processing),
+		Metadata:   presentMetadataSummary(job.Metadata),
 	}
 	if job.StartedAt != nil {
 		value := job.StartedAt.UTC().Format(time.RFC3339Nano)
@@ -136,6 +157,16 @@ func presentScanJob(job domain.ScanJob) scanJobResponse {
 		result.FinishedAt = &value
 	}
 	return result
+}
+
+// presentMetadataSummary 为尚未建立资料运行的新扫描保留等待态。
+func presentMetadataSummary(summary domain.MetadataSummary) metadataSummaryResponse {
+	status := summary.Status
+	if status == "" {
+		status = "waiting"
+	}
+	return metadataSummaryResponse{Status: status, Total: summary.Total, Pending: summary.Pending,
+		Refreshing: summary.Refreshing, Ready: summary.Ready, Unmatched: summary.Unmatched, Failed: summary.Failed}
 }
 
 func presentProcessingSummary(summary domain.ProcessingSummary) processingSummaryResponse {

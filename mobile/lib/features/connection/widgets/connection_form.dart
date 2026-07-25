@@ -11,7 +11,8 @@ class ConnectionForm extends StatelessWidget {
     required this.controller,
     required this.hostController,
     required this.portController,
-    required this.tokenController,
+    required this.usernameController,
+    required this.passwordController,
     required this.enabled,
     required this.onConnect,
   });
@@ -19,7 +20,8 @@ class ConnectionForm extends StatelessWidget {
   final ConnectionController controller;
   final TextEditingController hostController;
   final TextEditingController portController;
-  final TextEditingController tokenController;
+  final TextEditingController usernameController;
+  final TextEditingController passwordController;
   final bool enabled;
   final VoidCallback onConnect;
 
@@ -66,7 +68,19 @@ class ConnectionForm extends StatelessWidget {
         ),
         const SizedBox(height: LumaSpacing.md),
         TextField(
-          controller: tokenController,
+          controller: usernameController,
+          enabled: enabled && !controller.isLoading,
+          textInputAction: TextInputAction.next,
+          autocorrect: false,
+          enableSuggestions: false,
+          decoration: const InputDecoration(
+            labelText: '用户名',
+            prefixIcon: Icon(Icons.person_outline_rounded),
+          ),
+        ),
+        const SizedBox(height: LumaSpacing.md),
+        TextField(
+          controller: passwordController,
           enabled: enabled && !controller.isLoading,
           obscureText: true,
           textInputAction: TextInputAction.done,
@@ -74,9 +88,14 @@ class ConnectionForm extends StatelessWidget {
           enableSuggestions: false,
           onSubmitted: controller.isLoading ? null : (_) => onConnect(),
           decoration: const InputDecoration(
-            labelText: '访问令牌',
-            prefixIcon: Icon(Icons.key_rounded),
+            labelText: '密码',
+            prefixIcon: Icon(Icons.lock_outline_rounded),
           ),
+        ),
+        const SizedBox(height: LumaSpacing.sm),
+        Text(
+          '当前服务器使用 HTTP，用户名和密码仅应在可信局域网内传输。',
+          style: TextStyle(color: Theme.of(context).colorScheme.error),
         ),
         const SizedBox(height: LumaSpacing.md),
         FilledButton.icon(

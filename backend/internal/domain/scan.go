@@ -47,6 +47,26 @@ type ScanJob struct {
 	UpdatedAt time.Time
 	// Processing 非表字段：按 last_seen_scan_id = 本任务 汇总的媒体处理进度。
 	Processing ProcessingSummary
+	// Metadata 非表字段：本次扫描触发的影视资料匹配进度。
+	Metadata MetadataSummary
+}
+
+// MetadataSummary 汇总一次扫描关联作品的影视资料匹配状态（由刮削运行与作品聚合，非独立作品字段）。
+type MetadataSummary struct {
+	// Status 为 waiting、running、completed 或 completed_with_errors。
+	Status string
+	// Total 本次扫描需要处理的作品数。
+	Total int64
+	// Pending 等待资料 Worker 领取的作品数。
+	Pending int64
+	// Refreshing 正在请求资料 Provider 的作品数。
+	Refreshing int64
+	// Ready 已成功写入影视资料的作品数。
+	Ready int64
+	// Unmatched 未找到可自动采用候选的作品数。
+	Unmatched int64
+	// Failed 最终失败的作品数。
+	Failed int64
 }
 
 // ProcessingSummary 汇总一次扫描关联媒体的 ffprobe/缩略图状态（由 media_items 聚合，非独立表）。

@@ -1097,7 +1097,7 @@ components:
         updated_at: { type: string, format: date-time }
     ScanJob:
       type: object
-      required: [id, source_id, status, phase, discovered_count, processed_count, failed_count, created_at, updated_at, processing]
+      required: [id, source_id, status, phase, discovered_count, processed_count, failed_count, created_at, updated_at, processing, metadata]
       properties:
         id: { type: string }
         source_id: { type: string }
@@ -1113,6 +1113,7 @@ components:
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
         processing: { $ref: "#/components/schemas/ProcessingSummary" }
+        metadata: { $ref: "#/components/schemas/MetadataSummary" }
     ProcessingSummary:
       type: object
       required: [status, total, discovered, probing, thumbnailing, ready, failed]
@@ -1123,6 +1124,17 @@ components:
         probing: { type: integer, format: int64, minimum: 0 }
         thumbnailing: { type: integer, format: int64, minimum: 0 }
         ready: { type: integer, format: int64, minimum: 0 }
+        failed: { type: integer, format: int64, minimum: 0 }
+    MetadataSummary:
+      type: object
+      required: [status, total, pending, refreshing, ready, unmatched, failed]
+      properties:
+        status: { type: string, enum: [waiting, running, completed, completed_with_errors] }
+        total: { type: integer, format: int64, minimum: 0 }
+        pending: { type: integer, format: int64, minimum: 0 }
+        refreshing: { type: integer, format: int64, minimum: 0 }
+        ready: { type: integer, format: int64, minimum: 0 }
+        unmatched: { type: integer, format: int64, minimum: 0 }
         failed: { type: integer, format: int64, minimum: 0 }
     MediaPage:
       type: object

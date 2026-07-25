@@ -117,7 +117,8 @@ func TestAppStartsServesHealthAndShutsDown(t *testing.T) {
 			IdleTimeout: time.Second, ShutdownTimeout: 5 * time.Second,
 		},
 		Security: config.SecurityConfig{
-			APITokenFile: filepath.Join(base, "secrets", "token"),
+			AdminUsername: "admin",
+			AdminPasswordFile: filepath.Join(base, "secrets", "admin_password"),
 			AllowedRoots: []string{mediaRoot},
 		},
 		Database: config.DatabaseConfig{
@@ -163,22 +164,30 @@ func TestAppStartsServesHealthAndShutsDown(t *testing.T) {
 		cancel()
 		t.Fatalf("health status = %d", response.StatusCode)
 	}
-	token, err := os.ReadFile(cfg.Security.APITokenFile)
+	password, err := os.ReadFile(cfg.Security.AdminPasswordFile)
 	if err != nil {
 		cancel()
 		t.Fatal(err)
 	}
+	loginBody, err := json.Marshal(map[string]string{"username": "admin", "password": string(bytes.TrimSpace(password)), "device_name": "test"})
+	if err != nil {
+		cancel()
+		t.Fatal(err)
+	}
+	response, err = http.Post("http://"+listener.Addr().String()+"/api/v1/auth/login", "application/json", bytes.NewReader(loginBody))
+	if err != nil {
+		cancel()
+		t.Fatal(err)
+	}
+	var login struct { SessionToken string `json:"session_token"` }
+	if err := json.NewDecoder(response.Body).Decode(&login); err != nil { _ = response.Body.Close(); cancel(); t.Fatal(err) }
+	_ = response.Body.Close()
+	if response.StatusCode != http.StatusOK || login.SessionToken == "" { cancel(); t.Fatalf("login status = %d", response.StatusCode) }
 	request, err := http.NewRequest(http.MethodGet, "http://"+listener.Addr().String()+"/api/v1/system/info", nil)
-	if err != nil {
-		cancel()
-		t.Fatal(err)
-	}
-	request.Header.Set("Authorization", "Bearer "+string(bytes.TrimSpace(token)))
+	if err != nil { cancel(); t.Fatal(err) }
+	request.Header.Set("Authorization", "Bearer "+login.SessionToken)
 	response, err = http.DefaultClient.Do(request)
-	if err != nil {
-		cancel()
-		t.Fatal(err)
-	}
+	if err != nil { cancel(); t.Fatal(err) }
 	var systemInfo struct {
 		Database     string   `json:"database"`
 		Capabilities []string `json:"capabilities"`
@@ -194,7 +203,7 @@ func TestAppStartsServesHealthAndShutsDown(t *testing.T) {
 		t.Fatalf("system info status = %d, body = %#v", response.StatusCode, systemInfo)
 	}
 	baseURL := "http://" + listener.Addr().String()
-	tokenText := string(bytes.TrimSpace(token))
+	tokenText := login.SessionToken
 	forbiddenBody, err := json.Marshal(map[string]string{"name": "越界目录", "root_path": base})
 	if err != nil {
 		cancel()

@@ -46,10 +46,7 @@ void main() {
           .height,
       72,
     );
-    expect(
-      find.text('连接家庭服务器后，你的影像仍然只属于自己的网络。'),
-      findsNothing,
-    );
+    expect(find.text('连接家庭服务器后，你的影像仍然只属于自己的网络。'), findsNothing);
 
     // IP 为空时拼不出合法地址。
     await tester.enterText(find.byType(TextField).at(0), '');
@@ -206,37 +203,38 @@ void main() {
     expect(find.text('没有找到相关内容'), findsNothing);
   });
 
-  testWidgets('catalog overview loads television shelf when it is visible initially', (
-    tester,
-  ) async {
-    final catalog = _CountingCatalogRepository();
-    final dependencies = AppDependencies(
-      mediaRepository: MockMediaRepository(),
-      catalogRepository: catalog,
-      connectionService: MockConnectionService(),
-    );
-    addTearDown(dependencies.dispose);
-    await tester.pumpWidget(
-      AppScope(
-        dependencies: dependencies,
-        child: MaterialApp(
-          home: CatalogPage(
-            onOpenCatalog: (_) {},
-            onOpenPersonalMedia: (item, {heroTag}) {},
-            onOpenSearch: () {},
-            onOpenMovies: (_) {},
-            onOpenSeries: (_) {},
-            onOpenPersonalVideos: (_) {},
+  testWidgets(
+    'catalog overview loads television shelf when it is visible initially',
+    (tester) async {
+      final catalog = _CountingCatalogRepository();
+      final dependencies = AppDependencies(
+        mediaRepository: MockMediaRepository(),
+        catalogRepository: catalog,
+        connectionService: MockConnectionService(),
+      );
+      addTearDown(dependencies.dispose);
+      await tester.pumpWidget(
+        AppScope(
+          dependencies: dependencies,
+          child: MaterialApp(
+            home: CatalogPage(
+              onOpenCatalog: (_) {},
+              onOpenPersonalMedia: (item, {heroTag}) {},
+              onOpenSearch: () {},
+              onOpenMovies: (_) {},
+              onOpenSeries: (_) {},
+              onOpenPersonalVideos: (_) {},
+            ),
           ),
         ),
-      ),
-    );
-    await tester.pump();
+      );
+      await tester.pump();
 
-    expect(catalog.calls[CatalogKind.movie], 1);
-    expect(catalog.calls[CatalogKind.series], 1);
-    expect(dependencies.media.loadState, LoadState.idle);
-  });
+      expect(catalog.calls[CatalogKind.movie], 1);
+      expect(catalog.calls[CatalogKind.series], 1);
+      expect(dependencies.media.loadState, LoadState.idle);
+    },
+  );
 
   testWidgets('search reports search errors instead of empty results', (
     tester,
@@ -410,7 +408,10 @@ void main() {
     final dependencies = createDependencies();
     await tester.pumpWidget(LumaApp(dependencies: dependencies));
     unawaited(
-      dependencies.connection.connect('http://192.168.1.10:8096', 'test-token'),
+      dependencies.connection.connect(
+        'http://192.168.1.10:8096',
+        const LoginCredentials(username: 'test', password: 'test-password'),
+      ),
     );
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 1500));
@@ -445,10 +446,20 @@ class _RecordingConnectionService implements ConnectionService {
   Future<void> disconnect() async {}
 
   @override
-  Future<ConnectionResult> test(String address, String token) async {
+  Future<ConnectionResult> login(
+    String address,
+    LoginCredentials credentials,
+  ) async {
     lastAddress = address;
     return ConnectionResult.invalidAddress;
   }
+
+  @override
+  Future<ConnectionResult> restore(String address, String sessionToken) =>
+      login(
+        address,
+        const LoginCredentials(username: 'test', password: 'test-password'),
+      );
 }
 
 class _CountingCatalogRepository implements CatalogRepository {

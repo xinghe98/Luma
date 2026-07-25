@@ -15,7 +15,7 @@ func CheckEnvironment(ctx context.Context, cfg Config) error {
 	}
 	dirs := []string{
 		filepath.Dir(cfg.Database.Path),
-		filepath.Dir(cfg.Security.APITokenFile),
+		filepath.Dir(cfg.Security.AdminPasswordFile),
 		cfg.Storage.ThumbnailDir,
 		cfg.Storage.CacheDir,
 	}
@@ -45,7 +45,7 @@ func CheckEnvironment(ctx context.Context, cfg Config) error {
 func PrepareDataDirectories(cfg Config) error {
 	dirs := []string{
 		filepath.Dir(cfg.Database.Path),
-		filepath.Dir(cfg.Security.APITokenFile),
+		filepath.Dir(cfg.Security.AdminPasswordFile),
 		cfg.Storage.ThumbnailDir,
 		cfg.Storage.CacheDir,
 	}

@@ -6,11 +6,18 @@ mixin _AccessEndpoints on _ApiTransport {
 
   Future<Map<String, dynamic>> createAccessUser(
     String name, {
+    required String username,
+    required String password,
     String? requestId,
   }) => _json(
     'POST',
     _api('/admin/users'),
-    data: {'name': name, 'request_id': ?requestId},
+    data: {
+      'name': name,
+      'username': username,
+      'password': password,
+      'request_id': ?requestId,
+    },
   );
 
   Future<Map<String, dynamic>> updateAccessUser(
@@ -18,22 +25,17 @@ mixin _AccessEndpoints on _ApiTransport {
     Map<String, dynamic> changes,
   ) => _json('PATCH', _api('/admin/users/${_segment(id)}'), data: changes);
 
-  Future<Map<String, dynamic>> getAccessTokens(String userId) =>
-      _json('GET', _api('/admin/users/${_segment(userId)}/tokens'));
-
-  Future<Map<String, dynamic>> issueAccessToken(
-    String userId,
-    Map<String, dynamic> data, {
-    String? requestId,
-  }) => _json(
-    'POST',
-    _api('/admin/users/${_segment(userId)}/tokens'),
-    data: {...data, 'request_id': ?requestId},
+  Future<void> resetAccessPassword(String userId, String password) => _empty(
+    'PUT',
+    _api('/admin/users/${_segment(userId)}/password'),
+    data: {'password': password},
   );
 
-  Future<void> revokeAccessToken(String id) async {
-    await _empty('DELETE', _api('/admin/tokens/${_segment(id)}'));
-  }
+  Future<Map<String, dynamic>> getAccessSessions(String userId) =>
+      _json('GET', _api('/admin/users/${_segment(userId)}/sessions'));
+
+  Future<void> revokeAccessSession(String id) =>
+      _empty('DELETE', _api('/admin/sessions/${_segment(id)}'));
 
   Future<Map<String, dynamic>> getAccessGrants(String userId) =>
       _json('GET', _api('/admin/users/${_segment(userId)}/sources'));
@@ -51,5 +53,4 @@ mixin _AccessEndpoints on _ApiTransport {
       _api('/admin/users/${_segment(userId)}/sources/${_segment(sourceId)}'),
     );
   }
-
 }

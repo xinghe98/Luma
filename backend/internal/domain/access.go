@@ -9,23 +9,26 @@ const (
 
 // Principal 是认证成功后贯穿请求链的身份，不接受客户端自行传入。
 type Principal struct {
-	UserID string
-	Name   string
-	Role   string
+	CredentialID string
+	UserID       string
+	Name         string
+	Role         string
 }
 
 func (p Principal) IsAdmin() bool { return p.Role == RoleAdmin }
 
 // User 是可被管理员签发访问凭据的家庭成员。
 type User struct {
-	ID        string
-	RequestID string
-	Name      string
-	Role      string
-	Enabled   bool
-	Online    bool
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	ID           string
+	RequestID    string
+	Name         string
+	Username     string
+	PasswordHash string
+	Role         string
+	Enabled      bool
+	Online       bool
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
 }
 
 // APIToken 保存令牌元数据。TokenHash 永远不得出现在 API 响应或日志中。
@@ -34,12 +37,20 @@ type APIToken struct {
 	RequestID   string
 	UserID      string
 	Name        string
+	Kind        string
 	TokenHash   string
 	TokenPrefix string
 	ExpiresAt   *time.Time
 	RevokedAt   *time.Time
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
+}
+
+// IssuedSession 只在登录成功时携带一次会话明文。
+type IssuedSession struct {
+	Session APIToken
+	Secret  string
+	User    User
 }
 
 // IssuedToken 只在创建响应中携带一次明文令牌。

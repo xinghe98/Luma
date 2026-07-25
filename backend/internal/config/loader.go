@@ -57,6 +57,7 @@ func Load(path string) (Config, error) {
 // defaults 返回可用于本地运行的默认配置值。
 func defaults() Config {
 	return Config{
+		Security: SecurityConfig{AdminUsername: "admin", AdminPasswordFile: "data/secrets/admin_password"},
 		Server: ServerConfig{
 			Host: "0.0.0.0", Port: 8080,
 			ReadHeaderTimeout: 10 * time.Second,
@@ -90,6 +91,7 @@ func defaults() Config {
 func resolvePaths(cfg *Config, base string) error {
 	paths := []*string{
 		&cfg.Security.APITokenFile,
+		&cfg.Security.AdminPasswordFile,
 		&cfg.Database.Path,
 		&cfg.Storage.ThumbnailDir,
 		&cfg.Storage.CacheDir,
@@ -129,8 +131,11 @@ func Validate(cfg Config) error {
 	if cfg.Server.ReadHeaderTimeout <= 0 || cfg.Server.IdleTimeout <= 0 || cfg.Server.ShutdownTimeout <= 0 {
 		problems = append(problems, "server timeouts must be positive")
 	}
-	if cfg.Security.APITokenFile == "" {
-		problems = append(problems, "security.api_token_file is required")
+	if strings.TrimSpace(cfg.Security.AdminUsername) == "" {
+		problems = append(problems, "security.admin_username is required")
+	}
+	if cfg.Security.AdminPasswordFile == "" {
+		problems = append(problems, "security.admin_password_file is required")
 	}
 	if len(cfg.Security.AllowedRoots) == 0 {
 		problems = append(problems, "security.allowed_roots must contain at least one directory")
@@ -149,7 +154,7 @@ func Validate(cfg Config) error {
 		// path 是配置字段对应的数据路径。
 		path string
 	}{
-		{"security.api_token_file", cfg.Security.APITokenFile},
+		{"security.admin_password_file", cfg.Security.AdminPasswordFile},
 		{"database.path", cfg.Database.Path},
 		{"storage.thumbnail_dir", cfg.Storage.ThumbnailDir},
 		{"storage.cache_dir", cfg.Storage.CacheDir},

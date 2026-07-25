@@ -22,6 +22,21 @@ final class ScanJobDecoder {
       processing: _decodeProcessing(
         objectValue(json['processing'], 'processing'),
       ),
+      metadata: json['metadata'] is Map<String, dynamic>
+          ? _decodeMetadata(objectValue(json['metadata'], 'metadata'))
+          : const MetadataSummary.completed(),
+    );
+  }
+
+  MetadataSummary _decodeMetadata(Map<String, dynamic> json) {
+    return MetadataSummary(
+      status: requiredValue(json, 'status'),
+      total: requiredValue(json, 'total'),
+      pending: requiredValue(json, 'pending'),
+      refreshing: requiredValue(json, 'refreshing'),
+      ready: requiredValue(json, 'ready'),
+      unmatched: requiredValue(json, 'unmatched'),
+      failed: requiredValue(json, 'failed'),
     );
   }
 

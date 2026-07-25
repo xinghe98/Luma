@@ -34,7 +34,10 @@ void main() {
       mediaController: media,
       successDelay: Duration.zero,
     );
-    await controller.connect('http://server.local', 'test-token');
+    await controller.connect(
+      'http://server.local',
+      const LoginCredentials(username: 'test', password: 'test-password'),
+    );
     await Future<void>.delayed(const Duration(milliseconds: 700));
     expect(session.isConnected, isTrue);
     expect(media.items.length, 32);
@@ -114,7 +117,7 @@ void main() {
     credentials.complete(
       const StoredCredentials(
         origin: 'http://server.local:8080',
-        token: 'test-token',
+        sessionToken: 'test-token',
       ),
     );
     expect(await restore, isFalse);
@@ -302,20 +305,25 @@ void main() {
     expect(controller.cacheSizeMb, 0);
   });
 
-  test('scan progress is weighted by media count across sources', () async {
+  test('scan progress enters metadata phase before completing', () async {
     final controller = SettingsController(
-      scanRepository: _WeightedScanRepository(),
+      scanRepository: _MetadataPhaseScanRepository(),
       scanPollInterval: const Duration(milliseconds: 1),
     );
     final progress = <double>[];
+    final labels = <String>[];
     final completed = Completer<void>();
     controller.addListener(() {
       final value = controller.scanProgress;
-      if (value != null) progress.add(value);
+      if (value != null) {
+        progress.add(value);
+        labels.add(controller.scanStatusLabel);
+      }
     });
     controller.startScan(onComplete: completed.complete);
     await completed.future;
-    expect(progress, contains(closeTo(51 / 101, 0.0001)));
+    expect(progress, contains(closeTo(0.85, 0.0001)));
+    expect(labels, contains('正在匹配影视资料'));
   });
 
   test('restore reports scans interrupted by a server restart', () async {
@@ -482,14 +490,16 @@ class _ProcessingScanRepository implements ScanRepository {
   Future<List<ScanJob>> startAll() async => [_job('running', 0)];
 }
 
-class _WeightedScanRepository implements ScanRepository {
-  ScanJob _job(String id, int total, int ready) => ScanJob(
-    id: id,
-    sourceId: id,
+class _MetadataPhaseScanRepository implements ScanRepository {
+  int _calls = 0;
+
+  ScanJob _job(MetadataSummary metadata) => ScanJob(
+    id: 'metadata-phase',
+    sourceId: 'source-1',
     status: 'completed',
     phase: 'completed',
-    discoveredCount: total,
-    processedCount: total,
+    discoveredCount: 1,
+    processedCount: 1,
     failedCount: 0,
     startedAt: DateTime(2026),
     finishedAt: DateTime(2026),
@@ -497,22 +507,45 @@ class _WeightedScanRepository implements ScanRepository {
     errorMessage: null,
     createdAt: DateTime(2026),
     updatedAt: DateTime(2026),
-    processing: ProcessingSummary(
+    processing: const ProcessingSummary(
       status: 'completed',
-      total: total,
+      total: 1,
       discovered: 0,
       probing: 0,
       thumbnailing: 0,
-      ready: ready,
+      ready: 1,
       failed: 0,
     ),
+    metadata: metadata,
   );
 
   @override
-  Future<ScanJob> get(String id) async => switch (id) {
-    'small' => _job('small', 1, 1),
-    _ => _job('large', 100, 50),
-  };
+  Future<ScanJob> get(String id) async {
+    _calls++;
+    return _calls == 1
+        ? _job(
+            const MetadataSummary(
+              status: 'running',
+              total: 2,
+              pending: 0,
+              refreshing: 1,
+              ready: 1,
+              unmatched: 0,
+              failed: 0,
+            ),
+          )
+        : _job(
+            const MetadataSummary(
+              status: 'completed',
+              total: 2,
+              pending: 0,
+              refreshing: 0,
+              ready: 1,
+              unmatched: 1,
+              failed: 0,
+            ),
+          );
+  }
 
   @override
   Future<ScanJob?> latest() async => null;
@@ -522,8 +555,7 @@ class _WeightedScanRepository implements ScanRepository {
 
   @override
   Future<List<ScanJob>> startAll() async => [
-    _job('small', 1, 0),
-    _job('large', 100, 0),
+    _job(const MetadataSummary.waiting()),
   ];
 }
 
@@ -628,15 +660,25 @@ class _ImmediateConnectionService implements ConnectionService {
   ServerProfile? connectedProfile;
 
   @override
-  Future<ConnectionResult> test(String address, String token) async {
+  Future<ConnectionResult> login(
+    String address,
+    LoginCredentials credentials,
+  ) async {
     connectedProfile = ServerProfile(
       name: 'server.local',
       address: address,
-      token: token,
+      token: 'session-token',
       hostName: 'server.local',
     );
     return ConnectionResult.success;
   }
+
+  @override
+  Future<ConnectionResult> restore(String address, String sessionToken) =>
+      login(
+        address,
+        const LoginCredentials(username: 'test', password: 'test-password'),
+      );
 
   @override
   Future<void> disconnect() async {}
@@ -647,17 +689,27 @@ class _MemberConnectionService implements ConnectionService {
   ServerProfile? connectedProfile;
 
   @override
-  Future<ConnectionResult> test(String address, String token) async {
+  Future<ConnectionResult> login(
+    String address,
+    LoginCredentials credentials,
+  ) async {
     connectedProfile = ServerProfile(
       name: 'server.local',
       address: address,
-      token: token,
+      token: 'member-session',
       hostName: 'server.local',
       userRole: 'member',
       capabilities: const ['media.read', 'user_data.write'],
     );
     return ConnectionResult.success;
   }
+
+  @override
+  Future<ConnectionResult> restore(String address, String sessionToken) =>
+      login(
+        address,
+        const LoginCredentials(username: 'member', password: 'member-password'),
+      );
 
   @override
   Future<void> disconnect() async {}

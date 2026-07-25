@@ -61,24 +61,29 @@ type fakeAccessUseCase struct{}
 func (fakeAccessUseCase) ListUsers(context.Context) ([]domain.User, error) {
 	return []domain.User{}, nil
 }
-func (fakeAccessUseCase) CreateUser(_ context.Context, name string) (domain.User, error) {
-	return domain.User{ID: "user_test", Name: name, Role: domain.RoleMember, Enabled: true}, nil
+func (fakeAccessUseCase) CreateUser(_ context.Context, name, username, _ string) (domain.User, error) {
+	return domain.User{ID: "user_test", Name: name, Username: username, Role: domain.RoleMember, Enabled: true}, nil
 }
 func (fakeAccessUseCase) UpdateUser(context.Context, string, *string, *bool) (domain.User, error) {
 	return domain.User{ID: "user_test", Role: domain.RoleMember, Enabled: true}, nil
 }
-func (fakeAccessUseCase) ListTokens(context.Context, string) ([]domain.APIToken, error) {
+func (fakeAccessUseCase) ResetPassword(context.Context, string, string) error { return nil }
+func (fakeAccessUseCase) ListSessions(context.Context, string) ([]domain.APIToken, error) {
 	return []domain.APIToken{}, nil
 }
-func (fakeAccessUseCase) IssueToken(context.Context, string, string, *time.Time) (domain.IssuedToken, error) {
-	return domain.IssuedToken{Token: domain.APIToken{ID: "token_test"}, Secret: "secret"}, nil
-}
-func (fakeAccessUseCase) RevokeToken(context.Context, string) error { return nil }
+func (fakeAccessUseCase) RevokeSession(context.Context, string) error { return nil }
 func (fakeAccessUseCase) ListGrants(context.Context, string) ([]string, error) {
 	return []string{}, nil
 }
 func (fakeAccessUseCase) GrantSource(context.Context, string, string) error  { return nil }
 func (fakeAccessUseCase) RevokeSource(context.Context, string, string) error { return nil }
+
+type fakeAuthenticationUseCase struct{}
+
+func (fakeAuthenticationUseCase) Login(context.Context, string, string, string) (domain.IssuedSession, error) {
+	return domain.IssuedSession{}, nil
+}
+func (fakeAuthenticationUseCase) Logout(context.Context, string) error { return nil }
 
 func (fakeCatalogUseCase) List(context.Context, domain.CatalogListRequest, string) ([]domain.CatalogItem, error) {
 	return []domain.CatalogItem{}, nil
@@ -244,6 +249,10 @@ func testRouter(t *testing.T) http.Handler {
 	if err != nil {
 		t.Fatal(err)
 	}
+	authHandler, err := handler.NewAuthHandler(fakeAuthenticationUseCase{})
+	if err != nil {
+		t.Fatal(err)
+	}
 	authenticator, err := security.NewTokenAuthenticator("abcdefghijklmnopqrstuvwxyz123456")
 	if err != nil {
 		t.Fatal(err)
@@ -251,7 +260,7 @@ func testRouter(t *testing.T) http.Handler {
 	router, err := NewRouter(RouterParams{
 		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
 		Health: health, System: system, Sources: sources, Scans: scans, Media: media, Stream: stream,
-		UserData: userData, Tags: tags, Catalog: catalogHandler, Access: accessHandler,
+		UserData: userData, Tags: tags, Catalog: catalogHandler, Access: accessHandler, Auth: authHandler,
 		Authenticator: authenticator,
 	})
 	if err != nil {

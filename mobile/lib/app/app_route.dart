@@ -12,6 +12,4 @@ abstract final class AppRoute {
   static const accessManagement = 'access-management';
   static const newMember = 'new-member';
   static const memberDetail = 'member-detail';
-  static const issueToken = 'issue-token';
 }
-

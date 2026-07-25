@@ -22,3 +22,13 @@ func TestPresentScanJobDefaultsProcessingToPending(t *testing.T) {
 		t.Fatalf("processing status = %q", response.Processing.Status)
 	}
 }
+
+func TestPresentScanJobIncludesMetadataSummary(t *testing.T) {
+	response := presentScanJob(domain.ScanJob{Metadata: domain.MetadataSummary{
+		Status: "running", Total: 3, Pending: 1, Refreshing: 1, Ready: 1,
+	}})
+	if response.Metadata.Status != "running" || response.Metadata.Total != 3 ||
+		response.Metadata.Pending != 1 || response.Metadata.Refreshing != 1 || response.Metadata.Ready != 1 {
+		t.Fatalf("metadata response = %#v", response.Metadata)
+	}
+}

@@ -53,7 +53,7 @@ func (w *ScanWorker) process(ctx context.Context, job domain.ScanJob) error {
 		}
 		return w.finishFailed(job, domain.ScanStatusFailed, "SCAN_COMMIT_FAILED", "提交扫描结果失败", err)
 	}
-	w.catalogSignal.Notify()
+	w.catalogSignal.Notify(CatalogSyncEvent{ScanID: job.ID, SourceID: source.ID})
 	return nil
 }
 

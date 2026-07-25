@@ -5,6 +5,7 @@ import 'api_session.dart';
 import 'api_session_interceptor.dart';
 
 part 'endpoints/access.dart';
+part 'endpoints/auth.dart';
 part 'endpoints/catalog.dart';
 part 'endpoints/media.dart';
 part 'endpoints/system_sources.dart';
@@ -16,6 +17,7 @@ final class ApiClient extends _ApiTransport
         _MediaEndpoints,
         _CatalogEndpoints,
         _AccessEndpoints,
+        _AuthEndpoints,
         _UserDataEndpoints {
   ApiClient(super._dio, {super.apiPrefix = defaultApiPrefix});
 
@@ -104,7 +106,7 @@ abstract class _ApiTransport {
     }
   }
 
-String _segment(String value) => Uri.encodeComponent(value);
+  String _segment(String value) => Uri.encodeComponent(value);
 
   String _api(String path) => '$_apiPrefix$path';
 

@@ -14,10 +14,19 @@ final class ApiAccessRepository implements AccessRepository {
       _decoder.decodeUserList(await _client.getAccessUsers());
 
   @override
-  Future<AccessUser> createUser(String name, {String? requestId}) async =>
-      _decoder.decodeUser(
-        await _client.createAccessUser(name, requestId: requestId),
-      );
+  Future<AccessUser> createUser(
+    String name, {
+    required String username,
+    required String password,
+    String? requestId,
+  }) async => _decoder.decodeUser(
+    await _client.createAccessUser(
+      name,
+      username: username,
+      password: password,
+      requestId: requestId,
+    ),
+  );
 
   @override
   Future<AccessUser> updateUser(
@@ -29,25 +38,16 @@ final class ApiAccessRepository implements AccessRepository {
   );
 
   @override
-  Future<List<AccessToken>> listTokens(String userId) async =>
-      _decoder.decodeTokenList(await _client.getAccessTokens(userId));
+  Future<void> resetPassword(String userId, String password) =>
+      _client.resetAccessPassword(userId, password);
 
   @override
-  Future<IssuedAccessToken> issueToken(
-    String userId, {
-    required String name,
-    DateTime? expiresAt,
-    String? requestId,
-  }) async => _decoder.decodeIssuedToken(
-    await _client.issueAccessToken(userId, {
-      'name': name,
-      if (expiresAt != null) 'expires_at': expiresAt.toUtc().toIso8601String(),
-    }, requestId: requestId),
-  );
+  Future<List<LoginSession>> listSessions(String userId) async =>
+      _decoder.decodeSessionList(await _client.getAccessSessions(userId));
 
   @override
-  Future<void> revokeToken(String tokenId) =>
-      _client.revokeAccessToken(tokenId);
+  Future<void> revokeSession(String sessionId) =>
+      _client.revokeAccessSession(sessionId);
 
   @override
   Future<List<String>> listGrants(String userId) async =>

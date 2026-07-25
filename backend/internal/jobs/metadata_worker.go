@@ -31,13 +31,15 @@ type MetadataWorker struct {
 	workerID        string
 	refreshInterval time.Duration
 	requestTimeout  time.Duration
+	// signal 让扫描后新入队的资料任务无需等待轮询周期。
+	signal *Signal
 }
 
-// NewMetadataWorker creates a persistent scraper worker.
+// NewMetadataWorker 创建持续领取资料任务的 Worker，并可接收扫描后的即时唤醒信号。
 func NewMetadataWorker(repo repository.MetadataRepository, sources repository.SourceRepository,
 	sourceFactory storage.SourceFactory, coordinator *metadata.Coordinator,
 	ids WorkerIDGenerator, clock WorkerClock, logger *slog.Logger,
-	refreshInterval, requestTimeout time.Duration) (*MetadataWorker, error) {
+	refreshInterval, requestTimeout time.Duration, signals ...*Signal) (*MetadataWorker, error) {
 	if repo == nil || sources == nil || sourceFactory == nil || coordinator == nil ||
 		ids == nil || clock == nil || logger == nil ||
 		refreshInterval <= 0 || requestTimeout <= 0 {
@@ -47,10 +49,14 @@ func NewMetadataWorker(repo repository.MetadataRepository, sources repository.So
 	if err != nil {
 		return nil, err
 	}
+	signal := NewSignal()
+	if len(signals) > 0 && signals[0] != nil {
+		signal = signals[0]
+	}
 	return &MetadataWorker{
 		repository: repo, sources: sources, sourceFactory: sourceFactory,
 		coordinator: coordinator, ids: ids, clock: clock, logger: logger,
-		workerID: workerID, refreshInterval: refreshInterval, requestTimeout: requestTimeout,
+		workerID: workerID, refreshInterval: refreshInterval, requestTimeout: requestTimeout, signal: signal,
 	}, nil
 }
 
@@ -71,6 +77,7 @@ func (w *MetadataWorker) Run(ctx context.Context) error {
 		select {
 		case <-ctx.Done():
 			return nil
+		case <-w.signal.C():
 		case <-ticker.C:
 		}
 	}

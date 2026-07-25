@@ -2,14 +2,12 @@ package service
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/xinghe98/Luma/backend/internal/config"
-	"github.com/xinghe98/Luma/backend/internal/domain"
 	dbrepo "github.com/xinghe98/Luma/backend/internal/repository/sqlite"
 )
 
@@ -31,11 +29,11 @@ func TestAccessServiceIdempotentWritesReplayWithoutDuplicating(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	firstUser, err := service.CreateUserIdempotent(ctx, "Alice", "create-1")
+	firstUser, err := service.CreateUserIdempotent(ctx, "Alice", "alice", "correct horse battery", "create-1")
 	if err != nil {
 		t.Fatal(err)
 	}
-	secondUser, err := service.CreateUserIdempotent(ctx, "Alice", "create-1")
+	secondUser, err := service.CreateUserIdempotent(ctx, "Alice", "alice", "ignored-password", "create-1")
 	if err != nil || secondUser.ID != firstUser.ID {
 		t.Fatalf("replayed user=%#v error=%v", secondUser, err)
 	}
@@ -44,26 +42,16 @@ func TestAccessServiceIdempotentWritesReplayWithoutDuplicating(t *testing.T) {
 		t.Fatalf("users=%#v error=%v", users, err)
 	}
 
-	firstToken, err := service.IssueTokenIdempotent(ctx, firstUser.ID, "Alice phone", nil, "token-1")
+	firstSession, err := service.Login(ctx, "alice", "correct horse battery", "Alice phone")
 	if err != nil {
 		t.Fatal(err)
 	}
-	secondToken, err := service.IssueTokenIdempotent(ctx, firstUser.ID, "Alice phone", nil, "token-1")
-	if err != nil || secondToken.Token.ID != firstToken.Token.ID || secondToken.Secret != firstToken.Secret {
-		t.Fatalf("replayed token=%#v error=%v", secondToken, err)
+	if err != nil || firstSession.Session.UserID != firstUser.ID || firstSession.Secret == "" {
+		t.Fatalf("session=%#v error=%v", firstSession, err)
 	}
-	tokens, err := service.ListTokens(ctx, firstUser.ID)
-	if err != nil || len(tokens) != 1 {
-		t.Fatalf("tokens=%#v error=%v", tokens, err)
-	}
-
-	afterRestart, err := NewAccessService(repository, ids, clock)
-	if err != nil {
-		t.Fatal(err)
-	}
-	replayed, err := afterRestart.IssueTokenIdempotent(ctx, firstUser.ID, "Alice phone", nil, "token-1")
-	if !errors.Is(err, domain.ErrIdempotencySecretUnavailable) || replayed.Token.ID != firstToken.Token.ID || replayed.Secret != "" {
-		t.Fatalf("restart replay=%#v error=%v", replayed, err)
+	sessions, err := service.ListSessions(ctx, firstUser.ID)
+	if err != nil || len(sessions) != 1 {
+		t.Fatalf("sessions=%#v error=%v", sessions, err)
 	}
 }
 
@@ -85,7 +73,7 @@ func TestAccessServiceIncludesObservedOnlineState(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	user, err := service.CreateUser(ctx, "Alice")
+	user, err := service.CreateUser(ctx, "Alice", "alice", "correct horse battery")
 	if err != nil {
 		t.Fatal(err)
 	}

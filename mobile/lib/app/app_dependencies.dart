@@ -140,10 +140,13 @@ class AppDependencies {
       final saved = await store.read();
       if (operation != _restoreOperation ||
           saved == null ||
-          saved.token == null) {
+          saved.sessionToken == null) {
         return false;
       }
-      final restored = await connection.restore(saved.origin, saved.token!);
+      final restored = await connection.restore(
+        saved.origin,
+        saved.sessionToken!,
+      );
       return operation == _restoreOperation && restored;
     } finally {
       if (operation == _restoreOperation) restoring.value = false;

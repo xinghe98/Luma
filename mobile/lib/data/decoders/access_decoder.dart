@@ -7,6 +7,7 @@ final class AccessDecoder {
   AccessUser decodeUser(Map<String, dynamic> json) => AccessUser(
     id: requiredValue(json, 'id'),
     name: requiredValue(json, 'name'),
+    username: requiredValue(json, 'username'),
     role: requiredValue(json, 'role'),
     enabled: requiredValue(json, 'enabled'),
     online: optionalValue<bool>(json, 'online') ?? false,
@@ -14,38 +15,23 @@ final class AccessDecoder {
     updatedAt: requiredDate(json, 'updated_at'),
   );
 
-  AccessToken decodeToken(Map<String, dynamic> json) => AccessToken(
+  LoginSession decodeSession(Map<String, dynamic> json) => LoginSession(
     id: requiredValue(json, 'id'),
     userId: requiredValue(json, 'user_id'),
     name: requiredValue(json, 'name'),
-    tokenPrefix: requiredValue(json, 'token_prefix'),
     expiresAt: nullableDate(json, 'expires_at'),
     revokedAt: nullableDate(json, 'revoked_at'),
     createdAt: requiredDate(json, 'created_at'),
   );
-
-  IssuedAccessToken decodeIssuedToken(Map<String, dynamic> json) {
-    final metadata = decodeToken(json);
-    return IssuedAccessToken(
-      id: metadata.id,
-      userId: metadata.userId,
-      name: metadata.name,
-      tokenPrefix: metadata.tokenPrefix,
-      expiresAt: metadata.expiresAt,
-      revokedAt: metadata.revokedAt,
-      createdAt: metadata.createdAt,
-      token: requiredValue(json, 'token'),
-    );
-  }
 
   List<AccessUser> decodeUserList(Map<String, dynamic> json) =>
       listValue(json, 'items')
           .map((value) => decodeUser(objectValue(value, 'access user')))
           .toList(growable: false);
 
-  List<AccessToken> decodeTokenList(Map<String, dynamic> json) =>
+  List<LoginSession> decodeSessionList(Map<String, dynamic> json) =>
       listValue(json, 'items')
-          .map((value) => decodeToken(objectValue(value, 'access token')))
+          .map((value) => decodeSession(objectValue(value, 'login session')))
           .toList(growable: false);
 
   List<String> decodeGrantIds(Map<String, dynamic> json) =>

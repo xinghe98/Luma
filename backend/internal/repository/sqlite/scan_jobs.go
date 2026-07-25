@@ -45,6 +45,9 @@ func (r *ScanRepository) GetJob(ctx context.Context, id string) (domain.ScanJob,
 	if err == nil {
 		err = r.attachProcessingSummary(ctx, &job)
 	}
+	if err == nil {
+		err = r.attachMetadataSummary(ctx, &job)
+	}
 	return job, err
 }
 
@@ -63,6 +66,9 @@ func (r *ScanRepository) LatestJob(ctx context.Context, sourceID string) (domain
 	}
 	if err == nil {
 		err = r.attachProcessingSummary(ctx, &job)
+	}
+	if err == nil {
+		err = r.attachMetadataSummary(ctx, &job)
 	}
 	return job, err
 }

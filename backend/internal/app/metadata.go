@@ -24,7 +24,7 @@ import (
 // buildMetadataWorkers registers compiled providers and creates online scraper workers.
 func buildMetadataWorkers(cfg config.MetadataConfig, catalogRepository *dbrepo.CatalogRepository,
 	sources repository.SourceRepository, sourceFactory storage.SourceFactory,
-	ids platform.SecureIDGenerator, clock platform.RealClock, logger *slog.Logger) ([]jobs.Runner, *metadata.Registry, error) {
+	ids platform.SecureIDGenerator, clock platform.RealClock, logger *slog.Logger, signal *jobs.Signal) ([]jobs.Runner, *metadata.Registry, error) {
 	// App tests and embedders may construct Config directly instead of going
 	// through config.Load. Preserve that older call path with runtime defaults;
 	// normal server startup has already applied and validated the same values.
@@ -76,17 +76,12 @@ func buildMetadataWorkers(cfg config.MetadataConfig, catalogRepository *dbrepo.C
 	if err != nil {
 		return nil, nil, err
 	}
-	hasResolver := len(registry.ProvidersFor(scraper.MediaKindMovie, scraper.CapabilitySidecar)) > 0 ||
-		len(registry.ProvidersFor(scraper.MediaKindSeries, scraper.CapabilitySidecar)) > 0 ||
-		len(registry.ProvidersFor(scraper.MediaKindMovie, scraper.CapabilitySearch)) > 0 ||
-		len(registry.ProvidersFor(scraper.MediaKindSeries, scraper.CapabilitySearch)) > 0
-	if !hasResolver {
-		return nil, registry, nil
-	}
+	// 即使未配置在线 Provider 也保留 Worker：它会把本次扫描的作品归为无候选终态，
+	// 避免客户端一直停在“正在匹配影视资料”。
 	runners := make([]jobs.Runner, 0, cfg.Workers)
 	for range cfg.Workers {
 		worker, err := jobs.NewMetadataWorker(catalogRepository, sources, sourceFactory, coordinator, ids, clock, logger,
-			cfg.RefreshInterval, cfg.RequestTimeout)
+			cfg.RefreshInterval, cfg.RequestTimeout, signal)
 		if err != nil {
 			return nil, nil, err
 		}

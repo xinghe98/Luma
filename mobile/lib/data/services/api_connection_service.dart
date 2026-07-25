@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+
 import '../api/api_client.dart';
 import '../api/api_exception.dart';
 import '../api/api_session.dart';
@@ -35,7 +37,10 @@ final class ApiConnectionService implements ConnectionService {
   ServerProfile? connectedProfile;
 
   @override
-  Future<ConnectionResult> test(String address, String token) async {
+  Future<ConnectionResult> login(
+    String address,
+    LoginCredentials credentials,
+  ) async {
     final operation = ++_operation;
     final uri = Uri.tryParse(address.trim());
     if (uri == null ||
@@ -44,20 +49,63 @@ final class ApiConnectionService implements ConnectionService {
         uri.host.isEmpty) {
       return ConnectionResult.invalidAddress;
     }
-    if (token.trim().isEmpty) return ConnectionResult.unauthorized;
+    if (credentials.username.trim().isEmpty || credentials.password.isEmpty) {
+      return ConnectionResult.unauthorized;
+    }
 
     final origin = normalizeOrigin(uri);
-    final candidate = ApiSession(origin: origin, token: token.trim());
+    final unauthenticated = _client.isolatedFor(ApiSession(origin: origin));
+    try {
+      await unauthenticated.getHealth();
+      final login = await unauthenticated.login(
+        credentials.username.trim(),
+        credentials.password,
+        deviceName: 'Luma ${defaultTargetPlatform.name}',
+      );
+      final sessionToken = login['session_token'];
+      if (sessionToken is! String || sessionToken.isEmpty) {
+        return ConnectionResult.unreachable;
+      }
+      return await _activateSession(operation, uri, origin, sessionToken);
+    } on ApiException catch (error) {
+      if (operation != _operation) return ConnectionResult.unreachable;
+      return error.statusCode == 401
+          ? ConnectionResult.unauthorized
+          : ConnectionResult.unreachable;
+    } on Object {
+      return ConnectionResult.unreachable;
+    } finally {
+      unauthenticated.close();
+    }
+  }
+
+  @override
+  Future<ConnectionResult> restore(String address, String sessionToken) async {
+    final operation = ++_operation;
+    final uri = Uri.tryParse(address.trim());
+    if (uri == null || !uri.hasScheme || uri.host.isEmpty) {
+      return ConnectionResult.invalidAddress;
+    }
+    return _activateSession(operation, uri, normalizeOrigin(uri), sessionToken);
+  }
+
+  Future<ConnectionResult> _activateSession(
+    int operation,
+    Uri uri,
+    String origin,
+    String sessionToken,
+  ) async {
+    final candidate = ApiSession(origin: origin, token: sessionToken);
     final probe = _client.isolatedFor(candidate);
     try {
-      await probe.getHealth();
       final system = _systemDecoder.decode(await probe.getSystemInfo());
       final sources = await ApiSourceRepository(probe).list(refresh: true);
       final alias = await _aliasStore.read(origin);
+      if (operation != _operation) return ConnectionResult.unreachable;
       final profile = ServerProfile(
         name: alias?.trim().isNotEmpty == true ? alias!.trim() : uri.host,
         address: origin,
-        token: token.trim(),
+        token: sessionToken,
         hostName: uri.host,
         sourceCount: sources.length,
         version: system.version,
@@ -67,21 +115,20 @@ final class ApiConnectionService implements ConnectionService {
         userRole: system.userRole,
         capabilities: system.capabilities,
       );
-      if (operation != _operation) return ConnectionResult.unreachable;
-      _apiSession.update(origin: origin, token: token.trim());
+      _apiSession.update(origin: origin, token: sessionToken);
       if (_sourceRepository case SessionSeedableSourceRepository cache) {
         cache.seedSessionCache(sources);
       }
       connectedProfile = profile;
       await _enqueueCredentialWrite(
         operation,
-        StoredCredentials(origin: origin, token: token.trim()),
+        StoredCredentials(origin: origin, sessionToken: sessionToken),
       );
-      if (operation != _operation) return ConnectionResult.unreachable;
-      return ConnectionResult.success;
+      return operation == _operation
+          ? ConnectionResult.success
+          : ConnectionResult.unreachable;
     } on ApiException catch (error) {
-      if (operation != _operation) return ConnectionResult.unreachable;
-      return error.statusCode == 401
+      return operation == _operation && error.statusCode == 401
           ? ConnectionResult.unauthorized
           : ConnectionResult.unreachable;
     } on Object {
@@ -111,7 +158,9 @@ final class ApiConnectionService implements ConnectionService {
   });
 
   Future<void> _enqueueCredential(Future<void> Function() action) {
-    final next = _credentialQueue.catchError((_) {}).then<void>((_) => action());
+    final next = _credentialQueue
+        .catchError((_) {})
+        .then<void>((_) => action());
     _credentialQueue = next.catchError((_) {});
     return next;
   }

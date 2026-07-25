@@ -3,20 +3,20 @@ import '../models/api_access.dart';
 abstract interface class AccessRepository {
   Future<List<AccessUser>> listUsers();
 
-  Future<AccessUser> createUser(String name, {String? requestId});
-
-  Future<AccessUser> updateUser(String id, {String? name, bool? enabled});
-
-  Future<List<AccessToken>> listTokens(String userId);
-
-  Future<IssuedAccessToken> issueToken(
-    String userId, {
-    required String name,
-    DateTime? expiresAt,
+  Future<AccessUser> createUser(
+    String name, {
+    required String username,
+    required String password,
     String? requestId,
   });
 
-  Future<void> revokeToken(String tokenId);
+  Future<AccessUser> updateUser(String id, {String? name, bool? enabled});
+
+  Future<void> resetPassword(String userId, String password);
+
+  Future<List<LoginSession>> listSessions(String userId);
+
+  Future<void> revokeSession(String sessionId);
 
   Future<List<String>> listGrants(String userId);
 
@@ -32,26 +32,25 @@ final class UnavailableAccessRepository implements AccessRepository {
   Future<List<AccessUser>> listUsers() => _unavailable();
 
   @override
-  Future<AccessUser> createUser(String name, {String? requestId}) =>
-      _unavailable();
+  Future<AccessUser> createUser(
+    String name, {
+    required String username,
+    required String password,
+    String? requestId,
+  }) => _unavailable();
 
   @override
   Future<AccessUser> updateUser(String id, {String? name, bool? enabled}) =>
       _unavailable();
 
   @override
-  Future<List<AccessToken>> listTokens(String userId) => _unavailable();
+  Future<void> resetPassword(String userId, String password) => _unavailable();
 
   @override
-  Future<IssuedAccessToken> issueToken(
-    String userId, {
-    required String name,
-    DateTime? expiresAt,
-    String? requestId,
-  }) => _unavailable();
+  Future<List<LoginSession>> listSessions(String userId) => _unavailable();
 
   @override
-  Future<void> revokeToken(String tokenId) => _unavailable();
+  Future<void> revokeSession(String sessionId) => _unavailable();
 
   @override
   Future<List<String>> listGrants(String userId) => _unavailable();

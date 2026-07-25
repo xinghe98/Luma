@@ -39,6 +39,8 @@ type RouterParams struct {
 	Catalog *handler.CatalogHandler
 	// Access 处理管理员成员、令牌和媒体源授权接口。
 	Access *handler.AccessHandler
+	// Auth 处理公开登录和受保护登出接口。
+	Auth *handler.AuthHandler
 	// Authenticator 验证 API Bearer Token。
 	Authenticator middleware.BearerAuthenticator
 }
@@ -48,7 +50,7 @@ func NewRouter(params RouterParams) (http.Handler, error) {
 	if params.Logger == nil {
 		return nil, errors.New("logger is required")
 	}
-	if params.Health == nil || params.System == nil || params.Sources == nil || params.Scans == nil || params.Media == nil || params.Stream == nil || params.UserData == nil || params.Tags == nil || params.Catalog == nil || params.Access == nil {
+	if params.Health == nil || params.System == nil || params.Sources == nil || params.Scans == nil || params.Media == nil || params.Stream == nil || params.UserData == nil || params.Tags == nil || params.Catalog == nil || params.Access == nil || params.Auth == nil {
 		return nil, errors.New("HTTP Handler 依赖不能为空")
 	}
 	if params.Authenticator == nil {
@@ -72,31 +74,34 @@ func NewRouter(params RouterParams) (http.Handler, error) {
 	engine.GET("/health", params.Health.Get)
 
 	v1 := engine.Group("/api/v1")
-	v1.Use(middleware.TokenAuth(params.Authenticator))
-	v1.GET("/system/info", params.System.Info)
-	v1.GET("/sources", params.Sources.List)
-	v1.GET("/media", params.Media.List)
-	v1.GET("/media/count", params.Media.Count)
-	v1.GET("/media/continue-watching", params.Media.ContinueWatching)
-	v1.GET("/media/:id", params.Media.Get)
-	v1.GET("/catalog", params.Catalog.List)
-	v1.GET("/catalog/:id", params.Catalog.Get)
-	v1.PATCH("/catalog/:id/user-data", params.Catalog.UpdateFavorite)
-	v1.GET("/catalog/artwork/:id", params.Catalog.Artwork)
-	v1.GET("/media/:id/thumbnail", params.Media.Thumbnail)
-	v1.GET("/media/:id/stream", params.Stream.Stream)
-	v1.HEAD("/media/:id/stream", params.Stream.Stream)
-	v1.GET("/media/:id/original", params.Stream.Original)
-	v1.HEAD("/media/:id/original", params.Stream.Original)
-	v1.GET("/media/:id/user-data", params.UserData.Get)
-	v1.PATCH("/media/:id/user-data", params.UserData.Update)
-	v1.PUT("/media/:id/progress", params.UserData.UpdateProgress)
-	v1.GET("/tags", params.Tags.List)
-	v1.POST("/tags", params.Tags.Create)
-	v1.PATCH("/tags/:id", params.Tags.Update)
-	v1.DELETE("/tags/:id", params.Tags.Delete)
+	v1.POST("/auth/login", params.Auth.Login)
+	protected := v1.Group("")
+	protected.Use(middleware.TokenAuth(params.Authenticator))
+	protected.POST("/auth/logout", params.Auth.Logout)
+	protected.GET("/system/info", params.System.Info)
+	protected.GET("/sources", params.Sources.List)
+	protected.GET("/media", params.Media.List)
+	protected.GET("/media/count", params.Media.Count)
+	protected.GET("/media/continue-watching", params.Media.ContinueWatching)
+	protected.GET("/media/:id", params.Media.Get)
+	protected.GET("/catalog", params.Catalog.List)
+	protected.GET("/catalog/:id", params.Catalog.Get)
+	protected.PATCH("/catalog/:id/user-data", params.Catalog.UpdateFavorite)
+	protected.GET("/catalog/artwork/:id", params.Catalog.Artwork)
+	protected.GET("/media/:id/thumbnail", params.Media.Thumbnail)
+	protected.GET("/media/:id/stream", params.Stream.Stream)
+	protected.HEAD("/media/:id/stream", params.Stream.Stream)
+	protected.GET("/media/:id/original", params.Stream.Original)
+	protected.HEAD("/media/:id/original", params.Stream.Original)
+	protected.GET("/media/:id/user-data", params.UserData.Get)
+	protected.PATCH("/media/:id/user-data", params.UserData.Update)
+	protected.PUT("/media/:id/progress", params.UserData.UpdateProgress)
+	protected.GET("/tags", params.Tags.List)
+	protected.POST("/tags", params.Tags.Create)
+	protected.PATCH("/tags/:id", params.Tags.Update)
+	protected.DELETE("/tags/:id", params.Tags.Delete)
 
-	admin := v1.Group("")
+	admin := protected.Group("")
 	admin.Use(middleware.RequireAdmin())
 	admin.POST("/sources", params.Sources.Create)
 	admin.GET("/admin/media-roots", params.Sources.ListAvailableRoots)
@@ -116,9 +121,9 @@ func NewRouter(params RouterParams) (http.Handler, error) {
 	admin.GET("/admin/users", params.Access.ListUsers)
 	admin.POST("/admin/users", params.Access.CreateUser)
 	admin.PATCH("/admin/users/:id", params.Access.UpdateUser)
-	admin.GET("/admin/users/:id/tokens", params.Access.ListTokens)
-	admin.POST("/admin/users/:id/tokens", params.Access.IssueToken)
-	admin.DELETE("/admin/tokens/:id", params.Access.RevokeToken)
+	admin.PUT("/admin/users/:id/password", params.Access.ResetPassword)
+	admin.GET("/admin/users/:id/sessions", params.Access.ListSessions)
+	admin.DELETE("/admin/sessions/:id", params.Access.RevokeSession)
 	admin.GET("/admin/users/:id/sources", params.Access.ListGrants)
 	admin.PUT("/admin/users/:id/sources/:sourceId", params.Access.GrantSource)
 	admin.DELETE("/admin/users/:id/sources/:sourceId", params.Access.RevokeSource)

@@ -1,3 +1,4 @@
+// 访问管理 Handler 负责管理员创建账号、重置密码、管理会话和媒体源授权。
 package handler
 
 import (
@@ -13,26 +14,27 @@ import (
 	"github.com/xinghe98/Luma/backend/internal/domain"
 )
 
-// AccessUseCase 是管理员 API 所需的成员与授权能力。
+// AccessUseCase 描述管理员管理账号、会话和来源授权所需的能力。
 type AccessUseCase interface {
 	ListUsers(context.Context) ([]domain.User, error)
-	CreateUser(context.Context, string) (domain.User, error)
+	CreateUser(context.Context, string, string, string) (domain.User, error)
 	UpdateUser(context.Context, string, *string, *bool) (domain.User, error)
-	ListTokens(context.Context, string) ([]domain.APIToken, error)
-	IssueToken(context.Context, string, string, *time.Time) (domain.IssuedToken, error)
-	RevokeToken(context.Context, string) error
+	ResetPassword(context.Context, string, string) error
+	ListSessions(context.Context, string) ([]domain.APIToken, error)
+	RevokeSession(context.Context, string) error
 	ListGrants(context.Context, string) ([]string, error)
 	GrantSource(context.Context, string, string) error
 	RevokeSource(context.Context, string, string) error
 }
 
-type AccessHandler struct{ service AccessUseCase }
-
 type idempotentAccessUseCase interface {
-	CreateUserIdempotent(context.Context, string, string) (domain.User, error)
-	IssueTokenIdempotent(context.Context, string, string, *time.Time, string) (domain.IssuedToken, error)
+	CreateUserIdempotent(context.Context, string, string, string, string) (domain.User, error)
 }
 
+// AccessHandler 将管理请求映射为访问控制用例。
+type AccessHandler struct{ service AccessUseCase }
+
+// NewAccessHandler 创建管理员访问控制 Handler。
 func NewAccessHandler(service AccessUseCase) (*AccessHandler, error) {
 	if service == nil {
 		return nil, errors.New("访问控制用例不能为空")
@@ -43,6 +45,7 @@ func NewAccessHandler(service AccessUseCase) (*AccessHandler, error) {
 type accessUserJSON struct {
 	ID        string `json:"id"`
 	Name      string `json:"name"`
+	Username  string `json:"username"`
 	Role      string `json:"role"`
 	Enabled   bool   `json:"enabled"`
 	Online    bool   `json:"online"`
@@ -50,17 +53,16 @@ type accessUserJSON struct {
 	UpdatedAt string `json:"updated_at"`
 }
 
-type accessTokenJSON struct {
-	ID          string  `json:"id"`
-	UserID      string  `json:"user_id"`
-	Name        string  `json:"name"`
-	TokenPrefix string  `json:"token_prefix"`
-	ExpiresAt   *string `json:"expires_at"`
-	RevokedAt   *string `json:"revoked_at"`
-	CreatedAt   string  `json:"created_at"`
-	Secret      string  `json:"token,omitempty"`
+type sessionJSON struct {
+	ID        string  `json:"id"`
+	UserID    string  `json:"user_id"`
+	Name      string  `json:"name"`
+	ExpiresAt *string `json:"expires_at"`
+	RevokedAt *string `json:"revoked_at"`
+	CreatedAt string  `json:"created_at"`
 }
 
+// ListUsers 返回可管理账号列表。
 func (h *AccessHandler) ListUsers(c *gin.Context) {
 	users, err := h.service.ListUsers(c.Request.Context())
 	if err != nil {
@@ -74,9 +76,12 @@ func (h *AccessHandler) ListUsers(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"items": items})
 }
 
+// CreateUser 创建成员及其初始登录密码。
 func (h *AccessHandler) CreateUser(c *gin.Context) {
 	var body struct {
 		Name      string `json:"name"`
+		Username  string `json:"username"`
+		Password  string `json:"password"`
 		RequestID string `json:"request_id"`
 	}
 	if err := apirequest.DecodeJSON(c, &body); err != nil {
@@ -86,9 +91,9 @@ func (h *AccessHandler) CreateUser(c *gin.Context) {
 	var user domain.User
 	var err error
 	if idempotent, ok := h.service.(idempotentAccessUseCase); ok {
-		user, err = idempotent.CreateUserIdempotent(c.Request.Context(), body.Name, body.RequestID)
+		user, err = idempotent.CreateUserIdempotent(c.Request.Context(), body.Name, body.Username, body.Password, body.RequestID)
 	} else {
-		user, err = h.service.CreateUser(c.Request.Context(), body.Name)
+		user, err = h.service.CreateUser(c.Request.Context(), body.Name, body.Username, body.Password)
 	}
 	if err != nil {
 		response.FromError(c, err)
@@ -97,6 +102,7 @@ func (h *AccessHandler) CreateUser(c *gin.Context) {
 	c.JSON(http.StatusCreated, presentAccessUser(user))
 }
 
+// UpdateUser 更新成员显示名称或启用状态。
 func (h *AccessHandler) UpdateUser(c *gin.Context) {
 	var body struct {
 		Name    *string `json:"name"`
@@ -118,54 +124,39 @@ func (h *AccessHandler) UpdateUser(c *gin.Context) {
 	c.JSON(http.StatusOK, presentAccessUser(user))
 }
 
-func (h *AccessHandler) ListTokens(c *gin.Context) {
-	tokens, err := h.service.ListTokens(c.Request.Context(), c.Param("id"))
-	if err != nil {
-		response.FromError(c, err)
-		return
-	}
-	items := make([]accessTokenJSON, 0, len(tokens))
-	for _, token := range tokens {
-		items = append(items, presentAccessToken(token, ""))
-	}
-	c.JSON(http.StatusOK, gin.H{"items": items})
-}
-
-func (h *AccessHandler) IssueToken(c *gin.Context) {
+// ResetPassword 重置成员密码并使其所有设备退出登录。
+func (h *AccessHandler) ResetPassword(c *gin.Context) {
 	var body struct {
-		Name      string  `json:"name"`
-		ExpiresAt *string `json:"expires_at"`
-		RequestID string  `json:"request_id"`
+		Password string `json:"password"`
 	}
 	if err := apirequest.DecodeJSON(c, &body); err != nil {
 		response.Error(c, http.StatusBadRequest, "INVALID_REQUEST", err.Error(), nil)
 		return
 	}
-	var expires *time.Time
-	if body.ExpiresAt != nil {
-		value, err := time.Parse(time.RFC3339, *body.ExpiresAt)
-		if err != nil {
-			response.Error(c, http.StatusBadRequest, "INVALID_REQUEST", "expires_at 必须是 RFC3339 时间", nil)
-			return
-		}
-		expires = &value
+	if err := h.service.ResetPassword(c.Request.Context(), c.Param("id"), body.Password); err != nil {
+		response.FromError(c, err)
+		return
 	}
-	var issued domain.IssuedToken
-	var err error
-	if idempotent, ok := h.service.(idempotentAccessUseCase); ok {
-		issued, err = idempotent.IssueTokenIdempotent(c.Request.Context(), c.Param("id"), body.Name, expires, body.RequestID)
-	} else {
-		issued, err = h.service.IssueToken(c.Request.Context(), c.Param("id"), body.Name, expires)
-	}
+	c.Status(http.StatusNoContent)
+}
+
+// ListSessions 返回成员的登录设备。
+func (h *AccessHandler) ListSessions(c *gin.Context) {
+	sessions, err := h.service.ListSessions(c.Request.Context(), c.Param("id"))
 	if err != nil {
 		response.FromError(c, err)
 		return
 	}
-	c.JSON(http.StatusCreated, presentAccessToken(issued.Token, issued.Secret))
+	items := make([]sessionJSON, 0, len(sessions))
+	for _, session := range sessions {
+		items = append(items, presentSession(session))
+	}
+	c.JSON(http.StatusOK, gin.H{"items": items})
 }
 
-func (h *AccessHandler) RevokeToken(c *gin.Context) {
-	if err := h.service.RevokeToken(c.Request.Context(), c.Param("id")); err != nil {
+// RevokeSession 使一个指定登录设备立即失效。
+func (h *AccessHandler) RevokeSession(c *gin.Context) {
+	if err := h.service.RevokeSession(c.Request.Context(), c.Param("id")); err != nil {
 		response.FromError(c, err)
 		return
 	}
@@ -198,19 +189,17 @@ func (h *AccessHandler) RevokeSource(c *gin.Context) {
 }
 
 func presentAccessUser(user domain.User) accessUserJSON {
-	return accessUserJSON{ID: user.ID, Name: user.Name, Role: user.Role, Enabled: user.Enabled, Online: user.Online,
-		CreatedAt: user.CreatedAt.UTC().Format(time.RFC3339Nano), UpdatedAt: user.UpdatedAt.UTC().Format(time.RFC3339Nano)}
+	return accessUserJSON{ID: user.ID, Name: user.Name, Username: user.Username, Role: user.Role, Enabled: user.Enabled, Online: user.Online, CreatedAt: user.CreatedAt.UTC().Format(time.RFC3339Nano), UpdatedAt: user.UpdatedAt.UTC().Format(time.RFC3339Nano)}
 }
 
-func presentAccessToken(token domain.APIToken, secret string) accessTokenJSON {
-	result := accessTokenJSON{ID: token.ID, UserID: token.UserID, Name: token.Name, TokenPrefix: token.TokenPrefix,
-		CreatedAt: token.CreatedAt.UTC().Format(time.RFC3339Nano), Secret: secret}
-	if token.ExpiresAt != nil {
-		value := token.ExpiresAt.UTC().Format(time.RFC3339Nano)
+func presentSession(session domain.APIToken) sessionJSON {
+	result := sessionJSON{ID: session.ID, UserID: session.UserID, Name: session.Name, CreatedAt: session.CreatedAt.UTC().Format(time.RFC3339Nano)}
+	if session.ExpiresAt != nil {
+		value := session.ExpiresAt.UTC().Format(time.RFC3339Nano)
 		result.ExpiresAt = &value
 	}
-	if token.RevokedAt != nil {
-		value := token.RevokedAt.UTC().Format(time.RFC3339Nano)
+	if session.RevokedAt != nil {
+		value := session.RevokedAt.UTC().Format(time.RFC3339Nano)
 		result.RevokedAt = &value
 	}
 	return result

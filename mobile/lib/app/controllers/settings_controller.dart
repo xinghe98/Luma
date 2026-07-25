@@ -34,10 +34,13 @@ class SettingsController extends ChangeNotifier {
     if (isScanning) {
       if (_scanJobs.isEmpty) return '正在准备扫描';
       if (_scanJobs.any((job) => job.status == 'pending')) return '等待扫描';
+      if (_scanJobs.any((job) => job.status == 'running')) return '正在扫描目录';
       if (_processing.thumbnailing > 0) return '正在生成缩略图';
       if (_processing.probing > 0) return '正在探测媒体';
       if (_processing.discovered > 0) return '等待媒体处理';
-      return '正在扫描目录';
+      if (_metadata.status == 'waiting') return '正在整理作品库';
+      if (_metadata.status == 'running') return '正在匹配影视资料';
+      return '正在完成扫描';
     }
     if (_scanJobs.any((job) => job.status == 'interrupted')) return '扫描已中断';
     if (_scanJobs.any((job) => job.status != 'completed')) return '扫描失败';
@@ -58,13 +61,25 @@ class SettingsController extends ChangeNotifier {
       if (summary.thumbnailing > 0) '缩略图中 ${summary.thumbnailing}',
       if (summary.failed > 0) '失败 ${summary.failed}',
     ];
+    final metadata = _metadata;
+    if (_isMetadataPhase) {
+      parts.addAll([
+        '资料 ${metadata.total} 部',
+        '已匹配 ${metadata.ready}',
+        if (metadata.pending > 0) '待匹配 ${metadata.pending}',
+        if (metadata.refreshing > 0) '匹配中 ${metadata.refreshing}',
+        if (metadata.unmatched > 0) '无候选 ${metadata.unmatched}',
+        if (metadata.failed > 0) '资料失败 ${metadata.failed}',
+      ]);
+    }
     return parts.join(' · ');
   }
 
   bool get hasScanProblem =>
       _scanError != null ||
       _scanJobs.any((job) => job.status == 'interrupted') ||
-      _processing.failed > 0;
+      _processing.failed > 0 ||
+      _metadata.failed > 0;
 
   void setThemeMode(ThemeMode value) {
     if (_themeMode == value) return;
@@ -213,20 +228,84 @@ class SettingsController extends ChangeNotifier {
     );
   }
 
+  MetadataSummary get _metadata {
+    final jobs = _scanJobs;
+    final active = jobs.any(
+      (job) =>
+          job.metadata.status == 'waiting' || job.metadata.status == 'running',
+    );
+    final failed = jobs.fold(0, (total, job) => total + job.metadata.failed);
+    return MetadataSummary(
+      status: active
+          ? (jobs.any((job) => job.metadata.status == 'running')
+                ? 'running'
+                : 'waiting')
+          : (failed > 0 ? 'completed_with_errors' : 'completed'),
+      total: jobs.fold(0, (total, job) => total + job.metadata.total),
+      pending: jobs.fold(0, (total, job) => total + job.metadata.pending),
+      refreshing: jobs.fold(0, (total, job) => total + job.metadata.refreshing),
+      ready: jobs.fold(0, (total, job) => total + job.metadata.ready),
+      unmatched: jobs.fold(0, (total, job) => total + job.metadata.unmatched),
+      failed: failed,
+    );
+  }
+
+  bool get _isMetadataPhase =>
+      _scanJobs.isNotEmpty &&
+      _scanJobs.every(
+        (job) =>
+            job.status == 'completed' && job.processing.status != 'running',
+      );
+
   static double _averageProgress(List<ScanJob> jobs) {
-    // 后端 total/ready/failed 都以本次扫描中的单个媒体为单位，按总量加权。
+    // 媒体处理占前 70%，资料匹配占后 30%，各阶段均按后端总量加权。
     final total = jobs.fold(0, (sum, job) => sum + job.processing.total);
-    if (total <= 0) return 0;
+    final mediaProgress = total <= 0
+        ? 1.0
+        : (jobs.fold(
+                    0,
+                    (sum, job) =>
+                        sum + job.processing.ready + job.processing.failed,
+                  ) /
+                  total)
+              .clamp(0, 1);
+    final mediaActive = jobs.any(
+      (job) =>
+          job.status == 'pending' ||
+          job.status == 'running' ||
+          job.processing.status == 'running',
+    );
+    if (mediaActive) return mediaProgress * 0.7;
+    final metadata = jobs.fold<MetadataSummary>(
+      const MetadataSummary.completed(),
+      (value, job) => MetadataSummary(
+        status: job.metadata.status,
+        total: value.total + job.metadata.total,
+        pending: value.pending + job.metadata.pending,
+        refreshing: value.refreshing + job.metadata.refreshing,
+        ready: value.ready + job.metadata.ready,
+        unmatched: value.unmatched + job.metadata.unmatched,
+        failed: value.failed + job.metadata.failed,
+      ),
+    );
+    if (metadata.total <= 0) return 1;
     final completed = jobs.fold(
       0,
-      (sum, job) => sum + job.processing.ready + job.processing.failed,
+      (sum, job) =>
+          sum +
+          job.metadata.ready +
+          job.metadata.unmatched +
+          job.metadata.failed,
     );
-    return (completed / total).clamp(0, 1);
+    return 0.7 + 0.3 * (completed / metadata.total).clamp(0, 1);
   }
 
   static bool _requiresPolling(ScanJob job) {
     if (job.status == 'pending' || job.status == 'running') return true;
-    return job.status == 'completed' && job.processing.status == 'running';
+    return job.status == 'completed' &&
+        (job.processing.status == 'running' ||
+            job.metadata.status == 'waiting' ||
+            job.metadata.status == 'running');
   }
 
   void _applyCompletedErrors(List<ScanJob> jobs) {
@@ -241,6 +320,9 @@ class SettingsController extends ChangeNotifier {
         messages.add(job.errorMessage ?? job.status);
       } else if (job.processing.status == 'completed_with_errors') {
         messages.add('${job.processing.failed} 个媒体处理失败');
+      }
+      if (job.metadata.failed > 0) {
+        messages.add('${job.metadata.failed} 部影视资料匹配失败');
       }
     }
     _scanError = messages.isEmpty ? null : messages.join('；');

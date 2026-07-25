@@ -87,3 +87,61 @@ func TestProcessingStatus(t *testing.T) {
 		})
 	}
 }
+
+func TestScanMetadataRunQueuesOnlyCurrentUnfinishedWorks(t *testing.T) {
+	sources, scans := newStage2Repositories(t)
+	ctx := context.Background()
+	now := time.Unix(300, 0).UTC()
+	source := createTestSource(t, sources, now)
+	job := createAndClaimScan(t, scans, source.ID, "scan_metadata", now)
+	file := domain.DiscoveredFile{RelativePath: "电影/示例.mkv", Filename: "示例.mkv", MediaType: domain.MediaTypeVideo, Size: 1, ModifiedAt: now}
+	media, err := scans.ReconcileFile(ctx, job.ID, source.ID, "metadata_media", file, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := scans.CompleteJob(ctx, job.ID, source.ID, now); err != nil {
+		t.Fatal(err)
+	}
+	_, err = scans.db.Exec(`INSERT INTO catalog_items(id,source_id,kind,title,sort_title,metadata_status,created_at_ms,updated_at_ms)
+		VALUES('pending_item',?,'movie','示例','示例','pending',?,?),
+		('ready_item',?,'movie','已完成','已完成','ready',?,?)`, source.ID, now.UnixMilli(), now.UnixMilli(), source.ID, now.UnixMilli(), now.UnixMilli())
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = scans.db.Exec(`INSERT INTO catalog_media_links(media_id,catalog_item_id,match_status,confidence,rule_version,media_updated_at_ms,created_at_ms,updated_at_ms)
+		VALUES(?, 'pending_item','matched',100,1,?,?,?)`, media.MediaID, now.UnixMilli(), now.UnixMilli(), now.UnixMilli())
+	if err != nil {
+		t.Fatal(err)
+	}
+	catalogs, err := NewCatalogRepository(scans.db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	count, err := catalogs.QueueMetadataForScan(ctx, job.ID, source.ID, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Fatalf("queued item count = %d, want 1", count)
+	}
+	if count, err = catalogs.QueueMetadataForScan(ctx, job.ID, source.ID, now); err != nil || count != 0 {
+		t.Fatalf("duplicate scan run = (%d, %v), want (0, nil)", count, err)
+	}
+	got, err := scans.GetJob(ctx, job.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Metadata.Status != "running" || got.Metadata.Total != 1 || got.Metadata.Pending != 1 {
+		t.Fatalf("metadata summary = %#v", got.Metadata)
+	}
+	if _, err := scans.db.Exec(`UPDATE catalog_items SET metadata_status='ready' WHERE id='pending_item'`); err != nil {
+		t.Fatal(err)
+	}
+	got, err = scans.GetJob(ctx, job.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Metadata.Status != "completed" || got.Metadata.Ready != 1 {
+		t.Fatalf("completed metadata summary = %#v", got.Metadata)
+	}
+}

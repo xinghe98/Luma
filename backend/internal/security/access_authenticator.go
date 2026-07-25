@@ -2,6 +2,7 @@ package security
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"time"
 
@@ -17,30 +18,24 @@ type ActivityRecorder interface {
 	Observe(userID string)
 }
 
-// AccessAuthenticator 同时接受本地管理员根令牌和数据库中的成员令牌。
+// AccessAuthenticator 只接受数据库中有效的登录会话。
 type AccessAuthenticator struct {
-	bootstrap *TokenAuthenticator
-	lookup    PrincipalLookup
-	activity  ActivityRecorder
+	lookup   PrincipalLookup
+	activity ActivityRecorder
 }
 
-func NewAccessAuthenticator(bootstrapToken string, lookup PrincipalLookup, activity ...ActivityRecorder) (*AccessAuthenticator, error) {
-	root, err := NewTokenAuthenticator(bootstrapToken)
-	if err != nil {
-		return nil, err
+func NewAccessAuthenticator(lookup PrincipalLookup, activity ...ActivityRecorder) (*AccessAuthenticator, error) {
+	if lookup == nil {
+		return nil, errors.New("会话查询依赖不能为空")
 	}
 	var recorder ActivityRecorder
 	if len(activity) > 0 {
 		recorder = activity[0]
 	}
-	return &AccessAuthenticator{bootstrap: root, lookup: lookup, activity: recorder}, nil
+	return &AccessAuthenticator{lookup: lookup, activity: recorder}, nil
 }
 
 func (a *AccessAuthenticator) AuthenticateAuthorization(ctx context.Context, authorization string) (domain.Principal, bool) {
-	if principal, ok := a.bootstrap.AuthenticateAuthorization(ctx, authorization); ok {
-		a.observe(principal)
-		return principal, true
-	}
 	parts := strings.Fields(authorization)
 	if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") || a.lookup == nil {
 		return domain.Principal{}, false

@@ -6,7 +6,10 @@ class MockConnectionService implements ConnectionService {
   ServerProfile? connectedProfile;
 
   @override
-  Future<ConnectionResult> test(String address, String token) async {
+  Future<ConnectionResult> login(
+    String address,
+    LoginCredentials credentials,
+  ) async {
     await Future<void>.delayed(const Duration(milliseconds: 900));
     final uri = Uri.tryParse(address.trim());
     if (uri == null ||
@@ -15,11 +18,14 @@ class MockConnectionService implements ConnectionService {
         uri.host.isEmpty) {
       return ConnectionResult.invalidAddress;
     }
+    if (credentials.username.trim().isEmpty || credentials.password.isEmpty) {
+      return ConnectionResult.unauthorized;
+    }
     if (uri.host.contains('offline')) return ConnectionResult.unreachable;
     connectedProfile = ServerProfile(
       name: '家庭影音服务器',
       address: address.trim(),
-      token: token,
+      token: 'mock-session',
       hostName: uri.host,
       sourceCount: 3,
       version: 'dev',
@@ -29,6 +35,13 @@ class MockConnectionService implements ConnectionService {
     );
     return ConnectionResult.success;
   }
+
+  @override
+  Future<ConnectionResult> restore(String address, String sessionToken) =>
+      login(
+        address,
+        const LoginCredentials(username: 'mock', password: 'mock'),
+      );
 
   @override
   Future<void> disconnect() async => connectedProfile = null;

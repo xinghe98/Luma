@@ -14,6 +14,7 @@ final class ScanJob {
     required this.createdAt,
     required this.updatedAt,
     required this.processing,
+    this.metadata = const MetadataSummary.completed(),
   });
 
   final String id;
@@ -30,6 +31,45 @@ final class ScanJob {
   final DateTime createdAt;
   final DateTime updatedAt;
   final ProcessingSummary processing;
+  final MetadataSummary metadata;
+}
+
+final class MetadataSummary {
+  const MetadataSummary({
+    required this.status,
+    required this.total,
+    required this.pending,
+    required this.refreshing,
+    required this.ready,
+    required this.unmatched,
+    required this.failed,
+  });
+
+  const MetadataSummary.waiting()
+    : status = 'waiting',
+      total = 0,
+      pending = 0,
+      refreshing = 0,
+      ready = 0,
+      unmatched = 0,
+      failed = 0;
+
+  const MetadataSummary.completed()
+    : status = 'completed',
+      total = 0,
+      pending = 0,
+      refreshing = 0,
+      ready = 0,
+      unmatched = 0,
+      failed = 0;
+
+  final String status;
+  final int total;
+  final int pending;
+  final int refreshing;
+  final int ready;
+  final int unmatched;
+  final int failed;
 }
 
 final class ProcessingSummary {

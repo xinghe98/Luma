@@ -13,7 +13,7 @@ import (
 )
 
 func (b *bootstrap) buildWorkers(database *sql.DB, sources *dbrepo.SourceRepository, scans *dbrepo.ScanRepository,
-	localFactory *storage.LocalFactory, ids platform.SecureIDGenerator, clock platform.RealClock, catalogSignal *jobs.Signal) (*jobs.Group, *jobs.Signal, error) {
+	localFactory *storage.LocalFactory, ids platform.SecureIDGenerator, clock platform.RealClock, catalogSignal *jobs.CatalogSyncSignal) (*jobs.Group, *jobs.Signal, error) {
 	processing, err := dbrepo.NewProcessingRepository(database)
 	if err != nil {
 		return nil, nil, fmt.Errorf("创建媒体处理 Repository: %w", err)

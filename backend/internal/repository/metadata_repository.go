@@ -10,6 +10,8 @@ import (
 
 // MetadataRepository persists catalog scrape jobs, candidates, rich metadata, and artwork.
 type MetadataRepository interface {
+	// QueueMetadataForScan 为一次成功扫描创建资料运行并只入队本次关联的未完成作品。
+	QueueMetadataForScan(context.Context, string, string, time.Time) (int, error)
 	// EnqueuePendingMetadata creates jobs for pending or stale works without disturbing active backoff.
 	EnqueuePendingMetadata(context.Context, time.Time, time.Time) (int, error)
 	// ClaimMetadata atomically claims one due scrape job.

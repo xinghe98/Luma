@@ -102,7 +102,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   await dependencies.media.refresh();
                   if (!context.mounted) return;
                   context.showLumaSnack(
-                    '扫描完成，发现 ${settings.scanDiscoveredCount} 个媒体文件',
+                    '扫描与影视资料匹配完成，发现 ${settings.scanDiscoveredCount} 个媒体文件',
                   );
                 },
                 onEditAlias: () => _editAlias(context),

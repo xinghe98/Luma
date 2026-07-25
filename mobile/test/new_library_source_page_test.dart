@@ -137,25 +137,25 @@ class _FakeSourceRepository implements MutableSourceRepository {
 
 class _FakeAccessRepository implements AccessRepository {
   @override
-  Future<AccessUser> createUser(String name, {String? requestId}) =>
-      throw UnimplementedError();
+  Future<AccessUser> createUser(
+    String name, {
+    required String username,
+    required String password,
+    String? requestId,
+  }) => throw UnimplementedError();
 
   @override
   Future<void> grantSource(String userId, String sourceId) async {}
 
   @override
-  Future<IssuedAccessToken> issueToken(
-    String userId, {
-    required String name,
-    DateTime? expiresAt,
-    String? requestId,
-  }) => throw UnimplementedError();
+  Future<void> resetPassword(String userId, String password) =>
+      throw UnimplementedError();
 
   @override
   Future<List<String>> listGrants(String userId) async => const [];
 
   @override
-  Future<List<AccessToken>> listTokens(String userId) async => const [];
+  Future<List<LoginSession>> listSessions(String userId) async => const [];
 
   @override
   Future<List<AccessUser>> listUsers() async => const [];
@@ -164,7 +164,7 @@ class _FakeAccessRepository implements AccessRepository {
   Future<void> revokeSource(String userId, String sourceId) async {}
 
   @override
-  Future<void> revokeToken(String tokenId) async {}
+  Future<void> revokeSession(String sessionId) async {}
 
   @override
   Future<AccessUser> updateUser(String id, {String? name, bool? enabled}) =>
