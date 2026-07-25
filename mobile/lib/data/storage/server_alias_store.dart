@@ -1,4 +1,3 @@
-// Stores a client-local display alias independently for each server origin.
 abstract interface class ServerAliasStore {
   Future<String?> read(String origin);
 

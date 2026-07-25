@@ -1,5 +1,3 @@
-// Auto-scan debounce logic coalesces filesystem events for AutoScanScheduler.
-// It shares the scheduler mutex and WaitGroup so shutdown can safely join callbacks.
 package jobs
 
 import (
@@ -8,14 +6,11 @@ import (
 	"time"
 )
 
-// debounceTimer binds a cancellable timer to its one-time WaitGroup completion.
 type debounceTimer struct {
 	timer *time.Timer
 	done  sync.Once
 }
 
-// scheduleSource starts a scan after the debounce window, retaining a trailing
-// scan when a source remains busy.
 func (s *AutoScanScheduler) scheduleSource(ctx context.Context, sourceID string) {
 	if sourceID == "" {
 		return
@@ -55,8 +50,6 @@ func (s *AutoScanScheduler) scheduleSource(ctx context.Context, sourceID string)
 	s.debounceTimers[sourceID] = holder
 }
 
-// stopDebounceTimers cancels callbacks that have not started; started callbacks
-// observe Run's context and finish through timerWG.
 func (s *AutoScanScheduler) stopDebounceTimers() {
 	s.mu.Lock()
 	s.stopping = true

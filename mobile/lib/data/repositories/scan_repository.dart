@@ -1,4 +1,3 @@
-// Scan data boundary used by SettingsController.
 import '../models/api_scan.dart';
 
 abstract interface class ScanRepository {

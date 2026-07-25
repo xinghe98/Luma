@@ -1,4 +1,3 @@
-// Typed representations of media API responses.
 import 'media_types.dart';
 
 class MediaSummary {

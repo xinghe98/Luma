@@ -1,4 +1,3 @@
-// Loads protected media resources with the active API session.
 import 'package:flutter/material.dart';
 
 import '../../app/app_scope.dart';
@@ -31,11 +30,8 @@ class AuthenticatedMediaImage extends StatelessWidget {
   /// 首帧到达后淡入；用于原图叠在缩略图上时避免生硬切换。
   final Duration? fadeInDuration;
 
-  /// `fit` avoids stretching a decoded image when both cache dimensions are
-  /// constrained (notably the full-screen preview memory budget).
   final ResizeImagePolicy resizePolicy;
 
-  /// Called after the first decoded frame is available.
   final VoidCallback? onImageLoaded;
 
   @override
@@ -98,8 +94,6 @@ class AuthenticatedMediaImage extends StatelessWidget {
   void _notifyImageLoaded() {
     final callback = onImageLoaded;
     if (callback == null) return;
-    // A cached first frame can be delivered while the parent is building.
-    // Deferring avoids setState-during-build in the preview's thumbnail swap.
     WidgetsBinding.instance.addPostFrameCallback((_) => callback());
   }
 }

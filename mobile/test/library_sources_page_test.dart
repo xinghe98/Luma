@@ -1,5 +1,3 @@
-// Verifies media-source settings use an in-page empty-state action and only
-// reveal the app-bar action after at least one source has loaded.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:luma/data/models/api_managed_source.dart';

@@ -38,8 +38,6 @@ class _ConnectionPageState extends State<ConnectionPage> {
   }
 
   @override
-  /// Builds the connection form with an emphasized brand mark while preserving
-  /// accessible form controls and the saved-session recovery state.
   Widget build(BuildContext context) {
     final dependencies = AppScope.of(context);
     final controller = dependencies.connection;
@@ -133,8 +131,6 @@ class _ConnectionPageState extends State<ConnectionPage> {
   }
 }
 
-/// Enlarges the visible horizontal mark by clipping the transparent padding
-/// embedded in the source asset, without consuming that padding in the layout.
 class _ConnectionBrandMark extends StatelessWidget {
   const _ConnectionBrandMark();
 

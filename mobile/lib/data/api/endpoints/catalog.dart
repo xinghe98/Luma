@@ -1,4 +1,3 @@
-// Catalog endpoint methods expose collection reads and manual match updates.
 part of '../api_client.dart';
 
 mixin _CatalogEndpoints on _ApiTransport {
@@ -27,4 +26,3 @@ mixin _CatalogEndpoints on _ApiTransport {
   }
 
 }
-

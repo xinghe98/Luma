@@ -1,5 +1,3 @@
-// Navigation helpers open named routes with the route data needed for stable first frames.
-// They cache selected media before navigation and preserve player/detail transition rules.
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
@@ -12,11 +10,6 @@ import '../features/shell/app_destination.dart';
 import 'app_route.dart';
 import 'app_scope.dart';
 
-/// Route-only presentation data for media details.
-///
-/// Videos skip Hero and use a short fade because their cover must not compete
-/// with the platform route transition for raster work.
-/// Route-only presentation data preserves first-frame media-detail transition choices.
 class MediaDetailRouteData {
   const MediaDetailRouteData({
     this.heroTag,
@@ -33,7 +26,6 @@ extension AppNavigation on BuildContext {
   void goToDestination(AppDestination destination) =>
       goNamed(destination.routeName);
 
-  /// Opens a media detail route with the animation appropriate to its type.
   void openMediaDetails(MediaItem item, {String? heroTag}) {
     // 搜索/库页条目不一定位于首页集合，先写入缓存再打开稳定 URL。
     AppScope.of(this).media.remember(item);
@@ -79,4 +71,3 @@ extension AppNavigation on BuildContext {
     );
   }
 }
-

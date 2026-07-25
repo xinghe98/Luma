@@ -1,4 +1,3 @@
-// Decodes media source payloads.
 import '../models/api_source.dart';
 import 'decoder_utils.dart';
 

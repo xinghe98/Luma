@@ -1,5 +1,3 @@
-// Verifies NewLibrarySourcePage uses configured server roots with lightweight
-// repository fakes; no shared app state survives between widget-test cases.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:luma/data/models/api_access.dart';

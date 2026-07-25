@@ -43,7 +43,6 @@ class MediaGridState extends StatelessWidget {
     _ => _mediaGrid(),
   };
 
-  /// Reuses the rendered grid while a refresh request is in flight.
   Widget _mediaGrid() => ResponsiveMediaGrid(
       items: items,
       heroTagPrefix: heroTagPrefix,

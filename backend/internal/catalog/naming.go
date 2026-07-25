@@ -1,4 +1,3 @@
-// Package catalog contains deterministic, offline-first media naming rules.
 package catalog
 
 import (
@@ -27,9 +26,6 @@ var (
 	releaseMetadataPattern = regexp.MustCompile(`(?i)(?:^|[ ._\-\[(])(18\d{2}|19\d{2}|20\d{2}|21\d{2}|4320p|2160p|hd1080p|1080p|720p|480p|4k|8k|uhd|hdr|dv|bluray|blu-ray|bd|web|web-dl|webrip|hdtv|remux|x26[45]|h26[45]|hevc|av1|aac|dts|ac3|mandarin|cantonese|chs|cht|eng|bdys|99mp4)(?:$|[ ._\-\])])`)
 )
 
-// Match derives a conservative movie or episode mapping from a source-scoped
-// path. TV matches accept common episode-only names, but ambiguous or
-// conflicting numbering remains queued for manual review.
 func Match(candidate domain.CatalogCandidate) domain.CatalogMatch {
 	match := domain.CatalogMatch{
 		MediaID: candidate.MediaID, SourceID: candidate.SourceID,
@@ -105,8 +101,6 @@ type episodeSignal struct {
 	confidence int
 }
 
-// matchTVEpisode reconciles explicit filename signals with an optional season
-// directory. Missing seasons default to one; conflicting signals never guess.
 func matchTVEpisode(stem, showName string, parts []string) (season, episode, tokenEnd, confidence int, ok, conflict bool) {
 	directorySeason, hasDirectorySeason := seasonFromParents(parts)
 	signals := explicitEpisodeSignals(stem)
@@ -202,9 +196,6 @@ func seasonFromParents(parts []string) (int, bool) {
 	return 0, false
 }
 
-// bareEpisodeNumber handles only an episode-like numeric stem or a show-title
-// prefix followed by one to three digits. Four-digit years and resolutions are
-// therefore never accepted by this fallback.
 func bareEpisodeNumber(stem, showName string) (episode, tokenEnd int, ok bool) {
 	cleaned := stem
 	if location := releaseMetadataPattern.FindStringIndex(cleaned); location != nil {
@@ -259,7 +250,6 @@ func episodeTitle(stem string, tokenEnd, episode int) string {
 	return "第 " + strconv.Itoa(episode) + " 集"
 }
 
-// NormalizeTitle produces the stable, case-insensitive catalog identity key.
 func NormalizeTitle(value string) string {
 	return strings.Map(func(r rune) rune {
 		if unicode.IsLetter(r) || unicode.IsDigit(r) {
@@ -269,7 +259,6 @@ func NormalizeTitle(value string) string {
 	}, value)
 }
 
-// StableID creates a short deterministic identifier without exposing paths.
 func StableID(prefix string, values ...string) string {
 	sum := sha256.Sum256([]byte(strings.Join(values, "\x00")))
 	return prefix + "_" + hex.EncodeToString(sum[:12])

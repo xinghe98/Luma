@@ -57,8 +57,6 @@ func TestAccessServiceIdempotentWritesReplayWithoutDuplicating(t *testing.T) {
 		t.Fatalf("tokens=%#v error=%v", tokens, err)
 	}
 
-	// A new process can still locate the original token, but must never invent a
-	// second one because the one-time plaintext is intentionally not persisted.
 	afterRestart, err := NewAccessService(repository, ids, clock)
 	if err != nil {
 		t.Fatal(err)

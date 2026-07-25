@@ -1,5 +1,3 @@
-// Organization match editing owns the form controllers for one catalog issue.
-// It returns true only after a save or ignore mutation succeeds so callers can refresh safely.
 import 'package:flutter/material.dart';
 
 import '../../../core/theme.dart';
@@ -146,5 +144,4 @@ class _OrganizationMatchEditorPageState
     }
   }
 }
-
 

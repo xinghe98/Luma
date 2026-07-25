@@ -1,5 +1,3 @@
--- Request IDs make retrying member creation and token issuance safe after an
--- ambiguous network failure.  They are opaque client-generated values.
 ALTER TABLE users ADD COLUMN request_id TEXT;
 ALTER TABLE api_tokens ADD COLUMN request_id TEXT;
 

@@ -1,5 +1,3 @@
-// Shared route pages handle unsupported capabilities and access-user deep-link resolution.
-// They retain useful app chrome while asynchronous route data is loading or unavailable.
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
@@ -10,7 +8,6 @@ import '../../features/shell/app_destination.dart';
 import '../../shared/states/empty_state.dart';
 import '../../shared/states/skeleton.dart';
 
-/// Displays a stable fallback when a route cannot resolve its required capability or data.
 class UnavailableRoutePage extends StatelessWidget {
   const UnavailableRoutePage({
     super.key,
@@ -36,7 +33,6 @@ class UnavailableRoutePage extends StatelessWidget {
   );
 }
 
-/// Resolves an access user for direct links before building the destination page.
 class AccessUserRoutePage extends StatefulWidget {
   const AccessUserRoutePage({
     super.key,

@@ -27,8 +27,6 @@ func NewPathPolicy(roots []string) (*PathPolicy, error) {
 	return policy, nil
 }
 
-// ReplaceAllowedRoots swaps the complete whitelist only after every entry has
-// been canonicalized. Readers always observe either the old or the new list.
 func (p *PathPolicy) ReplaceAllowedRoots(roots []string) error {
 	canonical := make([]string, 0, len(roots))
 	for _, root := range roots {

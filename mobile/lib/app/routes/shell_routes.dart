@@ -1,5 +1,3 @@
-// Shell route construction owns the five persistent navigation destinations.
-// It uses AppNavigation callbacks so route data is preserved without coupling to AppDependencies.
 import 'package:go_router/go_router.dart';
 
 import '../../data/models/media_types.dart';

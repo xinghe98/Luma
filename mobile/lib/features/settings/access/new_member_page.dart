@@ -246,8 +246,6 @@ class _NewMemberPageState extends State<NewMemberPage> {
         });
       }
 
-      // The backend has no batch transaction. Keep the created member and the
-      // remaining grants so retrying cannot create another member or token.
       for (final sourceId in List<String>.from(_pendingGrantIds)) {
         await widget.access.grantSource(member.id, sourceId);
         if (!mounted) return;

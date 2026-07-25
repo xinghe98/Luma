@@ -52,9 +52,6 @@ class AppDependencies {
       connectionService: connectionService,
       sessionController: session,
       mediaController: media,
-      // Scan-job APIs are administrator-only. Ordinary members still load
-      // their accessible media, but must not turn the expected 403 response
-      // from scan status restoration into a visible scan failure.
       onConnected: () async {
         final server = session.server;
         if (server != null && server.can('scans.manage')) {
@@ -64,7 +61,6 @@ class AppDependencies {
     );
   }
 
-  /// Builds application-scoped dependencies without blocking on restore.
   static AppDependencies create() {
     const apiPrefix = String.fromEnvironment(
       'LUMA_API_PREFIX',
@@ -106,7 +102,6 @@ class AppDependencies {
     );
   }
 
-  /// Creates dependencies and restores a saved session when possible.
   static Future<AppDependencies> production() async {
     final dependencies = create();
     await dependencies.restoreSession();

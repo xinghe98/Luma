@@ -1,5 +1,3 @@
-// PlayerPage coordinates media lookup, player lifecycle, device interaction, and system UI.
-// It owns teardown ordering so leaving playback never leaves device or overlay state behind.
 import 'dart:async';
 
 import 'package:flutter/material.dart';

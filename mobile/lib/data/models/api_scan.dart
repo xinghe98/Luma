@@ -1,4 +1,3 @@
-// Typed representations of scan-job API responses.
 final class ScanJob {
   const ScanJob({
     required this.id,

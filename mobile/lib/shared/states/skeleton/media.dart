@@ -1,5 +1,3 @@
-// Media-loading skeletons mirror grid and poster card hierarchy while content loads.
-// They compose the shared SkeletonPulse and Luma layout tokens without owning async state.
 import 'package:flutter/material.dart';
 
 import '../../../core/theme.dart';
@@ -111,4 +109,3 @@ class PosterGridSkeleton extends StatelessWidget {
 }
 
 /// 设置类页面的首屏骨架，保留说明、操作区和列表的空间关系。
-

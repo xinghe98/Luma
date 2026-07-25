@@ -1,14 +1,7 @@
-// Provides the shared bottom-sheet presentation for local, mutually exclusive
-// choices. Feature pages supply their own labels and persistence so this UI
-// helper remains side-effect-free while a sheet transition is active.
 import 'package:flutter/material.dart';
 
 import '../../core/theme.dart';
 
-/// Describes one value presented by [showSingleChoiceSheet].
-///
-/// [description] is optional so compact choices such as server paths can use
-/// a single line while explanatory choices can retain their supporting text.
 @immutable
 class BottomSheetChoice<T> {
   const BottomSheetChoice({
@@ -24,11 +17,6 @@ class BottomSheetChoice<T> {
   final String? description;
 }
 
-/// Opens a bottom sheet for one local selection and returns the chosen value.
-///
-/// Dismissing it with Back, the scrim, or a drag returns null. The caller owns
-/// any form update, repository call, or other side effect after the sheet has
-/// fully dismissed.
 Future<T?> showSingleChoiceSheet<T>(
   BuildContext context, {
   required String title,

@@ -1,5 +1,3 @@
-// The admin HTTP client authenticates management requests and validates local CLI inputs.
-// It owns request serialization and bounded response reads for every command handler.
 package main
 
 import (

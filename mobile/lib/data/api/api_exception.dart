@@ -1,4 +1,3 @@
-// Normalizes Dio and backend error envelopes for repositories and services.
 import 'package:dio/dio.dart';
 
 final class ApiException implements Exception {

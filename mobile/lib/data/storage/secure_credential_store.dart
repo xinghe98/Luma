@@ -1,4 +1,3 @@
-// Persists connection credentials in platform-provided secure storage.
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import 'credential_store.dart';

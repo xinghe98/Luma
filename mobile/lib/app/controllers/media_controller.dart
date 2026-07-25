@@ -59,11 +59,6 @@ class MediaController extends ChangeNotifier {
 
   MediaItem? findById(String id) => _byId[id];
 
-  /// Caches an entry before opening its detail without rebuilding unchanged UI.
-  ///
-  /// A notification is sent only when this entry changes a visible home item;
-  /// callers can therefore use this during a route transition without forcing
-  /// the source page to rebuild its entire media grid.
   void remember(MediaItem item, {bool notify = true}) {
     final changedVisibleItem = _cacheAndReplaceHome(item);
     if (notify && changedVisibleItem) notifyListeners();
@@ -247,9 +242,6 @@ class MediaController extends ChangeNotifier {
     _sessionGeneration++;
     _mutationGeneration++;
     _inflight.clear();
-    // An old-server count must not suppress the first count request after a
-    // reconnect. Its completion callback checks identity before clearing a
-    // newer in-flight request.
     _catalogCountRequest = null;
     // 清除 repository 中按 id 保留的详情，避免换服后复用旧服务器数据。
     if (_repository case SessionResettableMediaRepository resettable) {
@@ -299,7 +291,6 @@ class MediaController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Updates the cache and returns whether a visible home-list entry changed.
   bool _cacheAndReplaceHome(MediaItem updated) {
     final index = _items.indexWhere((item) => item.id == updated.id);
     final changedHomeItem =

@@ -12,8 +12,6 @@ class PlayerTimeline extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final onInk = context.luma.onPlayerInk;
-    // The player always sits on a dark video surface, so it needs the warm
-    // theme accent instead of the app-wide primary colour used by regular UI.
     const timelineColor = LumaColors.gold;
     final durationMs = controller.duration.inMilliseconds.toDouble();
     final positionMs = controller.position.inMilliseconds.clamp(

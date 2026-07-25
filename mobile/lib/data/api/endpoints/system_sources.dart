@@ -1,4 +1,3 @@
-// System, source, and scan endpoint methods share ApiClient's authenticated transport.
 part of '../api_client.dart';
 
 mixin _SystemSourceEndpoints on _ApiTransport {
@@ -34,8 +33,6 @@ mixin _SystemSourceEndpoints on _ApiTransport {
     },
   );
 
-  /// Loads the administrator-visible roots configured for media sources.
-  /// The response is used only to populate the source-creation picker.
   Future<Map<String, dynamic>> getAvailableMediaRoots() =>
       _json('GET', _api('/admin/media-roots'));
 
@@ -60,4 +57,3 @@ mixin _SystemSourceEndpoints on _ApiTransport {
       _json('GET', _api('/scan-jobs/${_segment(id)}'));
 
 }
-

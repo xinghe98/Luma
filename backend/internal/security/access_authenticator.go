@@ -13,8 +13,6 @@ type PrincipalLookup interface {
 	FindPrincipalByTokenHash(context.Context, string, time.Time) (domain.Principal, error)
 }
 
-// ActivityRecorder observes successful requests without coupling
-// authentication to any particular presence implementation.
 type ActivityRecorder interface {
 	Observe(userID string)
 }

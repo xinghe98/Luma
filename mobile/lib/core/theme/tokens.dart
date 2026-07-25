@@ -1,11 +1,6 @@
-// Luma design tokens centralize palette, layout, spacing, radius, and motion values.
-// Theme builders and feature widgets consume these constants to keep light and dark UI aligned.
 import 'package:flutter/material.dart';
 
 abstract final class LumaColors {
-  // Extracted from the app icon: graphite, aged gold, and warm ivory.
-  // All Material roles are explicit so a seed color cannot introduce teal
-  // containers elsewhere in the app.
   static const ink = Color(0xFF2C3433);
   static const deepBlue = Color(0xFF2E322F);
   static const surface = Color(0xFF3A3D38);
@@ -14,7 +9,6 @@ abstract final class LumaColors {
   static const paper = Color(0xFFEEE6DA);
   static const success = Color(0xFF8EAD92);
   static const warning = Color(0xFFC1A064);
-  // Darker light-theme semantic colors preserve text/icon contrast on ivory.
   static const lightSuccess = Color(0xFF356746);
   static const lightWarning = Color(0xFF765617);
   static const lightPrimary = Color(0xFF535853);
@@ -58,20 +52,10 @@ abstract final class LumaArtworkColors {
   ];
 }
 
-/// Defines the bundled MiSans family and the shared Material typography scale.
-///
-/// Every UI text role uses this scale so changing the app typeface never
-/// requires per-page font overrides. Unsupported scripts and Emoji fall back
-/// to Android's system sans-serif family.
 abstract final class LumaTypography {
   static const fontFamily = 'MiSans';
   static const fontFamilyFallback = <String>['sans-serif'];
 
-  /// Applies Luma's Chinese-first type scale to Material's complete text theme.
-  ///
-  /// The scale uses only regular, medium, and semibold weights from MiSans's
-  /// variable weight axis. It intentionally keeps tracking at zero because
-  /// negative Latin tracking makes Chinese headings look crowded.
   static TextTheme buildTextTheme(TextTheme base) {
     final themed = base.apply(
       fontFamily: fontFamily,
@@ -188,8 +172,6 @@ abstract final class LumaLayout {
   static const navigationBarHeight = 68.0;
   static const minTapTarget = 48.0;
 
-  /// Roughly one mobile viewport, shared by primary scroll surfaces so they
-  /// prebuild enough content for smooth scrolling without retaining pages.
   static const scrollCacheExtent = 320.0;
 
   static EdgeInsets pagePadding({

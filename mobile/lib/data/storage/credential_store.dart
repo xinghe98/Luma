@@ -1,4 +1,3 @@
-// Storage contract for the active server origin and bearer token.
 final class StoredCredentials {
   const StoredCredentials({required this.origin, required this.token});
 

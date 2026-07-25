@@ -1,4 +1,3 @@
-// Package main provides a CLI that administers Luma through its management API.
 package main
 
 import (

@@ -1,4 +1,3 @@
-// Typed representation of revision-controlled media user data.
 import 'api_tag.dart';
 
 final class MediaUserData {

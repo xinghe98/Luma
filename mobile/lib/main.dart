@@ -74,12 +74,6 @@ class _LumaAppState extends State<LumaApp> {
   }
 }
 
-/// Presents the complete Luma lockup for the first Flutter frame.
-///
-/// The native Android 12 splash can only safely show the compact symbol. This
-/// overlay waits for the full name mark to decode before presenting it, then
-/// dismisses independently of session restoration so a slow network never
-/// blocks entry.
 class _LaunchBrandOverlay extends StatefulWidget {
   const _LaunchBrandOverlay({required this.child});
 
@@ -111,7 +105,6 @@ class _LaunchBrandOverlayState extends State<_LaunchBrandOverlay> {
     );
   }
 
-  /// Starts the display duration only after the lockup can be painted.
   void _startDismissTimer() {
     if (!mounted || _dismissTimer != null) return;
     _dismissTimer = Timer(_minimumPresentation, () {

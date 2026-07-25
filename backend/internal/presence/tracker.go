@@ -1,4 +1,3 @@
-// Package presence keeps short-lived, in-memory member activity state.
 package presence
 
 import (
@@ -7,12 +6,8 @@ import (
 	"time"
 )
 
-// OnlineWindow is deliberately short: a member is online only while the
-// server has observed recent authenticated activity from that account.
 const OnlineWindow = 2 * time.Minute
 
-// Tracker is process-local. A service restart correctly resets all users to
-// offline instead of presenting stale historical activity as a live session.
 type Tracker struct {
 	now func() time.Time
 

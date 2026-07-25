@@ -1,4 +1,3 @@
-// User-data and tag endpoint methods keep per-media revision updates together.
 part of '../api_client.dart';
 
 mixin _UserDataEndpoints on _ApiTransport {
@@ -43,4 +42,3 @@ mixin _UserDataEndpoints on _ApiTransport {
       _empty('DELETE', _api('/tags/${_segment(id)}'));
 
 }
-

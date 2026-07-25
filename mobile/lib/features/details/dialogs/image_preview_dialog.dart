@@ -8,7 +8,6 @@ import '../../../data/models/media_item.dart';
 import '../../../shared/media/authenticated_media_image.dart';
 
 /// 全屏图片预览：双指缩放、双击放大/还原，可选进入详情。
-///
 /// [heroTag] 与来源缩略图一致时启用共享元素过渡，避免生硬弹出。
 void showImagePreviewDialog(
   BuildContext context,
@@ -72,7 +71,6 @@ class _ImagePreviewDialogState extends State<ImagePreviewDialog> {
     }
   }
 
-  /// Defers the large original-image decode until the thumbnail Hero settles.
   Future<void> _allowOriginalLoadAfterTransition() async {
     await Future<void>.delayed(LumaMotion.fast);
     if (mounted) setState(() => _originalLoadAllowed = true);

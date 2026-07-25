@@ -33,8 +33,6 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   @override
-  /// Builds the current settings view and keeps a layout-stable placeholder
-  /// visible while a disconnect removes the server profile.
   Widget build(BuildContext context) {
     final dependencies = AppScope.of(context);
     final settings = dependencies.settings;

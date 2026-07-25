@@ -1,4 +1,3 @@
-// Decodes revision-controlled per-media user data.
 import '../models/api_user_data.dart';
 import 'decoder_utils.dart';
 import 'tag_decoder.dart';

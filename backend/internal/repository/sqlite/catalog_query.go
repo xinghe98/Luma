@@ -1,5 +1,3 @@
-// Catalog read queries load user-visible catalog summaries and episode detail.
-// They share CatalogRepository's SQLite connection and user-grant visibility rules.
 package sqlite
 
 import (
@@ -133,9 +131,6 @@ func (r *CatalogRepository) queryItems(ctx context.Context, request domain.Catal
 	return items, rows.Err()
 }
 
-// querySummaries keeps the catalog landing page at one result row per work.
-// Episode detail is intentionally loaded only by Get, rather than materialized
-// into list responses and then discarded by the HTTP presenter.
 func (r *CatalogRepository) querySummaries(ctx context.Context, where string, args []any, limit int, userID string) ([]domain.CatalogItem, error) {
 	args = append(args, limit, userID)
 	statement := `WITH wanted AS (

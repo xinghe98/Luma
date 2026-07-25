@@ -75,7 +75,6 @@ class PlayerController extends ChangeNotifier {
     scheduleHide();
   }
 
-  // The player sends the same bearer header on its automatic Range requests.
   Future<void> _initializeVideo(ApiSession session, String streamUrl) async {
     final controller = VideoPlayerController.networkUrl(
       Uri.parse(session.resolve(streamUrl)),
@@ -315,13 +314,12 @@ class PlayerController extends ChangeNotifier {
     try {
       await _media.updateProgress(item.id, positionMs);
     } on Object {
-      // A later periodic or lifecycle save retries with the latest position.
+      // 后续的定时或生命周期保存会使用最新进度重试。
     }
   }
 
   Future<void> persistProgress() => _saveProgress();
 
-  /// Best-effort final save before the controller is disposed.
   Future<void> shutdown() async {
     if (_disposed) return;
     final position = _position;
@@ -332,7 +330,7 @@ class PlayerController extends ChangeNotifier {
           .updateProgress(item.id, position.inMilliseconds)
           .timeout(const Duration(seconds: 2));
     } on Object {
-      // Best-effort final save.
+      // 退出播放不能因进度同步失败而被阻塞。
     }
   }
 

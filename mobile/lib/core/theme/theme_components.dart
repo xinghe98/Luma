@@ -1,10 +1,7 @@
-// Material component theme configuration is applied after Luma's base scheme and typography are built.
-// It is a pure transformation so cached light and dark ThemeData instances remain safe to reuse.
 import 'package:flutter/material.dart';
 
 import 'tokens.dart';
 
-/// Applies Luma component defaults to an already constructed Material theme.
 ThemeData applyLumaComponentThemes({
   required ThemeData base,
   required ColorScheme scheme,
@@ -232,4 +229,3 @@ ThemeData applyLumaComponentThemes({
         },
       ),
     );}
-

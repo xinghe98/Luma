@@ -28,10 +28,8 @@ class SettingsController extends ChangeNotifier {
   String? get scanError => _scanError;
   int get scanDiscoveredCount => _scanDiscoveredCount;
 
-  /// Latest known scan jobs, including background processing after traversal.
   List<ScanJob> get scanJobs => List.unmodifiable(_scanJobs);
 
-  /// A user-facing state that distinguishes scanning from probe/thumbnail work.
   String get scanStatusLabel {
     if (isScanning) {
       if (_scanJobs.isEmpty) return '正在准备扫描';
@@ -47,7 +45,6 @@ class SettingsController extends ChangeNotifier {
     return '已就绪';
   }
 
-  /// Compact counts for settings and home cards. State is never color-only.
   String get scanStatusDetails {
     if (_scanError != null) return _scanError!;
     final summary = _processing;
@@ -154,7 +151,6 @@ class SettingsController extends ChangeNotifier {
     }
   }
 
-  // Aggregates multiple source jobs into the existing single progress value.
   Future<void> _pollJobs(
     List<String> ids,
     VoidCallback? onComplete, [

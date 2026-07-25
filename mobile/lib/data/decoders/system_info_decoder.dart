@@ -1,4 +1,3 @@
-// Decodes authenticated server information.
 import '../models/api_system_info.dart';
 import 'decoder_utils.dart';
 

@@ -83,9 +83,9 @@ class MethodChannelPlayerDeviceControls implements PlayerDeviceControls {
     try {
       await _channel.invokeMethod<void>('restoreBrightness');
     } on PlatformException {
-      // The player still exits normally when the host capability is missing.
+      // 宿主未提供该能力时仍可正常退出播放器。
     } on MissingPluginException {
-      // The player still exits normally when the host capability is missing.
+      // 宿主未提供该能力时仍可正常退出播放器。
     }
   }
 

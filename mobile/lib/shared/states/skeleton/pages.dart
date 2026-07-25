@@ -1,5 +1,3 @@
-// Page-level skeletons preserve the layout hierarchy for settings, detail, and home loading states.
-// They compose shared skeleton primitives and never replace populated content during refreshes.
 import 'package:flutter/material.dart';
 
 import '../../../core/theme.dart';
@@ -58,7 +56,6 @@ class SettingsListSkeleton extends StatelessWidget {
   );
 }
 
-/// Layout-stable media detail placeholder for routes without initial content.
 class DetailPageSkeleton extends StatelessWidget {
   const DetailPageSkeleton({
     super.key,
@@ -156,5 +153,4 @@ class _HorizontalCardSkeleton extends StatelessWidget {
     );
   }
 }
-
 

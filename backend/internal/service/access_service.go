@@ -51,7 +51,6 @@ func (s *AccessService) CreateUser(ctx context.Context, name string) (domain.Use
 	return s.createUser(ctx, name, "")
 }
 
-// CreateUserIdempotent returns the original member for a retried request ID.
 func (s *AccessService) CreateUserIdempotent(ctx context.Context, name, requestID string) (domain.User, error) {
 	requestID, err := normalizeAccessRequestID(requestID)
 	if err != nil {
@@ -71,7 +70,6 @@ func (s *AccessService) CreateUserIdempotent(ctx context.Context, name, requestI
 	if err == nil {
 		return user, nil
 	}
-	// Another process may have committed the same request concurrently.
 	if existing, findErr := s.repository.FindUserByRequestID(ctx, requestID); findErr == nil {
 		return existing, nil
 	}
@@ -128,9 +126,6 @@ func (s *AccessService) IssueToken(ctx context.Context, userID, name string, exp
 	return s.issueToken(ctx, userID, name, expiresAt, "")
 }
 
-// IssueTokenIdempotent prevents ambiguous retries from silently minting a
-// second credential. The one-time plaintext is replayed only from process
-// memory; after restart callers receive an explicit conflict instead.
 func (s *AccessService) IssueTokenIdempotent(ctx context.Context, userID, name string, expiresAt *time.Time, requestID string) (domain.IssuedToken, error) {
 	requestID, err := normalizeAccessRequestID(requestID)
 	if err != nil {

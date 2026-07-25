@@ -1,4 +1,3 @@
-// Decodes scan jobs and their nested processing summary.
 import '../models/api_scan.dart';
 import 'decoder_utils.dart';
 

@@ -1,4 +1,3 @@
-// Shared strict readers used only by JSON decoder classes.
 T requiredValue<T>(Map<String, dynamic> json, String key) {
   final value = json[key];
   if (value is T) return value;

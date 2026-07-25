@@ -1,5 +1,3 @@
-// Organization match routing resolves deep links that arrive without an issue extra.
-// It preserves a stable loading and error page until it can build the editor.
 import 'package:flutter/material.dart';
 
 import '../../../data/models/api_catalog.dart';
@@ -93,5 +91,4 @@ class _OrganizationMatchRoutePageState
     );
   }
 }
-
 

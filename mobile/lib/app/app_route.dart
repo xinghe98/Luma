@@ -1,5 +1,3 @@
-// Stable route-name constants are shared by route builders and feature navigation.
-// They remain exported through app_router.dart for existing callers.
 abstract final class AppRoute {
   static const connection = 'connection';
   static const mediaDetail = 'media-detail';
@@ -16,5 +14,4 @@ abstract final class AppRoute {
   static const memberDetail = 'member-detail';
   static const issueToken = 'issue-token';
 }
-
 

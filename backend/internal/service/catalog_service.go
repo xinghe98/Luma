@@ -99,9 +99,6 @@ func (s *CatalogService) UpdateMatch(ctx context.Context, command domain.UpdateC
 		Status: domain.CatalogMatchMatched, Confidence: 100, Locked: true, MediaUpdatedAt: candidate.MediaUpdatedAt}, s.clock.Now())
 }
 
-// Sync consumes pending catalog matches outside the request path. It is called
-// by the background catalog worker after a scan completes, so opening a
-// catalog page cannot accidentally start a full write-heavy reconciliation.
 func (s *CatalogService) Sync(ctx context.Context) error {
 	if err := s.repository.Prune(ctx, s.clock.Now()); err != nil {
 		return err

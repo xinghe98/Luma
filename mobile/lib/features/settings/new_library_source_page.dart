@@ -10,7 +10,6 @@ import '../../shared/layout/section_header.dart';
 import '../../shared/library/library_kind_presentation.dart';
 import '../../shared/widgets/single_choice_sheet.dart';
 
-// Collects the administrator-only data needed to create a server-local source.
 class NewLibrarySourcePage extends StatefulWidget {
   const NewLibrarySourcePage({
     super.key,
@@ -70,8 +69,6 @@ class _NewLibrarySourcePageState extends State<NewLibrarySourcePage> {
     super.dispose();
   }
 
-  /// Loads the server-configured paths that an administrator may select.
-  /// A failure keeps the form visible and offers a local retry for this field.
   Future<void> _loadRoots() async {
     setState(() => _rootsLoadError = null);
     try {
@@ -126,8 +123,6 @@ class _NewLibrarySourcePageState extends State<NewLibrarySourcePage> {
     }
   }
 
-  /// Lets the administrator choose a local video-organization rule for this
-  /// form. The returned value stays local until [_submit] creates the source.
   Future<void> _selectLibraryKind() async {
     if (_submitting) return;
     final kind = await showSingleChoiceSheet<String>(
@@ -141,8 +136,6 @@ class _NewLibrarySourcePageState extends State<NewLibrarySourcePage> {
     setState(() => _libraryKind = kind);
   }
 
-  /// Lets the administrator choose one server-approved root for this form.
-  /// The returned path is submitted only from [_submit], never edited locally.
   Future<void> _selectRoot() async {
     final roots = _roots;
     if (_submitting || roots == null || roots.isEmpty) return;

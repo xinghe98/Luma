@@ -1,4 +1,3 @@
-// Typed representation of a configured backend media source.
 final class Source {
   const Source({
     required this.id,

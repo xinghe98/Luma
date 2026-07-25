@@ -1,4 +1,3 @@
-// Media metadata and binary-stream endpoint methods preserve range and cache validators.
 part of '../api_client.dart';
 
 mixin _MediaEndpoints on _ApiTransport {
@@ -124,4 +123,3 @@ mixin _MediaEndpoints on _ApiTransport {
   );
 
 }
-

@@ -1,5 +1,3 @@
-// Tests the configured-root provisioning workflow with minimal in-memory
-// collaborators, ensuring Docker's read-only configuration is never mutated.
 package service
 
 import (

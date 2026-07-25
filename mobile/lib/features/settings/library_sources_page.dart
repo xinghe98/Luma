@@ -162,8 +162,6 @@ class _LibrarySourcesPageState extends State<LibrarySourcesPage> {
     if (created == null || !mounted) return;
     await _load();
     if (!mounted) return;
-    // The server already queued this job. Start UI polling without issuing a
-    // duplicate scan request so its probe and thumbnail stages stay visible.
     unawaited(AppScope.of(context).settings.restoreScan());
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('${created.source.name} 已新增，首次扫描已开始')),

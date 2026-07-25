@@ -25,7 +25,6 @@ abstract interface class AccessRepository {
   Future<void> revokeSource(String userId, String sourceId);
 }
 
-/// Used only where application dependencies are constructed without an API client.
 final class UnavailableAccessRepository implements AccessRepository {
   const UnavailableAccessRepository();
 

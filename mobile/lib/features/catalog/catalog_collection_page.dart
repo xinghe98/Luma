@@ -1,5 +1,3 @@
-// Catalog collection pages retain visible shelf items while their paged controller refreshes.
-// They are used by routes and must keep deep-link loading states layout-stable.
 import 'package:flutter/material.dart';
 
 import '../../app/app_scope.dart';
@@ -185,4 +183,3 @@ int _posterColumns(double width) {
   if (width < 1240) return 6;
   return 8;
 }
-

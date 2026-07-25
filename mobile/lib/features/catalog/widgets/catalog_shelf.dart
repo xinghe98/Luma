@@ -1,5 +1,3 @@
-// Catalog shelf widgets render overview sections and their loading, error, and empty states.
-// They are part of catalog_page.dart so private section composition remains local to the feature library.
 part of '../catalog_page.dart';
 
 class _CatalogShelfSection extends StatelessWidget {
@@ -210,5 +208,4 @@ class _SectionHeading extends StatelessWidget {
     ),
   );
 }
-
 

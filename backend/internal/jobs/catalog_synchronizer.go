@@ -7,15 +7,10 @@ import (
 	"time"
 )
 
-// CatalogSynchronizerUseCase is the small background-facing part of the
-// catalog service. Keeping it separate prevents HTTP handlers from owning
-// reconciliation work.
 type CatalogSynchronizerUseCase interface {
 	Sync(context.Context) error
 }
 
-// CatalogSynchronizer turns completed-scan notifications into batched catalog
-// reconciliation. The sparse fallback catches work left by a process restart.
 type CatalogSynchronizer struct {
 	service CatalogSynchronizerUseCase
 	signal  *Signal

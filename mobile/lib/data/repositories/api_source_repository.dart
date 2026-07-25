@@ -1,4 +1,3 @@
-// Caches the authenticated source list for the active server session.
 import '../api/api_client.dart';
 import '../decoders/source_decoder.dart';
 import '../decoders/scan_job_decoder.dart';

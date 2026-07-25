@@ -1,4 +1,3 @@
-// Decodes media list and detail payloads independently from HTTP transport.
 import '../models/api_media.dart';
 import '../models/media_types.dart';
 import 'decoder_utils.dart';

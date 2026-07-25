@@ -32,15 +32,11 @@ final class CatalogController extends ChangeNotifier {
   String? get error => _error;
   bool get hasStarted => _started;
 
-  /// Starts the first request once. Collection routes call this immediately;
-  /// overview sections wait until they become relevant on screen.
   Future<void> ensureLoaded() {
     if (_started) return _inflight ?? Future.value();
     return load();
   }
 
-  /// Explicit refresh or retry. Unlike [ensureLoaded], this always starts a
-  /// new generation and invalidates an older response.
   Future<void> load() {
     _started = true;
     final generation = ++_generation;

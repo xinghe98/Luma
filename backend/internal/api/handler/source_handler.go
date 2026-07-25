@@ -33,11 +33,8 @@ type SourceHandler struct {
 	managed ManagedSourceUseCase
 }
 
-// ManagedSourceUseCase creates a source together with its configuration,
-// grants and initial scan. It is deliberately separate from legacy sources.
 type ManagedSourceUseCase interface {
 	Create(context.Context, service.ManagedMediaSourceCommand) (service.ManagedMediaSourceResult, error)
-	// ListAvailableRoots returns administrator-selectable configured media roots.
 	ListAvailableRoots() ([]string, error)
 }
 
@@ -60,7 +57,6 @@ type createManagedSourceRequest struct {
 	UserIDs     []string `json:"user_ids"`
 }
 
-// CreateManaged provisions a source through the administrator-only route.
 func (h *SourceHandler) CreateManaged(c *gin.Context) {
 	if h.managed == nil {
 		response.Error(c, http.StatusNotImplemented, "NOT_IMPLEMENTED", "媒体源管理不可用", nil)
@@ -81,9 +77,6 @@ func (h *SourceHandler) CreateManaged(c *gin.Context) {
 	c.JSON(http.StatusCreated, gin.H{"source": presentSource(created.Source), "scan_job": presentScanJob(created.Scan)})
 }
 
-// ListAvailableRoots handles GET /api/v1/admin/media-roots. This
-// administrator-only endpoint intentionally exposes paths only for selecting
-// a configured root when creating a media source.
 func (h *SourceHandler) ListAvailableRoots(c *gin.Context) {
 	if h.managed == nil {
 		response.Error(c, http.StatusNotImplemented, "NOT_IMPLEMENTED", "媒体源管理不可用", nil)

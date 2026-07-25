@@ -1,4 +1,3 @@
-// Typed representation of a user tag.
 final class Tag {
   const Tag({
     required this.id,

@@ -58,10 +58,6 @@ func (s *MediaService) List(ctx context.Context, request domain.MediaListRequest
 	return result, nil
 }
 
-// Count returns the number of media records visible to the current user.
-// It deliberately shares List's normalization and authorization constraints,
-// while avoiding the client-side full-pagination loop previously used by the
-// settings screen.
 func (s *MediaService) Count(ctx context.Context, request domain.MediaListRequest, userID string) (int, error) {
 	query, err := normalizeMediaQuery(request, userID)
 	if err != nil {

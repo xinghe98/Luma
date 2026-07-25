@@ -1,5 +1,3 @@
-// Base skeleton primitives provide the shared shimmer animation and placeholder box.
-// Feature skeletons reuse SkeletonPulse so one resolved animation policy applies consistently.
 import 'package:flutter/material.dart';
 
 import '../../../core/theme.dart';

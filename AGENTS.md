@@ -15,6 +15,7 @@ important for changes under `mobile/`, which is the Flutter application.
 
 ## Code documentation rules
 
+- 所有新增或修改的代码注释必须使用简洁、自然的中文；避免模板化、冗长或带有 AI 生成痕迹的表述。
 - Every new source file must start with a concise header comment describing
   the file's responsibility, its primary collaborators, and any important
   lifecycle or state-management constraint.

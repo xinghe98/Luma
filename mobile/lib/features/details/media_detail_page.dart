@@ -22,7 +22,6 @@ class MediaDetailPage extends StatefulWidget {
   /// 与来源卡片封面一致的 Hero tag，为空则不启用过渡动画。
   final String? heroTag;
 
-  /// Defers detail data work until a lightweight route transition finishes.
   final Duration initialLoadDelay;
 
   @override
@@ -44,7 +43,6 @@ class _MediaDetailPageState extends State<MediaDetailPage> {
     _settleHeroTransition();
   }
 
-  /// Keeps the Hero destination on the card thumbnail until the route flight ends.
   Future<void> _settleHeroTransition() async {
     await Future<void>.delayed(LumaMotion.slow);
     if (mounted) setState(() => _heroTransitionSettled = true);
@@ -109,8 +107,6 @@ class _MediaDetailPageState extends State<MediaDetailPage> {
           );
         }
         final coverRadius = context.luma.coverRadius;
-        // Video details keep the card thumbnail variant. It is large enough for
-        // this surface and avoids replacing the Hero's decoded frame mid-route.
         final useCardThumbnail =
             item.type == MediaType.video || !_heroTransitionSettled;
         final cover = AspectRatio(

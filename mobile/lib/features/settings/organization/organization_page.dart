@@ -1,5 +1,3 @@
-// Organization issue listing shows catalog files that require a manual match.
-// It refreshes after the route editor reports a successful mutation.
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
@@ -80,5 +78,4 @@ class _OrganizationPageState extends State<OrganizationPage> {
           ),
   );
 }
-
 

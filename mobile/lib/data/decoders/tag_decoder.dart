@@ -1,4 +1,3 @@
-// Decodes tag list and mutation responses.
 import '../models/api_tag.dart';
 import 'decoder_utils.dart';
 

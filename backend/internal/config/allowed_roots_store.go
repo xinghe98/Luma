@@ -12,15 +12,11 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// AllowedRootsUpdate records one persisted allowed-roots mutation so a caller
-// can restore it when a later provisioning step fails.
 type AllowedRootsUpdate struct {
 	Previous []string
 	Current  []string
 }
 
-// AllowedRootsStore is the sole writer for security.allowed_roots. Keeping
-// this responsibility here prevents HTTP handlers from editing YAML directly.
 type AllowedRootsStore struct {
 	path string
 	mu   sync.Mutex
@@ -33,9 +29,6 @@ func NewAllowedRootsStore(path string) (*AllowedRootsStore, error) {
 	return &AllowedRootsStore{path: path}, nil
 }
 
-// List returns the currently configured, resolved media roots without
-// modifying the configuration file. Callers must keep these server-local
-// paths within an administrator-only boundary.
 func (s *AllowedRootsStore) List() ([]string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -46,8 +39,6 @@ func (s *AllowedRootsStore) List() ([]string, error) {
 	return append([]string(nil), cfg.Security.AllowedRoots...), nil
 }
 
-// Add validates the complete resulting configuration, writes it atomically,
-// and returns both root sets for the in-memory policy update.
 func (s *AllowedRootsStore) Add(root string) (AllowedRootsUpdate, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -61,8 +52,6 @@ func (s *AllowedRootsStore) Add(root string) (AllowedRootsUpdate, error) {
 	})
 }
 
-// Restore reverses an update made by Add. It is used only while the
-// provisioning service still holds its operation lock.
 func (s *AllowedRootsStore) Restore(update AllowedRootsUpdate) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()

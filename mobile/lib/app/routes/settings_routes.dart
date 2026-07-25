@@ -1,5 +1,3 @@
-// Settings route construction resolves optional source and access capabilities before showing pages.
-// It keeps deep-link member routes layout-stable through AccessUserRoutePage.
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 

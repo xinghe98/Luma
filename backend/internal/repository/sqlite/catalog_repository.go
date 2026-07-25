@@ -78,8 +78,6 @@ func (r *CatalogRepository) SaveMatch(ctx context.Context, match domain.CatalogM
 	return tx.Commit()
 }
 
-// SaveMatches keeps one transaction open for a synchronization batch.  This
-// removes hundreds of begin/commit cycles and their SQLite write-lock churn.
 func (r *CatalogRepository) SaveMatches(ctx context.Context, matches []domain.CatalogMatch, now time.Time) error {
 	if len(matches) == 0 {
 		return nil
@@ -196,8 +194,6 @@ func (r *CatalogRepository) saveMatch(ctx context.Context, tx *sql.Tx, match dom
 	return nil
 }
 
-// refreshCatalogMatchStatus makes the work-level status an aggregate of its
-// current file links, allowing a rematch to clear a stale needs-review state.
 func refreshCatalogMatchStatus(ctx context.Context, tx *sql.Tx, itemID string, nowMS int64) error {
 	_, err := tx.ExecContext(ctx, `UPDATE catalog_items SET
 		match_status = CASE WHEN EXISTS (

@@ -1,4 +1,3 @@
-// Persists aliases without sending them to the backend.
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import 'server_alias_store.dart';

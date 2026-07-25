@@ -1,4 +1,3 @@
-// Typed representations of administrator access-control resources.
 final class AccessUser {
   const AccessUser({
     required this.id,
@@ -68,6 +67,5 @@ final class IssuedAccessToken {
   final DateTime? revokedAt;
   final DateTime createdAt;
 
-  // The server returns this plaintext value exactly once. Do not persist or log it.
   final String token;
 }

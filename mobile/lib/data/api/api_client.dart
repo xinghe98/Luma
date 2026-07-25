@@ -1,4 +1,3 @@
-// Raw HTTP transport. JSON-to-model conversion belongs in data/decoders.
 import 'package:dio/dio.dart';
 
 import 'api_exception.dart';
@@ -11,7 +10,6 @@ part 'endpoints/media.dart';
 part 'endpoints/system_sources.dart';
 part 'endpoints/user_data.dart';
 
-/// Owns Luma's shared HTTP transport and all resource endpoint methods.
 final class ApiClient extends _ApiTransport
     with
         _SystemSourceEndpoints,
@@ -23,14 +21,12 @@ final class ApiClient extends _ApiTransport
 
   static const defaultApiPrefix = '/api/v1';
 
-  /// Creates a short-lived client bound to [session] without changing the shared interceptor.
   ApiClient isolatedFor(ApiSession session) {
     final dio = Dio(_dio.options.copyWith(baseUrl: ''))
       ..interceptors.add(ApiSessionInterceptor(session));
     return ApiClient(dio, apiPrefix: _apiPrefix);
   }
 
-  /// Closes the underlying transport and cancels its pending requests.
   void close() => _dio.close(force: true);
 }
 

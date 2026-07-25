@@ -1,4 +1,3 @@
-// Applies the active session to every request made by the application Dio.
 import 'package:dio/dio.dart';
 
 import 'api_exception.dart';

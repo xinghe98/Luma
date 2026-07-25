@@ -22,8 +22,6 @@ type MediaUseCase interface {
 	Thumbnail(context.Context, string, string, string, string) (domain.ThumbnailContent, error)
 }
 
-// Count handles GET /api/v1/media/count. It intentionally accepts the same
-// filter set as List, but never accepts a cursor or expands into media rows.
 func (h *MediaHandler) Count(c *gin.Context) {
 	var favorite *bool
 	if raw, exists := c.GetQuery("favorite"); exists {

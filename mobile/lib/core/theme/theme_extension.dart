@@ -1,5 +1,3 @@
-// Luma theme extensions expose semantic artwork colors beyond Material's color scheme.
-// They are installed by LumaThemeBuilder and read by widgets through BuildContext.
 import 'package:flutter/material.dart';
 
 import 'tokens.dart';
@@ -86,5 +84,4 @@ extension LumaThemeContext on BuildContext {
   LumaExtras get luma =>
       Theme.of(this).extension<LumaExtras>() ?? LumaExtras.light;
 }
-
 

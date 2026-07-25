@@ -1,5 +1,3 @@
-// Player scene widgets render video, artwork fallback, gestures, feedback, and controls.
-// They listen only to PlayerController and preserve the page's existing animation timing.
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 
@@ -11,7 +9,6 @@ import 'player_controls.dart';
 import 'player_feedback_hud.dart';
 import 'player_gesture_layer.dart';
 
-/// Composes the player video surface, gestures, feedback, and visible controls.
 class PlayerScene extends StatelessWidget {
   const PlayerScene({
     super.key,
@@ -28,9 +25,6 @@ class PlayerScene extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Video textures preserve their aspect ratio, leaving letterbox space on
-    // mismatched displays. Keep that space black instead of exposing the app
-    // shell's charcoal background.
     return ColoredBox(
       color: Colors.black,
       child: Stack(
@@ -50,9 +44,6 @@ class PlayerScene extends StatelessWidget {
   }
 }
 
-/// Keeps the native video texture stable while position updates arrive several
-/// times per second. Only initialization/error/buffering transitions rebuild
-/// this subtree; controls still listen to the live player state separately.
 class _PlayerVideoSurface extends StatefulWidget {
   const _PlayerVideoSurface({required this.controller});
 

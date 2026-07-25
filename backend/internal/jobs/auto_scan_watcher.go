@@ -1,5 +1,3 @@
-// Filesystem watch support maps fsnotify events to AutoScanScheduler sources.
-// It owns recursive watch registration and shares scheduler state under its mutex.
 package jobs
 
 import (
@@ -25,7 +23,6 @@ func (s *AutoScanScheduler) openWatcher() error {
 	return nil
 }
 
-// consumeWatcher maps filesystem events to their media source and resets its debounce timer.
 func (s *AutoScanScheduler) consumeWatcher(ctx context.Context, watcher *fsnotify.Watcher) {
 	for {
 		select {

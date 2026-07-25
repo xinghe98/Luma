@@ -1,4 +1,3 @@
-// Typed representation of authenticated server information.
 final class SystemInfo {
   const SystemInfo({
     required this.version,

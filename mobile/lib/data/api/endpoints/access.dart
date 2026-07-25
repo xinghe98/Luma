@@ -1,4 +1,3 @@
-// Access-management endpoint methods cover members, tokens, and source grants.
 part of '../api_client.dart';
 
 mixin _AccessEndpoints on _ApiTransport {
@@ -54,4 +53,3 @@ mixin _AccessEndpoints on _ApiTransport {
   }
 
 }
-

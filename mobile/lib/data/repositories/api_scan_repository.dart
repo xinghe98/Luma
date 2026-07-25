@@ -1,4 +1,3 @@
-// Adapts source and scan-job endpoints for the aggregate scan UI.
 import '../api/api_client.dart';
 import '../api/api_exception.dart';
 import '../decoders/scan_job_decoder.dart';
@@ -14,8 +13,6 @@ final class ApiScanRepository implements ScanRepository {
   final ScanJobDecoder _scanDecoder = const ScanJobDecoder();
 
   @override
-  /// Starts one backend scan job for every enabled source.
-  /// Partial failures (e.g. SCAN_ALREADY_RUNNING) do not abort other sources.
   Future<List<ScanJob>> startAll() async {
     final sources = (await _sources.list(
       refresh: true,

@@ -1,4 +1,3 @@
-// Validates a server, activates its session, and persists credentials.
 import '../api/api_client.dart';
 import '../api/api_exception.dart';
 import '../api/api_session.dart';
@@ -36,7 +35,6 @@ final class ApiConnectionService implements ConnectionService {
   ServerProfile? connectedProfile;
 
   @override
-  /// Verifies both public health and authenticated API access before saving.
   Future<ConnectionResult> test(String address, String token) async {
     final operation = ++_operation;
     final uri = Uri.tryParse(address.trim());
@@ -114,13 +112,10 @@ final class ApiConnectionService implements ConnectionService {
 
   Future<void> _enqueueCredential(Future<void> Function() action) {
     final next = _credentialQueue.catchError((_) {}).then<void>((_) => action());
-    // Keep the serialization chain usable after a storage failure while still
-    // returning that failure to the operation that triggered it.
     _credentialQueue = next.catchError((_) {});
     return next;
   }
 
-  /// Keeps non-root path prefixes (e.g. `/luma`) and only strips trailing slash.
   static String normalizeOrigin(Uri uri) {
     final segments = uri.pathSegments.where((part) => part.isNotEmpty).toList();
     final path = segments.isEmpty ? '' : '/${segments.join('/')}';

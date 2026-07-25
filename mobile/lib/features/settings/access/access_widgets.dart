@@ -49,7 +49,6 @@ class AccessExpiryField extends StatelessWidget {
       lastDate: DateTime(now.year + 10),
     );
     if (selected == null || !context.mounted) return;
-    // A date-only control expires at the end of the selected local day.
     onChanged(
       DateTime(selected.year, selected.month, selected.day, 23, 59, 59),
     );

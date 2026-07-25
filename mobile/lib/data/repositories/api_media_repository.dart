@@ -1,4 +1,3 @@
-// Maps raw API payloads into the existing UI-facing repository contract.
 import '../api/api_client.dart';
 import '../api/api_exception.dart';
 import '../decoders/media_decoder.dart';
@@ -24,9 +23,6 @@ final class ApiMediaRepository
   final TagDecoder _tagDecoder = const TagDecoder();
   final Map<String, MediaItem> _items = {};
 
-  // Keep detail/user-data cache bounded while library pages stream in. The UI
-  // owns its visible page list, so retaining every remote item here only
-  // creates a silent session-long memory climb.
   static const _maxCachedItems = 512;
 
   @override
@@ -196,7 +192,6 @@ final class ApiMediaRepository
     return _remember(_mergeUserData(item, data));
   }
 
-  // User-data mutations retry once after refreshing a stale revision.
   Future<MediaUserData> _withRevisionRetry(
     String id,
     int revision,
@@ -298,7 +293,6 @@ final class ApiMediaRepository
   }
 
   MediaItem _remember(MediaItem item) {
-    // Reinserting moves a recently used item to the end of insertion order.
     _items.remove(item.id);
     _items[item.id] = item;
     _trimCache();

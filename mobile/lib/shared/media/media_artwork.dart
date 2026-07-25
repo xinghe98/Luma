@@ -18,7 +18,6 @@ class MediaArtwork extends StatelessWidget {
   final double borderRadius;
   final bool useCardThumbnail;
 
-  /// Keeps the already decoded source artwork visible for the entire Hero flight.
   static Widget preserveSourceHeroFlight(
     BuildContext flightContext,
     Animation<double> animation,

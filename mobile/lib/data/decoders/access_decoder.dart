@@ -1,4 +1,3 @@
-// Strictly decodes administrator access-control payloads.
 import '../models/api_access.dart';
 import 'decoder_utils.dart';
 

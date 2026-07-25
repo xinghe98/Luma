@@ -1,5 +1,3 @@
-// Media route construction owns detail, collection, personal-video, and player navigation.
-// It preserves route extras, parent navigator placement, and the video-only lightweight fade.
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
@@ -127,4 +125,3 @@ Widget _lightFade(
   ),
   child: child,
 );
-

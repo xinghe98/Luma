@@ -1,12 +1,9 @@
-// LumaThemeBuilder creates one complete Material theme from immutable tokens and extensions.
-// LumaTheme caches its results; this builder holds no mutable state between light and dark builds.
 import 'package:flutter/material.dart';
 
 import 'theme_components.dart';
 import 'theme_extension.dart';
 import 'tokens.dart';
 
-/// Builds the light or dark Material theme used by Luma.
 final class LumaThemeBuilder {
   const LumaThemeBuilder._();
 

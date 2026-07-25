@@ -6,8 +6,6 @@ import '../../app/controllers/media_controller.dart';
 import '../../data/models/media_item.dart';
 
 class DetailsController extends ChangeNotifier {
-  /// Defers the initial detail request so a Hero or route transition can finish
-  /// before decoding a larger artwork variant and notifying both pages.
   DetailsController({
     required this.mediaId,
     required this.media,
@@ -22,7 +20,6 @@ class DetailsController extends ChangeNotifier {
   final Duration initialLoadDelay;
   bool _disposed = false;
 
-  /// Starts the first request after the configured transition-safe delay.
   Future<void> _loadInitialDetail() async {
     if (initialLoadDelay > Duration.zero) {
       await Future<void>.delayed(initialLoadDelay);

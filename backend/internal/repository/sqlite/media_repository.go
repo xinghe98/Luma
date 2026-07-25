@@ -123,9 +123,6 @@ func (r *MediaRepository) List(ctx context.Context, query domain.MediaListQuery)
 	return items, nil
 }
 
-// Count returns the number of media records matching the same visibility and
-// filter rules as List.  Keeping this in SQLite avoids transferring every
-// page merely to show a settings summary.
 func (r *MediaRepository) Count(ctx context.Context, query domain.MediaListQuery) (int, error) {
 	var statement strings.Builder
 	statement.WriteString(`SELECT COUNT(*) FROM media_items m

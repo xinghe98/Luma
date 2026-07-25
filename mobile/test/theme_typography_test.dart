@@ -1,10 +1,7 @@
-// Typography theme tests lock the MiSans family, fallback behavior, and role scale.
-// They exercise cached light and dark themes without loading a page or platform font renderer.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:luma/core/theme.dart';
 
-/// Verifies the shared theme keeps all Material text roles on the MiSans scale.
 void main() {
   group('Luma typography', () {
     test('light and dark themes use MiSans with system fallback', () {

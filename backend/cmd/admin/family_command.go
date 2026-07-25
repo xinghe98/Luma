@@ -1,5 +1,3 @@
-// Family token issuance composes member creation, grants, and token issuance.
-// It keeps partial-progress errors intact so administrators can safely retry the workflow.
 package main
 
 import (

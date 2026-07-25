@@ -29,7 +29,6 @@ func Open(ctx context.Context, cfg config.DatabaseConfig) (*sql.DB, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open SQLite: %w", err)
 	}
-	// One long-lived connection makes connection-scoped PRAGMAs deterministic.
 	db.SetMaxOpenConns(1)
 	db.SetMaxIdleConns(1)
 	db.SetConnMaxLifetime(0)

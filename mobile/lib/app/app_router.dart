@@ -1,5 +1,3 @@
-// App router composes domain route builders behind one stable application entry point.
-// It owns connection redirects and the root navigator while feature route modules remain independent.
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
@@ -17,7 +15,6 @@ export 'app_route.dart';
 
 final _rootNavigatorKey = GlobalKey<NavigatorState>(debugLabel: 'root');
 
-/// Creates the application router with stable deep links and session redirects.
 GoRouter createAppRouter(AppDependencies dependencies) => GoRouter(
   navigatorKey: _rootNavigatorKey,
   initialLocation: AppDestination.home.path,

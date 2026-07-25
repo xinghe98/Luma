@@ -10,8 +10,6 @@ import (
 	"github.com/xinghe98/Luma/backend/internal/domain"
 )
 
-// ManagedMediaSourceCommand is the complete administrator request for a new
-// source. The directory is intentionally server-local, never a client path.
 type ManagedMediaSourceCommand struct {
 	Name        string
 	RootPath    string
@@ -19,7 +17,6 @@ type ManagedMediaSourceCommand struct {
 	UserIDs     []string
 }
 
-// ManagedMediaSourceResult returns the public work created by provisioning.
 type ManagedMediaSourceResult struct {
 	Source domain.Source
 	Scan   domain.ScanJob
@@ -38,9 +35,6 @@ type provisionedScanUseCase interface {
 	Start(context.Context, string) (domain.ScanJob, error)
 }
 
-// ManagedMediaSourceService owns the administrator workflow for turning one
-// already-configured media directory into a source, granting access and
-// queueing its initial scan. It never rewrites security.allowed_roots.
 type ManagedMediaSourceService struct {
 	sources provisionedSourceUseCase
 	access  provisionedAccessUseCase
@@ -49,8 +43,6 @@ type ManagedMediaSourceService struct {
 	mu      sync.Mutex
 }
 
-// NewManagedMediaSourceService creates the configured-root provisioning flow.
-// The supplied store is read only when administrators request picker options.
 func NewManagedMediaSourceService(
 	sources provisionedSourceUseCase,
 	access provisionedAccessUseCase,
@@ -63,15 +55,10 @@ func NewManagedMediaSourceService(
 	return &ManagedMediaSourceService{sources: sources, access: access, scans: scans, config: store}, nil
 }
 
-// ListAvailableRoots returns the administrator-selectable media directories
-// configured by security.allowed_roots. It never creates or changes a root.
 func (s *ManagedMediaSourceService) ListAvailableRoots() ([]string, error) {
 	return s.config.List()
 }
 
-// Create creates a source from a configured root, grants selected members and
-// queues its first scan. A failed later step deletes the just-created source;
-// the configured root list is never modified.
 func (s *ManagedMediaSourceService) Create(ctx context.Context, command ManagedMediaSourceCommand) (ManagedMediaSourceResult, error) {
 	if err := ctx.Err(); err != nil {
 		return ManagedMediaSourceResult{}, err

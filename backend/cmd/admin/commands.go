@@ -1,5 +1,3 @@
-// Command dispatch parses the standard admin resource commands.
-// It delegates HTTP work to client and leaves the multi-step family workflow separate.
 package main
 
 import (
