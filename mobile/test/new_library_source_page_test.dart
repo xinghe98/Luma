@@ -25,10 +25,14 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('服务端文件夹路径'), findsNothing);
-      expect(find.text('媒体目录'), findsOneWidget);
+      expect(find.textContaining('媒体目录'), findsOneWidget);
+      expect(find.byType(DropdownButtonFormField<String>), findsNothing);
 
-      await tester.tap(find.byType(DropdownButtonFormField<String>).first);
+      await tester.tap(find.text('选择已配置的媒体目录'));
       await tester.pumpAndSettle();
+
+      expect(find.text('选择媒体目录'), findsOneWidget);
+      expect(find.text('仅显示服务器已配置的目录。'), findsOneWidget);
       await tester.tap(find.text('/media/family').last);
       await tester.enterText(find.byType(TextField), '家庭影片');
       await tester.tap(find.text('新增并开始扫描'));
@@ -37,10 +41,72 @@ void main() {
       expect(sources.createdRoot, '/media/family');
     },
   );
+
+  testWidgets('new source chooses its video purpose from a bottom sheet', (
+    tester,
+  ) async {
+    final sources = _FakeSourceRepository();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: NewLibrarySourcePage(
+          sources: sources,
+          access: _FakeAccessRepository(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('个人视频'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('选择视频用途'), findsOneWidget);
+    expect(find.text('按文件夹和日期浏览'), findsOneWidget);
+    expect(find.text('按影片信息整理'), findsOneWidget);
+    expect(find.text('按剧、季和集整理'), findsOneWidget);
+    expect(find.byIcon(Icons.check_rounded), findsOneWidget);
+
+    await tester.tap(find.text('电影').last);
+    await tester.pumpAndSettle();
+
+    expect(find.text('选择视频用途'), findsNothing);
+    expect(find.text('电影'), findsOneWidget);
+
+    await tester.tap(find.text('选择已配置的媒体目录'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('/media/family').last);
+    await tester.enterText(find.byType(TextField), '家庭影片');
+    await tester.tap(find.text('新增并开始扫描'));
+    await tester.pumpAndSettle();
+
+    expect(sources.createdLibraryKind, 'movies');
+  });
+
+  testWidgets('dismissing the video-purpose sheet preserves the selection', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: NewLibrarySourcePage(
+          sources: _FakeSourceRepository(),
+          access: _FakeAccessRepository(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('个人视频'));
+    await tester.pumpAndSettle();
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+
+    expect(find.text('选择视频用途'), findsNothing);
+    expect(find.text('个人视频'), findsOneWidget);
+  });
 }
 
 class _FakeSourceRepository implements MutableSourceRepository {
   String? createdRoot;
+  String? createdLibraryKind;
 
   @override
   Future<ManagedSourceCreation> createManagedSource({
@@ -50,6 +116,7 @@ class _FakeSourceRepository implements MutableSourceRepository {
     required List<String> userIds,
   }) async {
     createdRoot = rootPath;
+    createdLibraryKind = libraryKind;
     throw StateError('not persisted in widget test');
   }
 

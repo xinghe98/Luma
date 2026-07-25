@@ -8,6 +8,7 @@ import '../../data/repositories/source_repository.dart';
 import '../../shared/layout/constrained_page_list.dart';
 import '../../shared/layout/section_header.dart';
 import '../../shared/library/library_kind_presentation.dart';
+import '../../shared/widgets/single_choice_sheet.dart';
 
 // Collects the administrator-only data needed to create a server-local source.
 class NewLibrarySourcePage extends StatefulWidget {
@@ -25,6 +26,27 @@ class NewLibrarySourcePage extends StatefulWidget {
 }
 
 class _NewLibrarySourcePageState extends State<NewLibrarySourcePage> {
+  static const _libraryKindChoices = [
+    BottomSheetChoice(
+      value: 'personal',
+      label: '个人视频',
+      icon: Icons.video_library_outlined,
+      description: '按文件夹和日期浏览',
+    ),
+    BottomSheetChoice(
+      value: 'movies',
+      label: '电影',
+      icon: Icons.movie_outlined,
+      description: '按影片信息整理',
+    ),
+    BottomSheetChoice(
+      value: 'tv',
+      label: '电视剧',
+      icon: Icons.tv_outlined,
+      description: '按剧、季和集整理',
+    ),
+  ];
+
   final _name = TextEditingController();
   final _selectedUsers = <String>{};
   List<AccessUser>? _users;
@@ -104,6 +126,44 @@ class _NewLibrarySourcePageState extends State<NewLibrarySourcePage> {
     }
   }
 
+  /// Lets the administrator choose a local video-organization rule for this
+  /// form. The returned value stays local until [_submit] creates the source.
+  Future<void> _selectLibraryKind() async {
+    if (_submitting) return;
+    final kind = await showSingleChoiceSheet<String>(
+      context,
+      title: '选择视频用途',
+      supportingText: '决定扫描后视频的整理方式。',
+      selectedValue: _libraryKind,
+      choices: _libraryKindChoices,
+    );
+    if (!mounted || kind == null || kind == _libraryKind) return;
+    setState(() => _libraryKind = kind);
+  }
+
+  /// Lets the administrator choose one server-approved root for this form.
+  /// The returned path is submitted only from [_submit], never edited locally.
+  Future<void> _selectRoot() async {
+    final roots = _roots;
+    if (_submitting || roots == null || roots.isEmpty) return;
+    final root = await showSingleChoiceSheet<String>(
+      context,
+      title: '选择媒体目录',
+      supportingText: '仅显示服务器已配置的目录。',
+      selectedValue: _selectedRoot,
+      choices: [
+        for (final root in roots)
+          BottomSheetChoice(
+            value: root,
+            label: root,
+            icon: Icons.folder_outlined,
+          ),
+      ],
+    );
+    if (!mounted || root == null || root == _selectedRoot) return;
+    setState(() => _selectedRoot = root);
+  }
+
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: const Text('新增媒体源')),
@@ -145,40 +205,24 @@ class _NewLibrarySourcePageState extends State<NewLibrarySourcePage> {
             ),
           )
         else
-          DropdownButtonFormField<String>(
-            initialValue: _selectedRoot,
-            isExpanded: true,
-            decoration: const InputDecoration(
-              labelText: '媒体目录',
-              prefixIcon: Icon(Icons.folder_outlined),
-            ),
-            hint: const Text('选择已配置的媒体目录'),
-            items: _roots!
-                .map((root) => DropdownMenuItem(value: root, child: Text(root)))
-                .toList(growable: false),
-            onChanged: _submitting
-                ? null
-                : (root) => setState(() => _selectedRoot = root),
+          _SelectionField(
+            label: '媒体目录',
+            selectedValue: _selectedRoot,
+            placeholder: '选择已配置的媒体目录',
+            supportingText: '仅可选择服务器已配置的目录',
+            icon: Icons.folder_outlined,
+            enabled: !_submitting,
+            onTap: _selectRoot,
           ),
         const SizedBox(height: LumaSpacing.lg),
-        const SectionHeader(title: '视频用途'),
-        const SizedBox(height: LumaSpacing.xs),
-        DropdownButtonFormField<String>(
-          initialValue: _libraryKind,
-          decoration: const InputDecoration(
-            prefixIcon: Icon(Icons.category_outlined),
-          ),
-          items: const ['personal', 'movies', 'tv']
-              .map(
-                (kind) => DropdownMenuItem(
-                  value: kind,
-                  child: Text(LibraryKindPresentation.label(kind)),
-                ),
-              )
-              .toList(growable: false),
-          onChanged: _submitting
-              ? null
-              : (kind) => setState(() => _libraryKind = kind!),
+        _SelectionField(
+          label: '视频用途',
+          selectedValue: LibraryKindPresentation.label(_libraryKind),
+          placeholder: '选择视频用途',
+          supportingText: '决定扫描后视频的整理方式',
+          icon: Icons.category_outlined,
+          enabled: !_submitting,
+          onTap: _selectLibraryKind,
         ),
         const SizedBox(height: LumaSpacing.lg),
         const SectionHeader(title: '可访问成员'),
@@ -246,4 +290,56 @@ class _RootSelectorSkeleton extends StatelessWidget {
     ),
     child: LinearProgressIndicator(),
   );
+}
+
+class _SelectionField extends StatelessWidget {
+  const _SelectionField({
+    required this.label,
+    required this.selectedValue,
+    required this.placeholder,
+    required this.supportingText,
+    required this.icon,
+    required this.enabled,
+    required this.onTap,
+  });
+
+  final String label;
+  final String? selectedValue;
+  final String placeholder;
+  final String supportingText;
+  final IconData icon;
+  final bool enabled;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final shape = RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(LumaRadii.medium),
+      side: BorderSide(color: scheme.outlineVariant.withAlpha(100)),
+    );
+    return Semantics(
+      button: enabled,
+      label: '$label，${selectedValue ?? placeholder}',
+      child: Material(
+        color: scheme.surfaceContainer,
+        shape: shape,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(LumaRadii.medium),
+          onTap: enabled ? onTap : null,
+          child: ListTile(
+            enabled: enabled,
+            leading: Icon(icon),
+            title: Text(
+              selectedValue ?? placeholder,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            subtitle: Text('$label · $supportingText'),
+            trailing: const Icon(Icons.expand_more_rounded),
+          ),
+        ),
+      ),
+    );
+  }
 }

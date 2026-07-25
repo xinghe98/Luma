@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	"errors"
-	"fmt"
 	"strings"
 	"sync"
 
@@ -39,33 +38,29 @@ type provisionedScanUseCase interface {
 	Start(context.Context, string) (domain.ScanJob, error)
 }
 
-type allowedRootsReloader interface {
-	ReplaceAllowedRoots([]string) error
-}
-
-// ManagedMediaSourceService owns the cross-boundary operation of adding a
-// directory. It keeps YAML persistence, the in-memory policy and database
-// rows in a deliberately ordered, compensating workflow.
+// ManagedMediaSourceService owns the administrator workflow for turning one
+// already-configured media directory into a source, granting access and
+// queueing its initial scan. It never rewrites security.allowed_roots.
 type ManagedMediaSourceService struct {
 	sources provisionedSourceUseCase
 	access  provisionedAccessUseCase
 	scans   provisionedScanUseCase
 	config  *config.AllowedRootsStore
-	roots   allowedRootsReloader
 	mu      sync.Mutex
 }
 
+// NewManagedMediaSourceService creates the configured-root provisioning flow.
+// The supplied store is read only when administrators request picker options.
 func NewManagedMediaSourceService(
 	sources provisionedSourceUseCase,
 	access provisionedAccessUseCase,
 	scans provisionedScanUseCase,
 	store *config.AllowedRootsStore,
-	roots allowedRootsReloader,
 ) (*ManagedMediaSourceService, error) {
-	if sources == nil || access == nil || scans == nil || store == nil || roots == nil {
+	if sources == nil || access == nil || scans == nil || store == nil {
 		return nil, errors.New("新增媒体源服务依赖不能为空")
 	}
-	return &ManagedMediaSourceService{sources: sources, access: access, scans: scans, config: store, roots: roots}, nil
+	return &ManagedMediaSourceService{sources: sources, access: access, scans: scans, config: store}, nil
 }
 
 // ListAvailableRoots returns the administrator-selectable media directories
@@ -74,9 +69,9 @@ func (s *ManagedMediaSourceService) ListAvailableRoots() ([]string, error) {
 	return s.config.List()
 }
 
-// Create persists the directory whitelist, makes it live, creates the source,
-// grants selected members and queues its first scan. A failed later step
-// removes the just-created source and restores the original whitelist.
+// Create creates a source from a configured root, grants selected members and
+// queues its first scan. A failed later step deletes the just-created source;
+// the configured root list is never modified.
 func (s *ManagedMediaSourceService) Create(ctx context.Context, command ManagedMediaSourceCommand) (ManagedMediaSourceResult, error) {
 	if err := ctx.Err(); err != nil {
 		return ManagedMediaSourceResult{}, err
@@ -84,23 +79,15 @@ func (s *ManagedMediaSourceService) Create(ctx context.Context, command ManagedM
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	update, err := s.config.Add(strings.TrimSpace(command.RootPath))
-	if err != nil {
-		return ManagedMediaSourceResult{}, fmt.Errorf("更新媒体目录白名单: %w", err)
-	}
-	if err := s.roots.ReplaceAllowedRoots(update.Current); err != nil {
-		return ManagedMediaSourceResult{}, s.restore(update, err)
-	}
-
 	source, err := s.sources.Create(ctx, domain.CreateSourceCommand{
 		Name: command.Name, RootPath: command.RootPath, LibraryKind: command.LibraryKind,
 	})
 	if err != nil {
-		return ManagedMediaSourceResult{}, s.restore(update, err)
+		return ManagedMediaSourceResult{}, err
 	}
 	rollbackSource := func(cause error) error {
 		deleteErr := s.sources.Delete(context.Background(), source.ID)
-		return s.restore(update, errors.Join(cause, deleteErr))
+		return errors.Join(cause, deleteErr)
 	}
 	for _, userID := range uniqueIDs(command.UserIDs) {
 		if err := s.access.GrantSource(ctx, userID, source.ID); err != nil {
@@ -112,12 +99,6 @@ func (s *ManagedMediaSourceService) Create(ctx context.Context, command ManagedM
 		return ManagedMediaSourceResult{}, rollbackSource(err)
 	}
 	return ManagedMediaSourceResult{Source: source, Scan: job}, nil
-}
-
-func (s *ManagedMediaSourceService) restore(update config.AllowedRootsUpdate, cause error) error {
-	configErr := s.config.Restore(update)
-	policyErr := s.roots.ReplaceAllowedRoots(update.Previous)
-	return errors.Join(cause, configErr, policyErr)
 }
 
 func uniqueIDs(values []string) []string {

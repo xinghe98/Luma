@@ -144,9 +144,9 @@ func (b *bootstrap) build(ctx context.Context) (*App, error) {
 	}
 	allowedRootsStore, err := config.NewAllowedRootsStore(b.configPath)
 	if err != nil {
-		return nil, fmt.Errorf("创建媒体目录配置写入器: %w", err)
+		return nil, fmt.Errorf("创建媒体目录配置读取器: %w", err)
 	}
-	managedSources, err := service.NewManagedMediaSourceService(sourceService, accessService, scanService, allowedRootsStore, pathPolicy)
+	managedSources, err := service.NewManagedMediaSourceService(sourceService, accessService, scanService, allowedRootsStore)
 	if err != nil {
 		return nil, fmt.Errorf("创建媒体源管理服务: %w", err)
 	}

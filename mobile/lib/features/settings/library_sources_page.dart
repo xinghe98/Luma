@@ -9,6 +9,7 @@ import '../../data/models/api_source.dart';
 import '../../data/repositories/access_repository.dart';
 import '../../data/repositories/source_repository.dart';
 import '../../shared/states/error_state.dart';
+import '../../shared/states/empty_state.dart';
 import '../../shared/states/skeleton.dart';
 import '../../shared/library/library_kind_presentation.dart';
 import 'new_library_source_page.dart';
@@ -79,17 +80,29 @@ class _LibrarySourcesPageState extends State<LibrarySourcesPage> {
     appBar: AppBar(
       title: const Text('媒体源'),
       actions: [
-        IconButton(
-          tooltip: '新增媒体源',
-          icon: const Icon(Icons.create_new_folder_outlined),
-          onPressed: _createSource,
-        ),
+        if (_sources?.isNotEmpty ?? false)
+          IconButton(
+            tooltip: '新增媒体源',
+            icon: const Icon(Icons.create_new_folder_outlined),
+            onPressed: _createSource,
+          ),
       ],
     ),
     body: _error != null
         ? ErrorState(onRetry: _load)
         : _sources == null
         ? const SettingsListSkeleton(items: 3)
+        : _sources!.isEmpty
+        ? EmptyState(
+            icon: Icons.video_library_outlined,
+            title: '还没有媒体源',
+            message: '新增一个已在服务器配置好的媒体目录，即可开始扫描和整理家庭媒体。',
+            action: FilledButton.icon(
+              onPressed: _createSource,
+              icon: const Icon(Icons.create_new_folder_outlined),
+              label: const Text('新增媒体源'),
+            ),
+          )
         : ListView(
             padding: LumaLayout.pagePadding(top: LumaSpacing.sm),
             children: [
