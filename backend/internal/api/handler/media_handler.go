@@ -70,6 +70,8 @@ type mediaSummaryJSON struct {
 	MediaType string `json:"media_type"`
 	// LibraryKind 是来源的内容组织类型。
 	LibraryKind string `json:"library_kind"`
+	// CatalogItemID 是已识别媒体所属的电影或剧集；未识别媒体为 null。
+	CatalogItemID *string `json:"catalog_item_id"`
 	// DurationMS 是媒体时长（毫秒）。
 	DurationMS *int64 `json:"duration_ms"`
 	// Width 是媒体宽度（像素）。
@@ -226,6 +228,10 @@ func presentMediaSummary(item domain.Media) mediaSummaryJSON {
 		Favorite: item.Favorite, ProgressMS: item.ProgressMS, Completed: item.Completed,
 		UserDataRevision: item.UserDataRevision, Status: item.Status,
 		CreatedAt: item.DiscoveredAt.UTC().Format(time.RFC3339Nano),
+	}
+	if item.CatalogItemID != "" {
+		value := item.CatalogItemID
+		summary.CatalogItemID = &value
 	}
 	if item.LastPlayedAt != nil {
 		value := item.LastPlayedAt.UTC().Format(time.RFC3339Nano)

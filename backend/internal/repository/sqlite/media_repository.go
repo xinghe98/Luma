@@ -25,7 +25,10 @@ func NewMediaRepository(db *sql.DB) (*MediaRepository, error) {
 	return &MediaRepository{db: db}, nil
 }
 
-const mediaSelect = `SELECT m.id, m.source_id, s.library_kind, m.filename,
+const mediaSelect = `SELECT m.id, m.source_id, s.library_kind,
+	COALESCE((SELECT l.catalog_item_id FROM catalog_media_links l
+		WHERE l.media_id = m.id AND l.match_status = 'matched' AND l.catalog_item_id IS NOT NULL
+		LIMIT 1), ''), m.filename,
     COALESCE(NULLIF(u.custom_title, ''), NULLIF(m.detected_title, ''), m.filename),
     m.media_type, COALESCE(m.mime_type, ''), m.file_size, m.duration_ms, m.width, m.height,
     COALESCE(m.video_codec, ''), COALESCE(m.audio_codec, ''), COALESCE(m.container, ''),
@@ -310,7 +313,7 @@ func scanMedia(row rowScanner) (domain.Media, error) {
 	var captured, indexed, lastPlayed sql.NullInt64
 	var discoveredMS int64
 	var favorite, completed, hasThumbnail, hasCardThumbnail int
-	err := row.Scan(&item.ID, &item.SourceID, &item.LibraryKind, &item.Filename, &item.Title, &item.MediaType,
+	err := row.Scan(&item.ID, &item.SourceID, &item.LibraryKind, &item.CatalogItemID, &item.Filename, &item.Title, &item.MediaType,
 		&item.MIMEType, &item.FileSize, &duration, &width, &height, &item.VideoCodec,
 		&item.AudioCodec, &item.Container, &item.Bitrate, &frameNum, &frameDen, &tracks,
 		&orientation, &captured, &item.Status, &discoveredMS, &indexed, &favorite, &item.ProgressMS,

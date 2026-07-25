@@ -34,10 +34,12 @@ class CatalogDetailHero extends StatelessWidget {
           constraints.maxWidth >= LumaLayout.detailTwoColumnBreakpoint;
       final posterWidth = isWide ? 208.0 : 136.0;
       final posterLeft = isWide
-          ? ((constraints.maxWidth - LumaLayout.detailMaxWidth)
-                      .clamp(0, double.infinity) /
-                  2) +
-              LumaSpacing.lg
+          ? ((constraints.maxWidth - LumaLayout.detailMaxWidth).clamp(
+                      0,
+                      double.infinity,
+                    ) /
+                    2) +
+                LumaSpacing.lg
           : LumaSpacing.lg;
       final informationLeft = posterLeft + posterWidth + LumaSpacing.md;
       return SizedBox(
@@ -91,7 +93,7 @@ class CatalogDetailHero extends StatelessWidget {
               left: LumaSpacing.lg,
               right: LumaSpacing.lg,
               top: 440,
-              child: _PrimaryPlayButton(item: item, onPlay: onPlayFromStart),
+              child: _PrimaryPlayButton(item: item, onPlay: onPlay),
             ),
             Positioned(
               left: LumaSpacing.lg,
@@ -101,11 +103,11 @@ class CatalogDetailHero extends StatelessWidget {
                 children: [
                   Expanded(
                     child: OutlinedButton.icon(
-                      onPressed: item.playableMediaId.isEmpty
+                      onPressed: _startMediaId(item).isEmpty
                           ? null
-                          : () => onPlay(item.playableMediaId),
-                      icon: const Icon(Icons.history_rounded),
-                      label: const Text('继续观看'),
+                          : () => onPlayFromStart(_startMediaId(item)),
+                      icon: const Icon(Icons.replay_rounded),
+                      label: const Text('从头播放'),
                       style: _secondaryActionStyle(),
                     ),
                   ),
@@ -213,9 +215,9 @@ class _HeroInformation extends StatelessWidget {
           details.join(' · '),
           maxLines: 2,
           overflow: TextOverflow.ellipsis,
-          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-            color: CatalogDetailPalette.muted,
-          ),
+          style: Theme.of(
+            context,
+          ).textTheme.bodyMedium?.copyWith(color: CatalogDetailPalette.muted),
         ),
         if (item.communityRating != null || item.genres.isNotEmpty) ...[
           const SizedBox(height: LumaSpacing.sm),
@@ -230,24 +232,25 @@ class _HeroInformation extends StatelessWidget {
                     color: CatalogDetailPalette.accent,
                   ),
                 ),
-              ...item.genres.take(2).map(
-                (genre) => Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: LumaSpacing.sm,
-                    vertical: LumaSpacing.xs,
-                  ),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF3B382C),
-                    borderRadius: BorderRadius.circular(LumaRadii.small),
-                  ),
-                  child: Text(
-                    genre.name,
-                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                      color: CatalogDetailPalette.text,
+              ...item.genres
+                  .take(2)
+                  .map(
+                    (genre) => Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: LumaSpacing.sm,
+                        vertical: LumaSpacing.xs,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF3B382C),
+                        borderRadius: BorderRadius.circular(LumaRadii.small),
+                      ),
+                      child: Text(
+                        genre.name,
+                        style: Theme.of(context).textTheme.labelMedium
+                            ?.copyWith(color: CatalogDetailPalette.text),
+                      ),
                     ),
                   ),
-                ),
-              ),
             ],
           ),
         ],
@@ -264,13 +267,14 @@ class _PrimaryPlayButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final startMediaId = _startMediaId(item);
     return SizedBox(
       height: 56,
       child: FilledButton.icon(
-        onPressed: startMediaId.isEmpty ? null : () => onPlay(startMediaId),
+        onPressed: item.playableMediaId.isEmpty
+            ? null
+            : () => onPlay(item.playableMediaId),
         icon: const Icon(Icons.play_arrow_rounded),
-        label: const Text('从头播放'),
+        label: const Text('继续观看'),
         style: FilledButton.styleFrom(
           backgroundColor: CatalogDetailPalette.accent,
           foregroundColor: CatalogDetailPalette.background,
@@ -284,24 +288,24 @@ class _PrimaryPlayButton extends StatelessWidget {
       ),
     );
   }
+}
 
-  /// 电视剧优先从正片第一季开始，只有没有正片时才回退到特别篇。
-  String _startMediaId(CatalogItem item) {
-    if (item.kind != CatalogKind.series || item.episodes.isEmpty) {
-      return item.playableMediaId;
-    }
-    final indexed = item.episodes
-        .where((episode) => episode.mediaId.isNotEmpty)
-        .toList();
-    final episodes = indexed.any((episode) => episode.seasonNumber > 0)
-        ? indexed.where((episode) => episode.seasonNumber > 0).toList()
-        : indexed;
-    episodes.sort((left, right) {
-      final season = left.seasonNumber.compareTo(right.seasonNumber);
-      return season == 0
-          ? left.episodeNumber.compareTo(right.episodeNumber)
-          : season;
-    });
-    return episodes.isEmpty ? item.playableMediaId : episodes.first.mediaId;
+/// 电视剧优先从正片第一季开始，只有没有正片时才回退到特别篇。
+String _startMediaId(CatalogItem item) {
+  if (item.kind != CatalogKind.series || item.episodes.isEmpty) {
+    return item.playableMediaId;
   }
+  final indexed = item.episodes
+      .where((episode) => episode.mediaId.isNotEmpty)
+      .toList();
+  final episodes = indexed.any((episode) => episode.seasonNumber > 0)
+      ? indexed.where((episode) => episode.seasonNumber > 0).toList()
+      : indexed;
+  episodes.sort((left, right) {
+    final season = left.seasonNumber.compareTo(right.seasonNumber);
+    return season == 0
+        ? left.episodeNumber.compareTo(right.episodeNumber)
+        : season;
+  });
+  return episodes.isEmpty ? item.playableMediaId : episodes.first.mediaId;
 }

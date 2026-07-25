@@ -17,6 +17,15 @@ void main() {
     expect(item.cardThumbnailUrl, isEmpty);
     expect(item.thumbnailUrl, isNotEmpty);
   });
+
+  test('matched media decodes its catalog route ID', () {
+    final item = decoder.decodeSummary({
+      ..._summary,
+      'catalog_item_id': 'catalog-1',
+    });
+
+    expect(item.catalogItemId, 'catalog-1');
+  });
 }
 
 final _summary = <String, Object?>{

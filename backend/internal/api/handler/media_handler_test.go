@@ -69,6 +69,16 @@ func TestMediaSummaryIncludesCardThumbnailWhenReady(t *testing.T) {
 	}
 }
 
+func TestMediaSummaryIncludesCatalogItemIDWhenMatched(t *testing.T) {
+	summary := presentMediaSummary(domain.Media{CatalogItemID: "catalog-1"})
+	if summary.CatalogItemID == nil || *summary.CatalogItemID != "catalog-1" {
+		t.Fatalf("catalog_item_id = %#v", summary.CatalogItemID)
+	}
+	if summary := presentMediaSummary(domain.Media{}); summary.CatalogItemID != nil {
+		t.Fatalf("unmatched catalog_item_id = %#v", summary.CatalogItemID)
+	}
+}
+
 func TestMediaListPassesWatchStatus(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	useCase := &recordingMediaUseCase{}

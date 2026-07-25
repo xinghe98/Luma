@@ -27,6 +27,14 @@ extension AppNavigation on BuildContext {
       goNamed(destination.routeName);
 
   void openMediaDetails(MediaItem item, {String? heroTag}) {
+    final catalogItemId = item.catalogItemId;
+    if (catalogItemId != null && catalogItemId.isNotEmpty) {
+      pushNamed<void>(
+        AppRoute.catalogDetail,
+        pathParameters: {'catalogId': catalogItemId},
+      );
+      return;
+    }
     // 搜索/库页条目不一定位于首页集合，先写入缓存再打开稳定 URL。
     AppScope.of(this).media.remember(item);
     final isVideo = item.type == MediaType.video;

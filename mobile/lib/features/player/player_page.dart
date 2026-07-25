@@ -7,6 +7,7 @@ import '../../core/theme.dart';
 import 'player_controller.dart';
 import 'player_device_controls.dart';
 import 'player_interaction_controller.dart';
+import 'player_session_controller.dart';
 import 'player_system_ui.dart';
 import 'widgets/player_scene.dart';
 
@@ -27,9 +28,11 @@ class PlayerPage extends StatefulWidget {
 
 class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
   PlayerController? _controller;
+  PlayerSessionController? _session;
   PlayerInteractionController? _interaction;
   final PlayerSystemUiSession _systemUi = PlayerSystemUiSession();
   bool _resolved = false;
+  bool _minimizing = false;
 
   @override
   void initState() {
@@ -43,21 +46,21 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     if (_resolved) return;
     _resolved = true;
     final media = AppScope.of(context).media;
-    final item = media.findById(widget.mediaId);
+    final session = AppScope.of(context).playerSession;
+    final active = session.player;
+    final item =
+        media.findById(widget.mediaId) ??
+        (active?.item.id == widget.mediaId ? active!.item : null);
     if (item == null) return;
-    final controller = PlayerController(
-      item: item,
-      media: media,
-      apiSession: AppScope.of(context).apiSession,
-      startFromBeginning: widget.startFromBeginning,
-    );
+    session.start(item, startFromBeginning: widget.startFromBeginning);
+    final controller = session.player!;
     final interaction = PlayerInteractionController(
       player: controller,
       deviceControls: const MethodChannelPlayerDeviceControls(),
     );
     _controller = controller;
+    _session = session;
     _interaction = interaction;
-    controller.start();
     unawaited(interaction.initialize());
     final mediaQuery = MediaQuery.of(context);
     unawaited(
@@ -72,15 +75,18 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    // 收起过程中若页面被提前卸下（系统返回等），仍要进入小窗，避免无 UI 续播。
+    if (_minimizing) {
+      _session?.minimize();
+    }
     final interaction = _interaction;
     _interaction = null;
     if (interaction != null) {
       unawaited(interaction.restoreDeviceState());
       interaction.dispose();
     }
-    final controller = _controller;
     _controller = null;
-    if (controller != null) unawaited(controller.shutdown());
+    _session = null;
     unawaited(_systemUi.exit());
     super.dispose();
   }
@@ -131,26 +137,59 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
         ),
       );
     }
+    final session = _session;
     return Scaffold(
       backgroundColor: extras.playerInk,
       body: ListenableBuilder(
-        listenable: controller,
-        child: PlayerScene(
-          controller: controller,
-          interaction: interaction,
-          onBack: () => Navigator.pop(context),
-          onRotate: _systemUi.canRotate
-              ? () => unawaited(_systemUi.rotate())
-              : null,
-        ),
-        builder: (context, child) => PopScope(
-          canPop: !controller.locked,
-          onPopInvokedWithResult: (didPop, _) {
-            if (!didPop && controller.locked) controller.showLockHint();
-          },
-          child: child!,
-        ),
+        listenable: Listenable.merge([
+          controller,
+          ?session,
+        ]),
+        builder: (context, _) {
+          // 收起过程中先卸下全屏纹理，再交给小窗挂载，避免双绑定导致花屏/红屏。
+          final attachVideo = !_minimizing && !(session?.minimized ?? false);
+          return PopScope(
+            canPop: !controller.locked,
+            onPopInvokedWithResult: (didPop, _) {
+              if (didPop && !_minimizing) {
+                unawaited(_session?.close());
+              } else if (controller.locked) {
+                controller.showLockHint();
+              }
+            },
+            child: PlayerScene(
+              controller: controller,
+              interaction: interaction,
+              attachVideo: attachVideo,
+              onBack: _closeAndPop,
+              onMinimize: _minimizeAndPop,
+              onRotate: _systemUi.canRotate
+                  ? () => unawaited(_systemUi.rotate())
+                  : null,
+            ),
+          );
+        },
       ),
     );
+  }
+
+  /// 收起页面时保留会话，由应用根层悬浮小窗继续展示。
+  void _minimizeAndPop() {
+    if (_minimizing) return;
+    // 先卸全屏纹理，下一帧再让小窗接管并 pop。
+    setState(() => _minimizing = true);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _session?.minimize();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) Navigator.of(context).pop();
+      });
+    });
+  }
+
+  /// 正常返回会结束播放，避免未明确收起时继续占用解码器。
+  void _closeAndPop() {
+    unawaited(_session?.close());
+    Navigator.of(context).pop();
   }
 }

@@ -6,6 +6,7 @@ import 'app/app_dependencies.dart';
 import 'app/app_router.dart';
 import 'app/app_scope.dart';
 import 'core/theme.dart';
+import 'features/player/widgets/mini_player_overlay.dart';
 import 'shared/branding/brand_mark.dart';
 import 'package:go_router/go_router.dart';
 
@@ -65,8 +66,19 @@ class _LumaAppState extends State<LumaApp> {
           darkTheme: LumaTheme.dark(),
           themeMode: widget.dependencies.settings.themeMode,
           routerConfig: _router,
-          builder: (context, child) => _LaunchBrandOverlay(
-            child: child ?? const SizedBox.shrink(),
+          // 小窗叠在路由树之上（含 Navigator 内 Dialog），保证始终最前。
+          builder: (context, child) => Stack(
+            fit: StackFit.expand,
+            children: [
+              _LaunchBrandOverlay(child: child ?? const SizedBox.shrink()),
+              MiniPlayerOverlay(
+                session: widget.dependencies.playerSession,
+                onExpand: (mediaId) => _router.pushNamed<void>(
+                  AppRoute.player,
+                  pathParameters: {'mediaId': mediaId},
+                ),
+              ),
+            ],
           ),
         ),
       ),

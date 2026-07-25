@@ -44,6 +44,8 @@ type Media struct {
 	SourceID string
 	// LibraryKind 是来源的内容组织类型，用于客户端严格隔离文件库与作品库。
 	LibraryKind string
+	// CatalogItemID 是已匹配电影或剧集所属的作品 ID；个人媒体和未识别文件为空。
+	CatalogItemID string
 	// Filename 是媒体文件名。
 	Filename string
 	// Title 是媒体展示标题。

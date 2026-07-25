@@ -3,16 +3,19 @@ import 'package:flutter/material.dart';
 import '../../../core/theme.dart';
 
 class PlayerTopBar extends StatelessWidget {
+  /// 显示片名与返回操作，可选显示收起到应用内小窗的按钮。
   const PlayerTopBar({
     super.key,
     required this.title,
     required this.resolution,
     required this.onBack,
+    this.onMinimize,
   });
 
   final String title;
   final String resolution;
   final VoidCallback onBack;
+  final VoidCallback? onMinimize;
 
   @override
   Widget build(BuildContext context) {
@@ -55,6 +58,12 @@ class PlayerTopBar extends StatelessWidget {
               ],
             ),
           ),
+          if (onMinimize != null)
+            IconButton(
+              tooltip: '小窗播放',
+              onPressed: onMinimize,
+              icon: Icon(Icons.picture_in_picture_alt_rounded, color: onInk),
+            ),
         ],
       ),
     );

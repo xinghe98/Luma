@@ -26,6 +26,7 @@ class MediaItem {
     this.sourceId = '',
     this.sourceName = '',
     this.libraryKind = 'personal',
+    this.catalogItemId,
     this.videoCodec = '',
     this.audioCodec = '',
     this.bitrate = 0,
@@ -59,6 +60,7 @@ class MediaItem {
   final String sourceId;
   final String sourceName;
   final String libraryKind;
+  final String? catalogItemId;
   final String videoCodec;
   final String audioCodec;
   final int bitrate;
@@ -96,6 +98,7 @@ class MediaItem {
     String? sourceId,
     String? sourceName,
     String? libraryKind,
+    String? catalogItemId,
     String? videoCodec,
     String? audioCodec,
     int? bitrate,
@@ -130,6 +133,7 @@ class MediaItem {
       sourceId: sourceId ?? this.sourceId,
       sourceName: sourceName ?? this.sourceName,
       libraryKind: libraryKind ?? this.libraryKind,
+      catalogItemId: catalogItemId ?? this.catalogItemId,
       videoCodec: videoCodec ?? this.videoCodec,
       audioCodec: audioCodec ?? this.audioCodec,
       bitrate: bitrate ?? this.bitrate,

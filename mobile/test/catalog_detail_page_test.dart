@@ -79,7 +79,20 @@ void main() {
     final avatarSize = tester.getSize(find.byType(ClipOval));
     expect(avatarSize.width, avatarSize.height);
     expect(avatarSize.width, 56);
-    expect(find.text('从头播放'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byType(FilledButton),
+        matching: find.text('继续观看'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: find.byType(OutlinedButton),
+        matching: find.text('从头播放'),
+      ),
+      findsOneWidget,
+    );
     expect(find.text('本库其他版本'), findsOneWidget);
     expect(find.text('4K HEVC'), findsOneWidget);
     expect(find.text('资料正在更新'), findsOneWidget);

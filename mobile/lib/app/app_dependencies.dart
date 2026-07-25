@@ -21,6 +21,7 @@ import '../data/storage/secure_credential_store.dart';
 import '../data/storage/secure_server_alias_store.dart';
 import '../data/storage/server_alias_store.dart';
 import '../features/connection/connection_controller.dart';
+import '../features/player/player_session_controller.dart';
 import 'controllers/media_controller.dart';
 import 'controllers/session_controller.dart';
 import 'controllers/settings_controller.dart';
@@ -48,6 +49,10 @@ class AppDependencies {
        _credentialStore = credentialStore,
        _aliasStore = aliasStore,
        _dio = dio {
+    playerSession = PlayerSessionController(
+      media: media,
+      apiSession: this.apiSession,
+    );
     connection = ConnectionController(
       connectionService: connectionService,
       sessionController: session,
@@ -112,6 +117,7 @@ class AppDependencies {
   final SessionController session;
   final SettingsController settings;
   final ApiSession apiSession;
+  late final PlayerSessionController playerSession;
   final CatalogRepository catalog;
   final AccessRepository access;
   final SourceRepository? sources;
@@ -148,6 +154,7 @@ class AppDependencies {
     _restoreOperation++;
     restoring.value = false;
     session.disconnect();
+    await playerSession.close();
     media.clear();
     final imageCache = PaintingBinding.instance.imageCache;
     imageCache.clear();
@@ -175,6 +182,7 @@ class AppDependencies {
   }
 
   void dispose() {
+    playerSession.dispose();
     connection.dispose();
     media.dispose();
     session.dispose();

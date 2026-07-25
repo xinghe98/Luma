@@ -1,27 +1,33 @@
 import 'package:flutter/material.dart';
-import 'package:video_player/video_player.dart';
 
 import '../../../core/theme.dart';
-import '../../../shared/media/media_artwork.dart';
 import '../player_controller.dart';
 import '../player_interaction_controller.dart';
 import 'player_controls.dart';
 import 'player_feedback_hud.dart';
 import 'player_gesture_layer.dart';
+import 'player_video_surface.dart';
 
 class PlayerScene extends StatelessWidget {
+  /// 组合视频画面、手势反馈和全屏控制，并提供收起到小窗的入口。
   const PlayerScene({
     super.key,
     required this.controller,
     required this.interaction,
     required this.onBack,
+    required this.onMinimize,
     required this.onRotate,
+    this.attachVideo = true,
   });
 
   final PlayerController controller;
   final PlayerInteractionController interaction;
   final VoidCallback onBack;
+  final VoidCallback onMinimize;
   final VoidCallback? onRotate;
+
+  /// 为 false 时释放纹理给小窗，避免与 [MiniPlayerOverlay] 双挂载。
+  final bool attachVideo;
 
   @override
   Widget build(BuildContext context) {
@@ -30,12 +36,18 @@ class PlayerScene extends StatelessWidget {
       child: Stack(
         fit: StackFit.expand,
         children: [
-          RepaintBoundary(child: _PlayerVideoSurface(controller: controller)),
+          RepaintBoundary(
+            child: PlayerVideoSurface(
+              controller: controller,
+              attachVideo: attachVideo,
+            ),
+          ),
           PlayerGestureLayer(interaction: interaction),
           PlayerFeedbackHud(interaction: interaction),
           _PlayerDynamicOverlay(
             controller: controller,
             onBack: onBack,
+            onMinimize: onMinimize,
             onRotate: onRotate,
           ),
         ],
@@ -44,77 +56,17 @@ class PlayerScene extends StatelessWidget {
   }
 }
 
-class _PlayerVideoSurface extends StatefulWidget {
-  const _PlayerVideoSurface({required this.controller});
-
-  final PlayerController controller;
-
-  @override
-  State<_PlayerVideoSurface> createState() => _PlayerVideoSurfaceState();
-}
-
-class _PlayerVideoSurfaceState extends State<_PlayerVideoSurface> {
-  bool _initialized = false;
-  String? _error;
-
-  @override
-  void initState() {
-    super.initState();
-    widget.controller.addListener(_sync);
-    _sync();
-  }
-
-  @override
-  void didUpdateWidget(covariant _PlayerVideoSurface oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.controller == widget.controller) return;
-    oldWidget.controller.removeListener(_sync);
-    widget.controller.addListener(_sync);
-    _sync();
-  }
-
-  @override
-  void dispose() {
-    widget.controller.removeListener(_sync);
-    super.dispose();
-  }
-
-  void _sync() {
-    final initialized = widget.controller.initialized;
-    final error = widget.controller.error;
-    if (_initialized == initialized && _error == error) return;
-    if (mounted) {
-      setState(() {
-        _initialized = initialized;
-        _error = error;
-      });
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final video = widget.controller.videoController;
-    if (_initialized && video != null) {
-      return Center(
-        child: AspectRatio(
-          aspectRatio: video.value.aspectRatio,
-          child: VideoPlayer(video),
-        ),
-      );
-    }
-    return MediaArtwork(item: widget.controller.item, borderRadius: 0);
-  }
-}
-
 class _PlayerDynamicOverlay extends StatelessWidget {
   const _PlayerDynamicOverlay({
     required this.controller,
     required this.onBack,
+    required this.onMinimize,
     required this.onRotate,
   });
 
   final PlayerController controller;
   final VoidCallback onBack;
+  final VoidCallback onMinimize;
   final VoidCallback? onRotate;
 
   @override
@@ -155,6 +107,7 @@ class _PlayerDynamicOverlay extends StatelessWidget {
                 child: PlayerControls(
                   controller: controller,
                   onBack: onBack,
+                  onMinimize: onMinimize,
                   onRotate: onRotate,
                 ),
               ),

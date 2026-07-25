@@ -243,6 +243,7 @@ final class ApiMediaRepository
       mimeType: existing?.mimeType ?? '',
       sourceId: existing?.sourceId ?? '',
       libraryKind: value.libraryKind,
+      catalogItemId: value.catalogItemId,
       videoCodec: existing?.videoCodec ?? '',
       audioCodec: existing?.audioCodec ?? '',
       bitrate: existing?.bitrate ?? 0,

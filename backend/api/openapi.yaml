@@ -1150,6 +1150,9 @@ components:
         filename: { type: string }
         media_type: { type: string, enum: [video, image] }
         library_kind: { type: string, enum: [personal, movies, tv] }
+        catalog_item_id:
+          type: [string, "null"]
+          description: 已匹配电影或剧集的作品 ID；个人媒体和未识别文件为 null。
         duration_ms: { type: [integer, "null"], format: int64, minimum: 0 }
         width: { type: [integer, "null"], minimum: 1 }
         height: { type: [integer, "null"], minimum: 1 }

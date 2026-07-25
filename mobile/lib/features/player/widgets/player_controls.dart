@@ -8,15 +8,18 @@ import 'player_timeline.dart';
 import 'player_top_bar.dart';
 
 class PlayerControls extends StatelessWidget {
+  /// 显示全屏控制；提供小窗回调时在顶部栏显示收起按钮。
   const PlayerControls({
     super.key,
     required this.controller,
     required this.onBack,
+    this.onMinimize,
     required this.onRotate,
   });
 
   final PlayerController controller;
   final VoidCallback onBack;
+  final VoidCallback? onMinimize;
   final VoidCallback? onRotate;
 
   @override
@@ -40,6 +43,7 @@ class PlayerControls extends StatelessWidget {
           title: controller.item.title,
           resolution: controller.item.resolution,
           onBack: onBack,
+          onMinimize: onMinimize,
         ),
         const Spacer(),
         PlayerCenterControls(controller: controller),
