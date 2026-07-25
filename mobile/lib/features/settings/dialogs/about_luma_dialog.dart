@@ -31,6 +31,13 @@ void showAboutLumaDialog(BuildContext context) {
                 color: theme.colorScheme.onSurfaceVariant,
               ),
             ),
+            const SizedBox(height: LumaSpacing.sm),
+            Text(
+              '界面字体采用 MiSans，版权归小米科技有限责任公司所有。',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
           ],
         ),
         actions: [

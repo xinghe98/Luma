@@ -140,3 +140,122 @@ func TestCatalogRepositoryKeepsManualMatchLocked(t *testing.T) {
 		t.Fatalf("locked mapping returned as dirty: %#v", candidates)
 	}
 }
+
+func TestCatalogRepositoryRuleUpgradeClearsNeedsReview(t *testing.T) {
+	ctx := context.Background()
+	db, err := Open(ctx, config.DatabaseConfig{Path: filepath.Join(t.TempDir(), "rematch.db"), BusyTimeoutMS: 1000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	sources, _ := NewSourceRepository(db)
+	repository, _ := NewCatalogRepository(db)
+	now := time.UnixMilli(10_000).UTC()
+	if err := sources.Create(ctx, domain.Source{
+		ID: "tv", Name: "剧集", Type: domain.SourceTypeLocal, LibraryKind: domain.LibraryKindTV,
+		RootPath: "/tv", Enabled: true, Status: domain.SourceStatusOnline, CreatedAt: now, UpdatedAt: now,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	shows := []struct {
+		id           string
+		title        string
+		relativePath string
+		filename     string
+	}{
+		{
+			id: "unnatural", title: "非自然死亡",
+			relativePath: "非自然死亡/非自然死亡.第10集.Unnatural.2018.E10.BD-1080p.mkv",
+			filename:     "非自然死亡.第10集.Unnatural.2018.E10.BD-1080p.mkv",
+		},
+		{
+			id: "bad_people", title: "画江湖之不良人",
+			relativePath: "画江湖之不良人/画江湖之不良人网剧版01.mp4/画江湖之不良人网剧版01.mp4",
+			filename:     "画江湖之不良人网剧版01.mp4",
+		},
+		{
+			id: "three_body", title: "三体",
+			relativePath: "三体/Three.Body.2023.EP01.HD1080P.mkv",
+			filename:     "Three.Body.2023.EP01.HD1080P.mkv",
+		},
+		{
+			id: "alley", title: "小巷人家",
+			relativePath: "小巷人家/4K/01 4K.mp4",
+			filename:     "01 4K.mp4",
+		},
+	}
+	for _, show := range shows {
+		_, err := db.Exec(`INSERT INTO media_items(id,source_id,relative_path,filename,media_type,file_size,file_modified_at_ms,status,discovered_at_ms,created_at_ms,updated_at_ms)
+			VALUES(?,?,?,?, 'video',100,1,'ready',?,?,?)`,
+			show.id, "tv", show.relativePath, show.filename, now.UnixMilli(), now.UnixMilli(), now.UnixMilli())
+		if err != nil {
+			t.Fatal(err)
+		}
+		oldMatch := domain.CatalogMatch{
+			MediaID: show.id, SourceID: "tv", Kind: domain.CatalogKindSeries,
+			Title: show.title, SortTitle: catalog.NormalizeTitle(show.title),
+			Status: domain.CatalogMatchNeedsReview, Confidence: 35, MediaUpdatedAt: now,
+		}
+		if err := repository.SaveMatch(ctx, oldMatch, now); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := db.Exec(`UPDATE catalog_media_links SET rule_version = 1`); err != nil {
+		t.Fatal(err)
+	}
+
+	candidates, err := repository.ListCandidates(ctx, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(candidates) != len(shows) {
+		t.Fatalf("candidate count = %d", len(candidates))
+	}
+	for _, candidate := range candidates {
+		if err := repository.SaveMatch(ctx, catalog.Match(candidate), now.Add(time.Second)); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	var matched, needsReview, ruleVersion int
+	if err := db.QueryRow(`SELECT
+		SUM(CASE WHEN match_status = 'matched' THEN 1 ELSE 0 END),
+		SUM(CASE WHEN match_status = 'needs_review' THEN 1 ELSE 0 END),
+		MIN(rule_version)
+		FROM catalog_media_links`).Scan(&matched, &needsReview, &ruleVersion); err != nil {
+		t.Fatal(err)
+	}
+	if matched != len(shows) || needsReview != 0 || ruleVersion != catalog.RuleVersion {
+		t.Fatalf("links matched=%d needs_review=%d rule=%d", matched, needsReview, ruleVersion)
+	}
+	var matchedItems int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM catalog_items WHERE match_status = 'matched'`).Scan(&matchedItems); err != nil {
+		t.Fatal(err)
+	}
+	if matchedItems != len(shows) {
+		t.Fatalf("matched catalog item count = %d", matchedItems)
+	}
+	items, err := repository.List(ctx, domain.CatalogListRequest{Kind: domain.CatalogKindSeries, Limit: 10}, "user_local")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != len(shows) {
+		t.Fatalf("catalog items = %#v", items)
+	}
+	found := make(map[string]domain.CatalogItem, len(items))
+	for _, item := range items {
+		found[item.Title] = item
+	}
+	for _, show := range shows {
+		if item, ok := found[show.title]; !ok || item.EpisodeCount != 1 {
+			t.Fatalf("catalog item %q = %#v, found=%v", show.title, item, ok)
+		}
+	}
+	issues, err := repository.ListIssues(ctx, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(issues) != 0 {
+		t.Fatalf("issues = %#v", issues)
+	}
+}

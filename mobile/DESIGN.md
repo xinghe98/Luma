@@ -18,22 +18,22 @@ colors:
   on-ink: "#F7F0E6"
 typography:
   headline:
-    fontFamily: "system-ui, sans-serif"
+    fontFamily: "MiSans"
     fontWeight: 600
     lineHeight: 1.2
-    letterSpacing: "-0.3px"
+    letterSpacing: "0px"
   title:
-    fontFamily: "system-ui, sans-serif"
-    fontWeight: 600
-    lineHeight: 1.25
+    fontFamily: "MiSans"
+    fontWeight: 500
+    lineHeight: 1.35
   body:
-    fontFamily: "system-ui, sans-serif"
+    fontFamily: "MiSans"
     fontWeight: 400
-    lineHeight: 1.45
+    lineHeight: 1.5
   label:
-    fontFamily: "system-ui, sans-serif"
-    fontWeight: 600
-    lineHeight: 1.2
+    fontFamily: "MiSans"
+    fontWeight: 500
+    lineHeight: 1.3
 rounded:
   sm: "8px"
   md: "12px"
@@ -114,19 +114,21 @@ brand:
 
 ## Typography
 
-**Display Font:** 系统无衬线字体
-**Body Font:** 系统无衬线字体
+**Display Font:** MiSans
+**Body Font:** MiSans
 
-**Character:** 字体保持原生、清晰和可信；层级依靠字号与字重，而不是装饰字体。
+**Character:** MiSans 用于全部界面文字，带来跨 Android 设备一致、清晰而克制的中文体验；层级依靠字号与字重，而不是装饰字体。未覆盖的文字与 Emoji 回退到系统无衬线字体。
 
 ### Hierarchy
 
-- **Headline**（600，紧凑行高）：页面主标题和重要区段。
-- **Title**（600，1.25 行高）：卡片、工具栏与播放器标题。
-- **Body**（400，1.45 行高）：说明、元数据和错误信息，长文限制在 65–75 个字符宽度。
-- **Label**（600，紧凑行高）：按钮、筛选与状态标签。
+- **Headline**（24–32sp，600，1.2 行高）：页面主标题和重要区段。
+- **Title**（14–20sp，500–600，1.3–1.4 行高）：卡片、工具栏与播放器标题。
+- **Body**（12–16sp，400，1.5 行高）：说明、元数据和错误信息，长文限制在 65–75 个字符宽度。
+- **Label**（11–14sp，500–600，1.25–1.3 行高）：按钮、筛选与状态标签。
 
-**The Native Voice Rule.** 禁止在按钮、数据和播放器控制上使用展示字体。
+**The One Family Rule.** 禁止在按钮、数据和播放器控制上使用第二套展示字体；令牌等机器可读字符串可保留系统等宽字体。中文界面字距保持 0，避免负字距造成拥挤。
+
+MiSans 以官方原始可变字体随应用发布，许可协议保存在 `assets/fonts/MiSans-LICENSE.pdf`；“关于轻影”必须保留字体版权声明。
 
 ## Elevation
 

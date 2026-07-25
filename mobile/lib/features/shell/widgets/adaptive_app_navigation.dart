@@ -140,7 +140,7 @@ class _BottomDestination extends StatelessWidget {
     final color = selected ? activeColor : inactiveColor;
     final textStyle = Theme.of(context).textTheme.labelSmall?.copyWith(
       color: color,
-      fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+      fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
       height: 1.15,
     );
     return Semantics(
