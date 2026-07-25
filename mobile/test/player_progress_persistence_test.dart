@@ -7,6 +7,25 @@ import 'package:luma/data/models/media_types.dart';
 import 'package:luma/features/player/player_controller.dart';
 
 void main() {
+  test('starting from the beginning ignores saved progress', () {
+    final repository = MockMediaRepository();
+    final media = MediaController(repository);
+    final item = buildMediaFixtures().firstWhere(
+      (item) => item.type == MediaType.video && item.progress > 0,
+    );
+    final player = PlayerController(
+      item: item,
+      media: media,
+      startFromBeginning: true,
+    );
+    addTearDown(() {
+      player.dispose();
+      media.dispose();
+    });
+
+    expect(player.position, Duration.zero);
+  });
+
   testWidgets('periodic progress saves only while playback is active', (
     tester,
   ) async {

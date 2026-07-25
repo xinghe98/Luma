@@ -61,13 +61,25 @@ extension AppNavigation on BuildContext {
     extra: item,
   );
 
-  Future<void> openPlayer(String mediaId) async {
+  /// 打开播放器；从头播放时跳过已保存的本地续播位置。
+  Future<void> openPlayer(
+    String mediaId, {
+    bool startFromBeginning = false,
+  }) async {
     final media = AppScope.of(this).media;
     await media.loadDetail(mediaId);
     if (!mounted || media.findById(mediaId) == null) return;
     await pushNamed<void>(
       AppRoute.player,
       pathParameters: {'mediaId': mediaId},
+      extra: PlayerRouteData(startFromBeginning: startFromBeginning),
     );
   }
+}
+
+/// PlayerRouteData 在路由层传递一次性起播意图，不写入媒体用户资料。
+class PlayerRouteData {
+  const PlayerRouteData({this.startFromBeginning = false});
+
+  final bool startFromBeginning;
 }

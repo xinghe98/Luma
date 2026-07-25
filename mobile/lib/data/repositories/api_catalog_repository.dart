@@ -20,6 +20,22 @@ final class ApiCatalogRepository implements CatalogRepository {
       _decoder.decode(await _client.getCatalogDetail(id));
 
   @override
+  Future<CatalogFavorite> setFavorite({
+    required String catalogId,
+    required bool favorite,
+    required int revision,
+  }) async {
+    final data = await _client.updateCatalogUserData(catalogId, {
+      'favorite': favorite,
+      'base_revision': revision,
+    });
+    return CatalogFavorite(
+      favorite: data['favorite'] as bool? ?? favorite,
+      revision: data['revision'] as int? ?? revision + 1,
+    );
+  }
+
+  @override
   Future<List<CatalogIssue>> issues() async =>
       _decoder.decodeIssues(await _client.getCatalogIssues());
 

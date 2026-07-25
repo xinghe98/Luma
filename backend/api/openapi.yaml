@@ -971,6 +971,24 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/CatalogItem" }
         "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      summary: 更新当前用户的作品级收藏
+      description: 收藏绑定作品，不随 4K、1080p 等本地媒体版本切换而丢失。
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateCatalogUserData" }
+      responses:
+        "200":
+          description: 已更新作品用户数据
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CatalogUserData" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
 components:
   securitySchemes:
     bearerAuth:
@@ -1189,7 +1207,7 @@ components:
         thumbnail_url: { type: string }
     CatalogItem:
       type: object
-      required: [id, source_id, kind, title, original_title, year, release_date, end_date, certification, community_rating, vote_count, genres, match_status, metadata_status, metadata_revision, metadata_error_code, provider, provider_item_id, identity_locked, media_count, episode_count, completed_count, playable_media_id, thumbnail_url, poster_url, backdrop_url, duration_ms, resolution, progress_ms, completed, updated_at]
+      required: [id, source_id, kind, title, original_title, year, release_date, end_date, certification, community_rating, vote_count, genres, match_status, metadata_status, metadata_revision, metadata_error_code, provider, provider_item_id, identity_locked, media_count, episode_count, completed_count, playable_media_id, thumbnail_url, poster_url, backdrop_url, duration_ms, resolution, progress_ms, completed, favorite, favorite_revision, updated_at]
       properties:
         id: { type: string }
         source_id: { type: string }
@@ -1229,8 +1247,11 @@ components:
         resolution: { type: string, description: 当前可播放视频的宽高，尚未探测时为空字符串。 }
         progress_ms: { type: integer, format: int64, minimum: 0 }
         completed: { type: boolean }
+        favorite: { type: boolean, description: 当前用户的作品级收藏状态。 }
+        favorite_revision: { type: integer, format: int64, minimum: 0 }
         updated_at: { type: string, format: date-time }
         episodes: { type: array, items: { $ref: "#/components/schemas/CatalogEpisode" } }
+        versions: { type: array, items: { $ref: "#/components/schemas/CatalogVersion" }, description: 仅电影详情返回的本地文件版本。 }
     CatalogNamedValue:
       type: object
       required: [name]
@@ -1247,6 +1268,37 @@ components:
         department: { type: string }
         job: { type: string }
         order: { type: integer, minimum: 0 }
+        profile_url: { type: string, description: 受鉴权的演职员头像地址；缺失时为空。 }
+    CatalogVersion:
+      type: object
+      required: [media_id, label, file_size, duration_ms, resolution, video_codec, audio_codec, audio_track_count, progress_ms, completed, selected]
+      properties:
+        media_id: { type: string }
+        label: { type: string, description: 服务端根据已探测规格生成的版本标签。 }
+        file_size: { type: integer, format: int64, minimum: 0 }
+        duration_ms: { type: [integer, "null"], format: int64, minimum: 0 }
+        resolution: { type: string }
+        video_codec: { type: string }
+        audio_codec: { type: string }
+        audio_track_count: { type: integer, minimum: 0 }
+        progress_ms: { type: integer, format: int64, minimum: 0 }
+        completed: { type: boolean }
+        selected: { type: boolean }
+    CatalogUserData:
+      type: object
+      required: [catalog_item_id, favorite, revision, updated_at]
+      properties:
+        catalog_item_id: { type: string }
+        favorite: { type: boolean }
+        revision: { type: integer, format: int64, minimum: 1 }
+        updated_at: { type: string, format: date-time }
+    UpdateCatalogUserData:
+      type: object
+      additionalProperties: false
+      required: [favorite, base_revision]
+      properties:
+        favorite: { type: boolean }
+        base_revision: { type: integer, format: int64, minimum: 0 }
     MetadataCandidate:
       type: object
       required: [id, provider, provider_item_id, title, original_title, year, overview, score, reasons]

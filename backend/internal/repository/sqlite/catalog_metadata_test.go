@@ -1,4 +1,4 @@
-// Metadata repository integration tests cover queue, manual identity, rich data, and refresh persistence.
+// 本文件覆盖刮削队列、人工身份、丰富资料与刷新状态的持久化行为。
 package sqlite
 
 import (
@@ -92,7 +92,10 @@ func TestCatalogMetadataQueueIdentityAndRichResult(t *testing.T) {
 		Overview: "丰富简介", ReleaseDate: "2023-01-15", RuntimeMS: &runtime,
 		CommunityRating: &rating, VoteCount: 1200,
 		GenresJSON: `[{"id":"18","name":"剧情"}]`, CountriesJSON: `[]`,
-		StudiosJSON: `[]`, CreditsJSON: `[]`, ExternalIDsJSON: `{"imdb":"tt20242042"}`,
+		StudiosJSON: `[]`, CreditsJSON: `[
+			{"provider_person_id":"person_1","name":"演员","character":"角色","order":0,"profile":{"provider":"tmdb","key":"/profile.jpg"}},
+			{"provider_person_id":"person_1","name":"演员","department":"Production","job":"Producer","order":1,"profile":{"provider":"tmdb","key":"/profile.jpg"}}
+		]`, ExternalIDsJSON: `{"imdb":"tt20242042"}`,
 		PosterRef: "/poster.jpg", BackdropRef: "/backdrop.jpg",
 	}, now.Add(3*time.Second)); err != nil {
 		t.Fatal(err)
@@ -104,8 +107,14 @@ func TestCatalogMetadataQueueIdentityAndRichResult(t *testing.T) {
 	if detail.MetadataStatus != "ready" || detail.Provider != "tmdb" ||
 		detail.Overview != "丰富简介" || detail.OriginalTitle != "Three-Body" ||
 		!detail.IdentityLocked || len(detail.Genres) != 1 ||
-		detail.PosterArtworkID == "" || detail.BackdropArtworkID == "" {
+		detail.PosterArtworkID == "" || detail.BackdropArtworkID == "" ||
+		len(detail.Credits) != 2 || detail.Credits[0].ProfileArtworkID == "" ||
+		detail.Credits[0].ProfileArtworkID != detail.Credits[1].ProfileArtworkID {
 		t.Fatalf("detail=%#v", detail)
+	}
+	profile, err := repository.GetCatalogArtwork(ctx, detail.Credits[0].ProfileArtworkID, "user_local")
+	if err != nil || profile.OpaqueKey != "/profile.jpg" {
+		t.Fatalf("profile=%#v error=%v", profile, err)
 	}
 
 	// An identity lock fixes the selected record, not its metadata snapshot.

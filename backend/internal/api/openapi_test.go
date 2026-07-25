@@ -43,6 +43,10 @@ func TestOpenAPIIsValidYAML(t *testing.T) {
 			t.Fatalf("作品库 OpenAPI path 缺失: %s", path)
 		}
 	}
+	catalogDetail, ok := paths["/api/v1/catalog/{id}"].(map[string]any)
+	if !ok || catalogDetail["patch"] == nil {
+		t.Fatal("PATCH /api/v1/catalog/{id} 作品收藏契约缺失")
+	}
 	for _, path := range []string{
 		"/api/v1/catalog/artwork/{id}", "/api/v1/admin/catalog/{id}/candidates",
 		"/api/v1/admin/catalog/{id}/refresh", "/api/v1/admin/catalog/refresh",
@@ -104,7 +108,7 @@ func TestOpenAPIIsValidYAML(t *testing.T) {
 			t.Fatalf("阶段 6 schema 缺失: %s", schema)
 		}
 	}
-	for _, schema := range []string{"CatalogItem", "CatalogEpisode", "CatalogIssue", "UpdateCatalogMatch"} {
+	for _, schema := range []string{"CatalogItem", "CatalogEpisode", "CatalogIssue", "UpdateCatalogMatch", "CatalogVersion", "CatalogUserData", "UpdateCatalogUserData"} {
 		if schemas[schema] == nil {
 			t.Fatalf("作品库 schema 缺失: %s", schema)
 		}

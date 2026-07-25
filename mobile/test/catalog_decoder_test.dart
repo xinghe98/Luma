@@ -86,6 +86,7 @@ void main() {
           'role': 'actor',
           'character': '角色',
           'order': 0,
+          'profile_url': '/api/v1/catalog/artwork/person-1',
         },
       ],
       'external_ids': {'tmdb': '123'},
@@ -103,6 +104,23 @@ void main() {
       'thumbnail_url': '/api/v1/media/media-1/thumbnail',
       'poster_url': '/api/v1/catalog/artwork/poster-1',
       'backdrop_url': '/api/v1/catalog/artwork/backdrop-1',
+      'favorite': true,
+      'favorite_revision': 3,
+      'versions': [
+        {
+          'media_id': 'movie-4k',
+          'label': '4K HEVC',
+          'file_size': 2147483648,
+          'duration_ms': 3600000,
+          'resolution': '3840×2160',
+          'video_codec': 'hevc',
+          'audio_codec': 'aac',
+          'audio_track_count': 2,
+          'progress_ms': 0,
+          'completed': false,
+          'selected': true,
+        },
+      ],
       'duration_ms': 3600000,
       'resolution': '1920×1080',
       'progress_ms': 0,
@@ -114,7 +132,11 @@ void main() {
     expect(item.communityRating, 8.4);
     expect(item.genres.single.name, '剧情');
     expect(item.credits.single.character, '角色');
+    expect(item.credits.single.profileUrl, '/api/v1/catalog/artwork/person-1');
     expect(item.externalIds['tmdb'], '123');
     expect(item.backdropUrl, '/api/v1/catalog/artwork/backdrop-1');
+    expect(item.favorite, isTrue);
+    expect(item.favoriteRevision, 3);
+    expect(item.versions.single.label, '4K HEVC');
   });
 }

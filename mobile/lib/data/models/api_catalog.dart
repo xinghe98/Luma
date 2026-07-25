@@ -16,6 +16,7 @@ final class CatalogCredit {
     required this.role,
     required this.character,
     required this.order,
+    this.profileUrl = '',
   });
 
   final String personId;
@@ -23,6 +24,48 @@ final class CatalogCredit {
   final String role;
   final String character;
   final int order;
+  final String profileUrl;
+}
+
+/// CatalogVersion 表示同一部电影可播放的一个本地技术版本。
+final class CatalogVersion {
+  const CatalogVersion({
+    required this.mediaId,
+    required this.label,
+    required this.fileSize,
+    required this.durationMs,
+    required this.resolution,
+    required this.videoCodec,
+    required this.audioCodec,
+    required this.audioTrackCount,
+    required this.progressMs,
+    required this.completed,
+    required this.selected,
+  });
+
+  final String mediaId;
+  final String label;
+  final int fileSize;
+  final int? durationMs;
+  final String resolution;
+  final String videoCodec;
+  final String audioCodec;
+  final int audioTrackCount;
+  final int progressMs;
+  final bool completed;
+  final bool selected;
+
+  double get progress => durationMs == null || durationMs == 0
+      ? 0
+      : (progressMs / durationMs!).clamp(0, 1);
+}
+
+/// CatalogFavorite 是作品级收藏保存后的服务端版本。
+final class CatalogFavorite {
+  const CatalogFavorite({required this.favorite, required this.revision});
+
+  final bool favorite;
+  final int revision;
 }
 
 final class CatalogEpisode {
@@ -91,6 +134,9 @@ final class CatalogItem {
     this.providerItemId = '',
     this.identityLocked = false,
     this.backdropUrl = '',
+    this.favorite = false,
+    this.favoriteRevision = 0,
+    this.versions = const [],
   });
 
   final String id;
@@ -130,6 +176,9 @@ final class CatalogItem {
   final String providerItemId;
   final bool identityLocked;
   final String backdropUrl;
+  final bool favorite;
+  final int favoriteRevision;
+  final List<CatalogVersion> versions;
 
   double get progress => durationMs == null || durationMs == 0
       ? 0

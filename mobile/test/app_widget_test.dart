@@ -206,7 +206,7 @@ void main() {
     expect(find.text('没有找到相关内容'), findsNothing);
   });
 
-  testWidgets('catalog overview only requests later shelves after scrolling', (
+  testWidgets('catalog overview loads television shelf when it is visible initially', (
     tester,
   ) async {
     final catalog = _CountingCatalogRepository();
@@ -234,12 +234,8 @@ void main() {
     await tester.pump();
 
     expect(catalog.calls[CatalogKind.movie], 1);
-    expect(catalog.calls[CatalogKind.series] ?? 0, 0);
-    expect(dependencies.media.loadState, LoadState.idle);
-
-    await tester.drag(find.byType(CustomScrollView), const Offset(0, -260));
-    await tester.pump();
     expect(catalog.calls[CatalogKind.series], 1);
+    expect(dependencies.media.loadState, LoadState.idle);
   });
 
   testWidgets('search reports search errors instead of empty results', (
@@ -466,6 +462,13 @@ class _CountingCatalogRepository implements CatalogRepository {
 
   @override
   Future<CatalogItem> detail(String id) => throw UnimplementedError();
+
+  @override
+  Future<CatalogFavorite> setFavorite({
+    required String catalogId,
+    required bool favorite,
+    required int revision,
+  }) => throw UnimplementedError();
 
   @override
   Future<void> ignore(String mediaId) => throw UnimplementedError();

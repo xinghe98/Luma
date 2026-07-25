@@ -40,6 +40,21 @@ void main() {
         ),
       ],
       metadataStatus: 'refreshing',
+      versions: const [
+        CatalogVersion(
+          mediaId: 'movie-4k',
+          label: '4K HEVC',
+          fileSize: 2147483648,
+          durationMs: 3600000,
+          resolution: '3840×2160',
+          videoCodec: 'hevc',
+          audioCodec: 'aac',
+          audioTrackCount: 2,
+          progressMs: 0,
+          completed: false,
+          selected: true,
+        ),
+      ],
     );
 
     await tester.pumpWidget(
@@ -49,26 +64,89 @@ void main() {
           initialItem: item,
           repository: _CatalogDetailRepository(item),
           onOpenMedia: (_) {},
+          onOpenMediaFromStart: (_) {},
         ),
       ),
     );
     await tester.pump();
 
     expect(find.text('一段跨越时空的故事。'), findsOneWidget);
-    expect(find.text('剧情 · 评分 8.4 · PG-13'), findsOneWidget);
-    expect(find.text('演员 · 角色'), findsOneWidget);
+    expect(find.text('剧情'), findsOneWidget);
+    expect(find.text('★ 8.4'), findsOneWidget);
+    expect(find.text('PG-13'), findsOneWidget);
+    expect(find.text('演员'), findsOneWidget);
+    expect(find.text('角色'), findsOneWidget);
+    final avatarSize = tester.getSize(find.byType(ClipOval));
+    expect(avatarSize.width, avatarSize.height);
+    expect(avatarSize.width, 56);
+    expect(find.text('从头播放'), findsOneWidget);
+    expect(find.text('本库其他版本'), findsOneWidget);
+    expect(find.text('4K HEVC'), findsOneWidget);
     expect(find.text('资料正在更新'), findsOneWidget);
     expect(find.byType(CircularProgressIndicator), findsNothing);
+  });
+
+  testWidgets('catalog detail saves a work favorite optimistically', (
+    tester,
+  ) async {
+    final item = CatalogItem(
+      id: 'catalog-favorite',
+      sourceId: 'source-1',
+      kind: CatalogKind.movie,
+      title: '电影',
+      year: null,
+      mediaCount: 1,
+      episodeCount: 0,
+      completedCount: 0,
+      playableMediaId: 'media-1',
+      thumbnailUrl: '',
+      posterUrl: '',
+      durationMs: null,
+      resolution: '',
+      progressMs: 0,
+      completed: false,
+      updatedAt: DateTime(2026, 7, 25),
+    );
+    final repository = _CatalogDetailRepository(item);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: CatalogDetailPage(
+          catalogId: item.id,
+          initialItem: item,
+          repository: repository,
+          onOpenMedia: (_) {},
+          onOpenMediaFromStart: (_) {},
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.tap(find.byTooltip('收藏'));
+    await tester.pump();
+
+    expect(repository.favoriteCalls, 1);
+    expect(find.text('已收藏'), findsOneWidget);
   });
 }
 
 class _CatalogDetailRepository implements CatalogRepository {
-  const _CatalogDetailRepository(this.item);
+  _CatalogDetailRepository(this.item);
 
   final CatalogItem item;
+  var favoriteCalls = 0;
 
   @override
   Future<CatalogItem> detail(String id) async => item;
+
+  @override
+  Future<CatalogFavorite> setFavorite({
+    required String catalogId,
+    required bool favorite,
+    required int revision,
+  }) async {
+    favoriteCalls++;
+    return CatalogFavorite(favorite: favorite, revision: revision + 1);
+  }
 
   @override
   Future<void> ignore(String mediaId) async {}

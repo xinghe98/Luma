@@ -11,6 +11,7 @@ import (
 
 	"github.com/xinghe98/Luma/backend/internal/catalog"
 	"github.com/xinghe98/Luma/backend/internal/domain"
+	"github.com/xinghe98/Luma/backend/pkg/scraper"
 )
 
 // EnqueuePendingMetadata creates jobs for pending, failed, or stale works.
@@ -96,10 +97,40 @@ func (r *CatalogRepository) ClaimMetadata(ctx context.Context, workerID string, 
 	input.DurationMS = nullInt64(duration)
 	input.Provider, input.ProviderItemID = provider.String, providerItem.String
 	input.IdentityLocked = locked == 1
+	paths, err := matchedCatalogPaths(ctx, tx, itemID)
+	if err != nil {
+		return domain.CatalogScrapeInput{}, err
+	}
+	evidence := catalog.CollectScrapeEvidence(input.Title, paths)
+	if input.Year == nil {
+		input.Year = evidence.Year
+	}
+	input.AlternativeTitles = evidence.AlternativeTitles
 	if err := tx.Commit(); err != nil {
 		return domain.CatalogScrapeInput{}, err
 	}
 	return input, nil
+}
+
+// matchedCatalogPaths 返回仍参与作品的媒体相对路径，仅用于汇总刮削线索。
+func matchedCatalogPaths(ctx context.Context, tx *sql.Tx, itemID string) ([]string, error) {
+	rows, err := tx.QueryContext(ctx, `SELECT m.relative_path FROM catalog_media_links l
+		JOIN media_items m ON m.id=l.media_id
+		WHERE l.catalog_item_id=? AND l.match_status='matched' AND m.status <> 'missing'
+		ORDER BY m.relative_path`, itemID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	paths := []string{}
+	for rows.Next() {
+		var path string
+		if err := rows.Scan(&path); err != nil {
+			return nil, err
+		}
+		paths = append(paths, path)
+	}
+	return paths, rows.Err()
 }
 
 // SaveMetadataCandidates persists manual choices and completes the active job.
@@ -196,6 +227,9 @@ func (r *CatalogRepository) CompleteMetadata(ctx context.Context, value domain.C
 		return err
 	}
 	if err := upsertArtwork(ctx, tx, value.ItemID, "backdrop", value.Provider, value.BackdropRef, now); err != nil {
+		return err
+	}
+	if err := replaceCreditArtwork(ctx, tx, value.ItemID, value.CreditsJSON, now); err != nil {
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM catalog_match_candidates WHERE catalog_item_id=?`, value.ItemID); err != nil {
@@ -332,7 +366,11 @@ func (r *CatalogRepository) GetCatalogArtwork(ctx context.Context, artworkID, us
 	var value domain.CatalogArtwork
 	err := r.db.QueryRowContext(ctx, `SELECT a.id,a.catalog_item_id,c.source_id,a.provider,a.opaque_key,
 		COALESCE(a.storage_key,''),COALESCE(a.mime_type,''),COALESCE(a.content_sha256,''),a.status
-		FROM catalog_artwork a JOIN catalog_items c ON c.id=a.catalog_item_id
+		FROM (
+			SELECT id,catalog_item_id,provider,opaque_key,storage_key,mime_type,content_sha256,status FROM catalog_artwork
+			UNION ALL
+			SELECT id,catalog_item_id,provider,opaque_key,storage_key,mime_type,content_sha256,status FROM catalog_credit_artwork
+		) a JOIN catalog_items c ON c.id=a.catalog_item_id
 		JOIN source_grants g ON g.source_id=c.source_id AND g.user_id=?
 		WHERE a.id=?`, userID, artworkID).
 		Scan(&value.ID, &value.ItemID, &value.SourceID, &value.Provider, &value.OpaqueKey,
@@ -346,6 +384,14 @@ func (r *CatalogRepository) GetCatalogArtwork(ctx context.Context, artworkID, us
 // UpdateCatalogArtworkCache records a validated cache file.
 func (r *CatalogRepository) UpdateCatalogArtworkCache(ctx context.Context, id, key, mimeType, sha string, now time.Time) error {
 	result, err := r.db.ExecContext(ctx, `UPDATE catalog_artwork SET storage_key=?,mime_type=?,
+		content_sha256=?,status='ready',updated_at_ms=? WHERE id=?`, key, mimeType, sha, now.UnixMilli(), id)
+	if err != nil {
+		return err
+	}
+	if count, _ := result.RowsAffected(); count > 0 {
+		return nil
+	}
+	result, err = r.db.ExecContext(ctx, `UPDATE catalog_credit_artwork SET storage_key=?,mime_type=?,
 		content_sha256=?,status='ready',updated_at_ms=? WHERE id=?`, key, mimeType, sha, now.UnixMilli(), id)
 	if err != nil {
 		return err
@@ -435,6 +481,42 @@ func upsertArtwork(ctx context.Context, tx *sql.Tx, itemID, kind, provider, ref 
 	status=CASE WHEN catalog_artwork.opaque_key=excluded.opaque_key THEN catalog_artwork.status ELSE 'remote' END,
 	updated_at_ms=excluded.updated_at_ms`, id, itemID, kind, provider, ref, now.UnixMilli(), now.UnixMilli())
 	return err
+}
+
+// replaceCreditArtwork 将本次刮削的头像引用与旧资料一起原子替换，避免向客户端暴露 Provider 地址。
+func replaceCreditArtwork(ctx context.Context, tx *sql.Tx, itemID, creditsJSON string, now time.Time) error {
+	if _, err := tx.ExecContext(ctx, `DELETE FROM catalog_credit_artwork WHERE catalog_item_id=?`, itemID); err != nil {
+		return err
+	}
+	var credits []scraper.Credit
+	if err := json.Unmarshal([]byte(creditsJSON), &credits); err != nil {
+		return fmt.Errorf("解析演职员头像引用: %w", err)
+	}
+	seenPeople := make(map[string]struct{}, len(credits))
+	for _, credit := range credits {
+		if credit.Profile == nil || credit.Profile.Key == "" || credit.ProviderPersonID == "" {
+			continue
+		}
+		provider := credit.Profile.ProviderID
+		if provider == "" {
+			continue
+		}
+		personKey := provider + "\x00" + credit.ProviderPersonID
+		if _, exists := seenPeople[personKey]; exists {
+			// 同一人员可能同时出现在演员与幕后列表，头像只需保存一次。
+			continue
+		}
+		seenPeople[personKey] = struct{}{}
+		id := catalog.StableID("credit-artwork", itemID, provider, credit.ProviderPersonID)
+		_, err := tx.ExecContext(ctx, `INSERT INTO catalog_credit_artwork(
+			id,catalog_item_id,provider,provider_person_id,opaque_key,status,created_at_ms,updated_at_ms
+		) VALUES(?,?,?,?,?,'remote',?,?)`, id, itemID, provider, credit.ProviderPersonID,
+			credit.Profile.Key, now.UnixMilli(), now.UnixMilli())
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func makeTitleRows(values []string) []struct{ title, kind string } {

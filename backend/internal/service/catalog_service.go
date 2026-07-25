@@ -192,6 +192,14 @@ func (s *CatalogService) Get(ctx context.Context, id, userID string) (domain.Cat
 	return s.repository.Get(ctx, id, userID)
 }
 
+// UpdateFavorite 更新用户对作品的跨版本收藏；revision 为详情响应提供的乐观并发版本。
+func (s *CatalogService) UpdateFavorite(ctx context.Context, itemID, userID string, favorite bool, revision int64) (domain.CatalogUserData, error) {
+	if strings.TrimSpace(itemID) == "" || strings.TrimSpace(userID) == "" || revision < 0 {
+		return domain.CatalogUserData{}, fmt.Errorf("%w: 作品收藏参数无效", domain.ErrInvalidRequest)
+	}
+	return s.repository.UpdateFavorite(ctx, itemID, userID, favorite, revision, s.clock.Now())
+}
+
 func (s *CatalogService) Issues(ctx context.Context, limit int) ([]domain.CatalogIssue, error) {
 	if limit == 0 {
 		limit = 50

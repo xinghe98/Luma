@@ -129,17 +129,21 @@ func (c *Coordinator) Resolve(ctx context.Context, input domain.CatalogScrapeInp
 	}
 	for _, provider := range providers {
 		searcher := provider.(scraper.Searcher)
-		page, err := searcher.Search(ctx, scraper.SearchRequest{
-			Kind: kind, Query: input.Title, Year: input.Year, Locale: c.locale, Limit: 10,
-		})
-		if err != nil {
-			return ResolveOutcome{}, err
-		}
-		for _, value := range page.Items {
-			score, reasons := scoreCandidate(input, value)
-			candidates = append(candidates, scoredCandidate{candidate: value, score: score, reasons: reasons})
+		for _, query := range searchQueries(input) {
+			page, err := searcher.Search(ctx, scraper.SearchRequest{
+				Kind: kind, Query: query, Year: input.Year, Locale: c.locale, Limit: 10,
+			})
+			if err != nil {
+				return ResolveOutcome{}, err
+			}
+			for _, value := range page.Items {
+				score, reasons := scoreCandidate(input, value)
+				candidates = append(candidates, scoredCandidate{candidate: value, score: score, reasons: reasons})
+			}
 		}
 	}
+	candidates = uniqueScoredCandidates(candidates)
+	candidates = c.enrichVariantCandidates(ctx, kind, input, candidates)
 	sortCandidates(candidates)
 	persisted := make([]domain.CatalogMetadataCandidate, 0, len(candidates))
 	for _, value := range candidates {
@@ -242,9 +246,14 @@ func scoreCandidate(input domain.CatalogScrapeInput, value scraper.Candidate) (i
 	case best > 0:
 		reasons = append(reasons, "标题部分相似")
 	}
+	variantScore := bestTitleScore(input.AlternativeTitles, titles)
+	if variantScore == 60 {
+		score += 18
+		reasons = append(reasons, "文件版本别名匹配")
+	}
 	candidateYear := yearFromDate(value.ReleaseDate)
 	if input.Year == nil {
-		score += 10
+		score += 5
 		reasons = append(reasons, "文件名未提供年份")
 	} else if candidateYear != nil && *candidateYear == *input.Year {
 		score += 20
@@ -255,11 +264,140 @@ func scoreCandidate(input domain.CatalogScrapeInput, value scraper.Candidate) (i
 	} else if candidateYear != nil {
 		reasons = append(reasons, "年份冲突")
 	}
-	// Search responses do not include runtime; five points are neutral until details are fetched.
+	// 搜索结果通常没有片长，先给所有候选相同的中性分。
 	score += 5
-	// The catalog hint is already the strongest parent/file consensus selected by the naming parser.
-	score += 10
+	// 文件名已形成作品级共识时，完整标题匹配可在缺少年份的常见电视剧目录中自动确认；
+	// 部分匹配仍保持保守，继续依赖年份和第一、第二候选的分差。
+	if best == 60 {
+		score += 20
+	} else {
+		score += 10
+	}
 	return min(score, 100), reasons
+}
+
+func bestTitleScore(inputs, candidates []string) int {
+	best := 0
+	for _, input := range inputs {
+		source := normalize(input)
+		if source == "" {
+			continue
+		}
+		for _, candidate := range candidates {
+			if score := similarityScore(source, normalize(candidate)); score > best {
+				best = score
+			}
+		}
+	}
+	return best
+}
+
+func searchQueries(input domain.CatalogScrapeInput) []string {
+	values := []string{strings.TrimSpace(input.Title)}
+	seen := map[string]struct{}{}
+	queries := make([]string, 0, 4)
+	for _, value := range append(values, input.AlternativeTitles...) {
+		value = strings.TrimSpace(value)
+		key := normalize(value)
+		if key == "" {
+			continue
+		}
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		queries = append(queries, value)
+		if len(queries) == 4 {
+			break
+		}
+	}
+	return queries
+}
+
+func uniqueScoredCandidates(values []scoredCandidate) []scoredCandidate {
+	best := map[string]scoredCandidate{}
+	for _, value := range values {
+		key := value.candidate.ProviderID + "\x00" + value.candidate.ProviderItemID
+		if existing, ok := best[key]; !ok || value.score > existing.score {
+			best[key] = value
+		}
+	}
+	result := make([]scoredCandidate, 0, len(best))
+	for _, value := range best {
+		result = append(result, value)
+	}
+	return result
+}
+
+// enrichVariantCandidates 只在文件提供了版本别名时补取同名候选详情，搜索接口通常不携带这些别名。
+// 详情读取失败不会中断基础搜索流程，最终仍会按原有保守规则进入人工确认。
+func (c *Coordinator) enrichVariantCandidates(ctx context.Context, kind scraper.MediaKind,
+	input domain.CatalogScrapeInput, values []scoredCandidate) []scoredCandidate {
+	if len(input.AlternativeTitles) == 0 {
+		return values
+	}
+	const maxDetailLookups = 10
+	lookups := 0
+	for index := range values {
+		candidate := values[index].candidate
+		if bestTitleScore([]string{input.Title}, candidateTitles(candidate)) != 60 || lookups >= maxDetailLookups {
+			continue
+		}
+		provider, ok := c.registry.Provider(candidate.ProviderID)
+		if !ok {
+			continue
+		}
+		fetcher, ok := provider.(scraper.WorkFetcher)
+		if !ok {
+			continue
+		}
+		lookups++
+		work, err := fetcher.FetchWork(ctx, scraper.WorkRequest{
+			Kind: kind, ProviderItemID: candidate.ProviderItemID, Locale: c.locale,
+		})
+		if err != nil {
+			continue
+		}
+		values[index].candidate = candidateWithWork(candidate, work)
+		values[index].score, values[index].reasons = scoreCandidate(input, values[index].candidate)
+	}
+	return values
+}
+
+func candidateTitles(value scraper.Candidate) []string {
+	return append([]string{value.Title, value.OriginalTitle}, value.AlternativeTitles...)
+}
+
+func candidateWithWork(candidate scraper.Candidate, work scraper.WorkMetadata) scraper.Candidate {
+	if work.Title != "" {
+		candidate.Title = work.Title
+	}
+	if work.OriginalTitle != "" {
+		candidate.OriginalTitle = work.OriginalTitle
+	}
+	if work.ReleaseDate != "" {
+		candidate.ReleaseDate = work.ReleaseDate
+	}
+	candidate.AlternativeTitles = appendUniqueTitles(candidate.AlternativeTitles, work.AlternativeTitles)
+	return candidate
+}
+
+func appendUniqueTitles(values, more []string) []string {
+	seen := map[string]struct{}{}
+	result := make([]string, 0, len(values)+len(more))
+	for _, value := range append(values, more...) {
+		value = strings.TrimSpace(value)
+		key := normalize(value)
+		if key == "" {
+			continue
+		}
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		result = append(result, value)
+	}
+	return result
 }
 
 func similarityScore(left, right string) int {

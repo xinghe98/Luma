@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -138,8 +139,13 @@ func (r *CatalogRepository) queryItems(ctx context.Context, request domain.Catal
 	if err := rows.Close(); err != nil {
 		return nil, err
 	}
-	if err := r.attachCatalogMetadata(ctx, items); err != nil {
+	if err := r.attachCatalogMetadata(ctx, items, userID); err != nil {
 		return nil, err
+	}
+	if includeEpisodes {
+		if err := r.attachCatalogVersions(ctx, items, userID); err != nil {
+			return nil, err
+		}
 	}
 	return items, nil
 }
@@ -230,13 +236,13 @@ func (r *CatalogRepository) querySummaries(ctx context.Context, where string, ar
 	if err := rows.Close(); err != nil {
 		return nil, err
 	}
-	if err := r.attachCatalogMetadata(ctx, items); err != nil {
+	if err := r.attachCatalogMetadata(ctx, items, userID); err != nil {
 		return nil, err
 	}
 	return items, nil
 }
 
-func (r *CatalogRepository) attachCatalogMetadata(ctx context.Context, items []domain.CatalogItem) error {
+func (r *CatalogRepository) attachCatalogMetadata(ctx context.Context, items []domain.CatalogItem, userID string) error {
 	for index := range items {
 		item := &items[index]
 		var original, overview, tagline, releaseDate, endDate, certification sql.NullString
@@ -269,8 +275,121 @@ func (r *CatalogRepository) attachCatalogMetadata(ctx context.Context, items []d
 		_ = json.Unmarshal([]byte(studios), &item.Studios)
 		_ = json.Unmarshal([]byte(credits), &item.Credits)
 		_ = json.Unmarshal([]byte(external), &item.ExternalIDs)
+		if err := r.attachCreditArtworkIDs(ctx, item); err != nil {
+			return err
+		}
+		if err := r.attachCatalogFavorite(ctx, item, userID); err != nil {
+			return err
+		}
 	}
 	return nil
+}
+
+// attachCreditArtworkIDs 将持久化的头像缓存键关联回公开演职员资料。
+func (r *CatalogRepository) attachCreditArtworkIDs(ctx context.Context, item *domain.CatalogItem) error {
+	if len(item.Credits) == 0 {
+		return nil
+	}
+	rows, err := r.db.QueryContext(ctx, `SELECT provider_person_id,id FROM catalog_credit_artwork
+		WHERE catalog_item_id=?`, item.ID)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	ids := make(map[string]string)
+	for rows.Next() {
+		var personID, artworkID string
+		if err := rows.Scan(&personID, &artworkID); err != nil {
+			return err
+		}
+		ids[personID] = artworkID
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	for index := range item.Credits {
+		item.Credits[index].ProfileArtworkID = ids[item.Credits[index].ProviderPersonID]
+	}
+	return nil
+}
+
+// attachCatalogFavorite 将作品级收藏附加到已经通过来源授权过滤的作品。
+func (r *CatalogRepository) attachCatalogFavorite(ctx context.Context, item *domain.CatalogItem, userID string) error {
+	var favorite int
+	err := r.db.QueryRowContext(ctx, `SELECT favorite,revision FROM catalog_user_data
+		WHERE user_id=? AND catalog_item_id=?`, userID, item.ID).Scan(&favorite, &item.FavoriteRevision)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	item.Favorite = favorite == 1
+	return nil
+}
+
+// attachCatalogVersions 返回电影的所有本地文件版本；电视剧继续使用剧集列表。
+func (r *CatalogRepository) attachCatalogVersions(ctx context.Context, items []domain.CatalogItem, userID string) error {
+	for index := range items {
+		item := &items[index]
+		if item.Kind != domain.CatalogKindMovie {
+			continue
+		}
+		rows, err := r.db.QueryContext(ctx, `SELECT m.id,m.file_size,m.duration_ms,m.width,m.height,
+			COALESCE(m.video_codec,''),COALESCE(m.audio_codec,''),COALESCE(m.audio_track_count,0),
+			COALESCE(u.progress_ms,0),COALESCE(u.completed,0)
+			FROM catalog_media_links l JOIN media_items m ON m.id=l.media_id
+			LEFT JOIN media_user_data u ON u.media_id=m.id AND u.user_id=?
+			WHERE l.catalog_item_id=? AND l.match_status='matched' AND m.status<>'missing'
+			ORDER BY COALESCE(m.width,0) DESC,COALESCE(m.height,0) DESC,m.file_size DESC,m.id`, userID, item.ID)
+		if err != nil {
+			return err
+		}
+		versions := make([]domain.CatalogVersion, 0)
+		for rows.Next() {
+			var version domain.CatalogVersion
+			var duration, width, height sql.NullInt64
+			var completed int
+			if err := rows.Scan(&version.MediaID, &version.FileSize, &duration, &width, &height,
+				&version.VideoCodec, &version.AudioCodec, &version.AudioTrackCount, &version.ProgressMS, &completed); err != nil {
+				rows.Close()
+				return err
+			}
+			version.DurationMS = nullInt64(duration)
+			version.Resolution = catalogResolution(width, height)
+			version.Label = catalogVersionLabel(width, height, version.VideoCodec)
+			version.Completed = completed == 1
+			version.Selected = version.MediaID == item.PlayableMediaID
+			versions = append(versions, version)
+		}
+		if err := rows.Close(); err != nil {
+			return err
+		}
+		item.Versions = versions
+	}
+	return nil
+}
+
+func catalogVersionLabel(width, height sql.NullInt64, codec string) string {
+	resolution := catalogResolution(width, height)
+	base := resolution
+	if width.Valid {
+		switch {
+		case width.Int64 >= 3840:
+			base = "4K"
+		case width.Int64 >= 1920:
+			base = "1080p"
+		case width.Int64 >= 1280:
+			base = "720p"
+		}
+	}
+	if codec == "" {
+		return base
+	}
+	if base == "" {
+		return codec
+	}
+	return base + " · " + codec
 }
 
 func catalogResolution(width, height sql.NullInt64) string {

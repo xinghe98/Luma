@@ -77,7 +77,7 @@ func defaults() Config {
 		Metadata: MetadataConfig{
 			Language: "zh-CN", Region: "CN", FallbackLanguages: []string{"en-US"},
 			RefreshInterval: 30 * 24 * time.Hour, RequestTimeout: 15 * time.Second,
-			Workers: 1, RequestsPerSecond: 4, AutoMatchThreshold: 90, AutoMatchMargin: 8,
+			Workers: 1, RequestsPerSecond: 4, AutoMatchThreshold: 0, AutoMatchMargin: 0,
 			Providers: map[string]MetadataProviderConfig{
 				"nfo":  {Enabled: true},
 				"tmdb": {Enabled: false, Options: map[string]any{}},

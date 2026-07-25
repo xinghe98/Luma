@@ -64,3 +64,8 @@ var AccessIdempotency string
 //
 //go:embed 013_catalog_metadata.sql
 var CatalogMetadata string
+
+// CatalogDetail 保存作品版本、演职员头像与作品级收藏结构。
+//
+//go:embed 014_catalog_detail.sql
+var CatalogDetail string

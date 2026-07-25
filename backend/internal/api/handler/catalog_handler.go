@@ -30,6 +30,10 @@ type catalogMetadataUseCase interface {
 	Artwork(context.Context, string, string, string) (domain.CatalogArtworkContent, error)
 }
 
+type catalogFavoriteUseCase interface {
+	UpdateFavorite(context.Context, string, string, bool, int64) (domain.CatalogUserData, error)
+}
+
 type CatalogHandler struct{ service CatalogUseCase }
 
 func NewCatalogHandler(service CatalogUseCase) (*CatalogHandler, error) {
@@ -69,7 +73,7 @@ type catalogItemJSON struct {
 	Genres            []domain.CatalogNamedValue `json:"genres"`
 	Countries         []domain.CatalogNamedValue `json:"countries,omitempty"`
 	Studios           []domain.CatalogNamedValue `json:"studios,omitempty"`
-	Credits           []domain.CatalogCredit     `json:"credits,omitempty"`
+	Credits           []catalogCreditJSON        `json:"credits,omitempty"`
 	ExternalIDs       map[string]string          `json:"external_ids,omitempty"`
 	MatchStatus       string                     `json:"match_status"`
 	MetadataStatus    string                     `json:"metadata_status"`
@@ -89,8 +93,35 @@ type catalogItemJSON struct {
 	Resolution        string                     `json:"resolution"`
 	ProgressMS        int64                      `json:"progress_ms"`
 	Completed         bool                       `json:"completed"`
+	Favorite          bool                       `json:"favorite"`
+	FavoriteRevision  int64                      `json:"favorite_revision"`
 	UpdatedAt         string                     `json:"updated_at"`
 	Episodes          []catalogEpisodeJSON       `json:"episodes,omitempty"`
+	Versions          []catalogVersionJSON       `json:"versions,omitempty"`
+}
+
+type catalogCreditJSON struct {
+	ProviderPersonID string `json:"provider_person_id,omitempty"`
+	Name             string `json:"name"`
+	Character        string `json:"character,omitempty"`
+	Department       string `json:"department,omitempty"`
+	Job              string `json:"job,omitempty"`
+	Order            int    `json:"order"`
+	ProfileURL       string `json:"profile_url,omitempty"`
+}
+
+type catalogVersionJSON struct {
+	MediaID         string `json:"media_id"`
+	Label           string `json:"label"`
+	FileSize        int64  `json:"file_size"`
+	DurationMS      *int64 `json:"duration_ms"`
+	Resolution      string `json:"resolution"`
+	VideoCodec      string `json:"video_codec"`
+	AudioCodec      string `json:"audio_codec"`
+	AudioTrackCount int    `json:"audio_track_count"`
+	ProgressMS      int64  `json:"progress_ms"`
+	Completed       bool   `json:"completed"`
+	Selected        bool   `json:"selected"`
 }
 
 func (h *CatalogHandler) List(c *gin.Context) {
@@ -176,12 +207,13 @@ func presentCatalog(item domain.CatalogItem, includeEpisodes bool) catalogItemJS
 		OriginalTitle: item.OriginalTitle, Year: item.Year, Overview: item.Overview, Tagline: item.Tagline,
 		ReleaseDate: item.ReleaseDate, EndDate: item.EndDate, Certification: item.Certification,
 		CommunityRating: item.CommunityRating, VoteCount: item.VoteCount, Genres: nonNilNamed(item.Genres),
-		Countries: item.Countries, Studios: item.Studios, Credits: item.Credits, ExternalIDs: item.ExternalIDs,
+		Countries: item.Countries, Studios: item.Studios, Credits: presentCredits(item.Credits), ExternalIDs: item.ExternalIDs,
 		MatchStatus: item.MatchStatus, MetadataStatus: item.MetadataStatus,
 		MetadataRevision: item.MetadataRevision, MetadataErrorCode: item.MetadataErrorCode,
 		Provider: item.Provider, ProviderItemID: item.ProviderItemID, IdentityLocked: item.IdentityLocked,
 		MediaCount: item.MediaCount, EpisodeCount: item.EpisodeCount, CompletedCount: item.CompletedCount,
 		PlayableMediaID: item.PlayableMediaID, DurationMS: item.DurationMS, Resolution: item.Resolution, ProgressMS: item.ProgressMS, Completed: item.Completed,
+		Favorite: item.Favorite, FavoriteRevision: item.FavoriteRevision,
 		UpdatedAt: item.UpdatedAt.UTC().Format(time.RFC3339Nano)}
 	if item.ThumbnailMediaID != "" {
 		result.ThumbnailURL = "/api/v1/media/" + url.PathEscape(item.ThumbnailMediaID) + "/thumbnail"
@@ -209,8 +241,58 @@ func presentCatalog(item domain.CatalogItem, includeEpisodes bool) catalogItemJS
 			}
 			result.Episodes = append(result.Episodes, value)
 		}
+		if item.Kind == domain.CatalogKindMovie {
+			result.Versions = make([]catalogVersionJSON, 0, len(item.Versions))
+			for _, version := range item.Versions {
+				result.Versions = append(result.Versions, catalogVersionJSON{
+					MediaID: version.MediaID, Label: version.Label, FileSize: version.FileSize,
+					DurationMS: version.DurationMS, Resolution: version.Resolution, VideoCodec: version.VideoCodec,
+					AudioCodec: version.AudioCodec, AudioTrackCount: version.AudioTrackCount,
+					ProgressMS: version.ProgressMS, Completed: version.Completed, Selected: version.Selected,
+				})
+			}
+		}
 	}
 	return result
+}
+
+func presentCredits(values []domain.CatalogCredit) []catalogCreditJSON {
+	result := make([]catalogCreditJSON, 0, len(values))
+	for _, value := range values {
+		credit := catalogCreditJSON{ProviderPersonID: value.ProviderPersonID, Name: value.Name,
+			Character: value.Character, Department: value.Department, Job: value.Job, Order: value.Order}
+		if value.ProfileArtworkID != "" {
+			credit.ProfileURL = "/api/v1/catalog/artwork/" + url.PathEscape(value.ProfileArtworkID)
+		}
+		result = append(result, credit)
+	}
+	return result
+}
+
+type updateCatalogFavoriteRequest struct {
+	Favorite     bool  `json:"favorite"`
+	BaseRevision int64 `json:"base_revision"`
+}
+
+// UpdateFavorite 保存作品级收藏，不把状态绑定到特定清晰度文件。
+func (h *CatalogHandler) UpdateFavorite(c *gin.Context) {
+	service, ok := h.service.(catalogFavoriteUseCase)
+	if !ok {
+		response.Error(c, http.StatusNotImplemented, "CATALOG_FAVORITE_UNAVAILABLE", "catalog favorites are unavailable", nil)
+		return
+	}
+	var request updateCatalogFavoriteRequest
+	if err := apirequest.DecodeJSON(c, &request); err != nil {
+		response.Error(c, http.StatusBadRequest, "INVALID_REQUEST", err.Error(), nil)
+		return
+	}
+	value, err := service.UpdateFavorite(c.Request.Context(), c.Param("id"), c.GetString("user_id"), request.Favorite, request.BaseRevision)
+	if err != nil {
+		response.FromError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"catalog_item_id": value.CatalogItemID, "favorite": value.Favorite,
+		"revision": value.Revision, "updated_at": value.UpdatedAt.Format(time.RFC3339Nano)})
 }
 
 func nonNilNamed(values []domain.CatalogNamedValue) []domain.CatalogNamedValue {

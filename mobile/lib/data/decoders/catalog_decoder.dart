@@ -49,6 +49,9 @@ final class CatalogDecoder {
     providerItemId: optionalValue<String>(json, 'provider_item_id') ?? '',
     identityLocked: optionalValue<bool>(json, 'identity_locked') ?? false,
     backdropUrl: optionalValue<String>(json, 'backdrop_url') ?? '',
+    favorite: optionalValue<bool>(json, 'favorite') ?? false,
+    favoriteRevision: optionalValue<int>(json, 'favorite_revision') ?? 0,
+    versions: _decodeVersions(json['versions']),
   );
 
   CatalogEpisode decodeEpisode(Map<String, dynamic> json) => CatalogEpisode(
@@ -110,6 +113,30 @@ final class CatalogDecoder {
             role: optionalValue<String>(item, 'role') ?? '',
             character: optionalValue<String>(item, 'character') ?? '',
             order: optionalValue<int>(item, 'order') ?? 0,
+            profileUrl: optionalValue<String>(item, 'profile_url') ?? '',
+          ),
+        )
+        .toList(growable: false);
+  }
+
+  List<CatalogVersion> _decodeVersions(Object? value) {
+    if (value == null) return const [];
+    if (value is! List) throw const FormatException('Expected catalog version list');
+    return value
+        .map((item) => objectValue(item, 'catalog version'))
+        .map(
+          (item) => CatalogVersion(
+            mediaId: requiredValue(item, 'media_id'),
+            label: optionalValue<String>(item, 'label') ?? '',
+            fileSize: optionalValue<int>(item, 'file_size') ?? 0,
+            durationMs: optionalValue<int>(item, 'duration_ms'),
+            resolution: optionalValue<String>(item, 'resolution') ?? '',
+            videoCodec: optionalValue<String>(item, 'video_codec') ?? '',
+            audioCodec: optionalValue<String>(item, 'audio_codec') ?? '',
+            audioTrackCount: optionalValue<int>(item, 'audio_track_count') ?? 0,
+            progressMs: optionalValue<int>(item, 'progress_ms') ?? 0,
+            completed: optionalValue<bool>(item, 'completed') ?? false,
+            selected: optionalValue<bool>(item, 'selected') ?? false,
           ),
         )
         .toList(growable: false);

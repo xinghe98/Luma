@@ -28,6 +28,15 @@ important for changes under `mobile/`, which is the Flutter application.
 - Keep comments accurate when changing behavior. Updating implementation
   without updating its relevant documentation is incomplete work.
 
+## Flutter page composition
+
+- Page files should own route arguments, lifecycle, loading/error state, and
+  mutations only. Move independent display regions such as heroes, metadata
+  sections, lists, and tiles into `features/<feature>/widgets/`.
+- Do not let a detail page accumulate several unrelated visual components.
+  When a page needs multiple display regions, compose dedicated widgets and
+  keep shared visual tokens in a nearby theme or token file.
+
 ## UI motion and overlay rules
 
 The app must feel immediate and visually clean. Treat a stale frame, lingering

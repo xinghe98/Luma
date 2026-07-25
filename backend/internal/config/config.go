@@ -131,9 +131,9 @@ type MetadataConfig struct {
 	Workers int `yaml:"workers"`
 	// RequestsPerSecond 是全部在线 Provider 的进程级请求速率上限。
 	RequestsPerSecond int `yaml:"requests_per_second"`
-	// AutoMatchThreshold 是普通搜索自动确认所需的最低分数。
+	// AutoMatchThreshold 是普通搜索自动确认所需的最低分数，0 表示有候选即确认。
 	AutoMatchThreshold int `yaml:"auto_match_threshold"`
-	// AutoMatchMargin 是第一候选领先第二候选的最低分差。
+	// AutoMatchMargin 是第一候选领先第二候选的最低分差，0 表示不要求分差。
 	AutoMatchMargin int `yaml:"auto_match_margin"`
 	// ProxyURL 是可选 HTTP/HTTPS 代理；空值使用 Go 标准环境代理。
 	ProxyURL string `yaml:"proxy_url"`

@@ -2,6 +2,7 @@ package sqlite
 
 import (
 	"context"
+	"errors"
 	"path/filepath"
 	"testing"
 	"time"
@@ -37,6 +38,7 @@ func TestCatalogRepositoryGroupsMoviesAndEpisodes(t *testing.T) {
 		}
 	}
 	insertCatalogMedia("movie", "movies", "流浪地球 2 (2023)/movie.mkv", "movie.mkv")
+	insertCatalogMedia("movie_hd", "movies", "流浪地球 2 (2023)/movie.1080p.mkv", "movie.1080p.mkv")
 	_, err = db.Exec(`INSERT INTO media_items(id,source_id,relative_path,filename,media_type,file_size,file_modified_at_ms,status,discovered_at_ms,created_at_ms,updated_at_ms)
 		VALUES('movie_poster','movies','流浪地球 2 (2023)/poster.jpg','poster.jpg','image',100,1,'ready',?,?,?)`, now.UnixMilli(), now.UnixMilli(), now.UnixMilli())
 	if err != nil {
@@ -53,23 +55,41 @@ func TestCatalogRepositoryGroupsMoviesAndEpisodes(t *testing.T) {
 		"movie":    {3840, 2160},
 		"episode1": {1920, 1080},
 		"episode2": {1280, 720},
+		"movie_hd": {1920, 1080},
 	} {
 		if _, err := db.Exec(`UPDATE media_items SET width = ?, height = ? WHERE id = ?`, dimensions[0], dimensions[1], id); err != nil {
 			t.Fatal(err)
 		}
+	}
+	if _, err := db.Exec(`UPDATE media_items SET file_size=800,video_codec='hevc',audio_codec='eac3',audio_track_count=2 WHERE id='movie'`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`UPDATE media_items SET file_size=300,video_codec='h264',audio_codec='aac',audio_track_count=1 WHERE id='movie_hd'`); err != nil {
+		t.Fatal(err)
 	}
 
 	candidates, err := repository.ListCandidates(ctx, 10)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(candidates) != 3 {
+	if len(candidates) != 4 {
 		t.Fatalf("candidate count = %d", len(candidates))
 	}
 	for _, candidate := range candidates {
 		if err := repository.SaveMatch(ctx, catalog.Match(candidate), now); err != nil {
 			t.Fatal(err)
 		}
+	}
+	// 模拟人工或高置信匹配已确认两个文件属于同一电影。
+	var movieItemID string
+	if err := db.QueryRow(`SELECT catalog_item_id FROM catalog_media_links WHERE media_id='movie'`).Scan(&movieItemID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`UPDATE catalog_media_links SET catalog_item_id=?,match_status='matched' WHERE media_id='movie_hd'`, movieItemID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`DELETE FROM catalog_items WHERE kind='movie' AND id<>?`, movieItemID); err != nil {
+		t.Fatal(err)
 	}
 	items, err := repository.List(ctx, domain.CatalogListRequest{Limit: 10}, "user_local")
 	if err != nil {
@@ -102,6 +122,24 @@ func TestCatalogRepositoryGroupsMoviesAndEpisodes(t *testing.T) {
 	}
 	if movie.PosterMediaID != "movie_poster" {
 		t.Fatalf("movie poster = %q", movie.PosterMediaID)
+	}
+	movieDetail, err := repository.Get(ctx, movie.ID, "user_local")
+	if err != nil || len(movieDetail.Versions) != 2 {
+		t.Fatalf("movie versions=%#v error=%v", movieDetail.Versions, err)
+	}
+	if movieDetail.Versions[0].Label != "4K · hevc" || !movieDetail.Versions[0].Selected {
+		t.Fatalf("primary version=%#v", movieDetail.Versions[0])
+	}
+	favorite, err := repository.UpdateFavorite(ctx, movie.ID, "user_local", true, 0, now)
+	if err != nil || !favorite.Favorite || favorite.Revision != 1 {
+		t.Fatalf("favorite=%#v error=%v", favorite, err)
+	}
+	if _, err := repository.UpdateFavorite(ctx, movie.ID, "user_local", false, 0, now); !errors.Is(err, domain.ErrRevisionConflict) {
+		t.Fatalf("favorite conflict error=%v", err)
+	}
+	movieDetail, err = repository.Get(ctx, movie.ID, "user_local")
+	if err != nil || !movieDetail.Favorite || movieDetail.FavoriteRevision != 1 {
+		t.Fatalf("movie favorite=%#v error=%v", movieDetail, err)
 	}
 }
 

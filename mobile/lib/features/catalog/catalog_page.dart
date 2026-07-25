@@ -52,7 +52,6 @@ class _CatalogPageState extends State<CatalogPage>
   final _scroll = ScrollController();
   final _seriesSectionKey = GlobalKey();
   final _personalSectionKey = GlobalKey();
-  bool _hasUserScrolled = false;
   bool _loadCheckScheduled = false;
 
   @override
@@ -70,8 +69,9 @@ class _CatalogPageState extends State<CatalogPage>
       fixedLibraryKind: 'personal',
       media: dependencies.media,
     );
-    // 总览首屏只占用一个分类请求，其他分区在用户接近时再拉取。
+    // 电影先发起请求；首帧布局后会按可视范围补齐邻近分区。
     _movies!.ensureLoaded();
+    _scheduleUpcomingLoadCheck();
   }
 
   @override
@@ -93,7 +93,7 @@ class _CatalogPageState extends State<CatalogPage>
   }
 
   void _scheduleUpcomingLoadCheck() {
-    if (!_hasUserScrolled || _loadCheckScheduled) return;
+    if (_loadCheckScheduled) return;
     _loadCheckScheduled = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadCheckScheduled = false;
@@ -113,7 +113,7 @@ class _CatalogPageState extends State<CatalogPage>
   bool _isNearViewport(GlobalKey sectionKey) {
     final renderObject = sectionKey.currentContext?.findRenderObject();
     if (renderObject is! RenderBox || !renderObject.hasSize) return false;
-    // 只在用户滚动后预取。分区顶部进入当前视口下方约四分之一屏时请求，
+    // 分区顶部进入当前视口下方约四分之一屏时请求，
     // 既避免首屏三路竞争，也不让用户停在空骨架前等待。
     final top = renderObject.localToGlobal(Offset.zero).dy;
     final threshold = MediaQuery.sizeOf(context).height * 1.25;
@@ -173,7 +173,6 @@ class _CatalogPageState extends State<CatalogPage>
             onNotification: (notification) {
               if (notification is ScrollUpdateNotification &&
                   notification.scrollDelta != 0) {
-                _hasUserScrolled = true;
                 _scheduleUpcomingLoadCheck();
               }
               return false;

@@ -81,6 +81,7 @@ func NewRouter(params RouterParams) (http.Handler, error) {
 	v1.GET("/media/:id", params.Media.Get)
 	v1.GET("/catalog", params.Catalog.List)
 	v1.GET("/catalog/:id", params.Catalog.Get)
+	v1.PATCH("/catalog/:id/user-data", params.Catalog.UpdateFavorite)
 	v1.GET("/catalog/artwork/:id", params.Catalog.Artwork)
 	v1.GET("/media/:id/thumbnail", params.Media.Thumbnail)
 	v1.GET("/media/:id/stream", params.Stream.Stream)

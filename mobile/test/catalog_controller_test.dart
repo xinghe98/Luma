@@ -55,6 +55,13 @@ class _BlockingCatalogRepository implements CatalogRepository {
   Future<CatalogItem> detail(String id) => throw UnimplementedError();
 
   @override
+  Future<CatalogFavorite> setFavorite({
+    required String catalogId,
+    required bool favorite,
+    required int revision,
+  }) => throw UnimplementedError();
+
+  @override
   Future<void> ignore(String mediaId) => throw UnimplementedError();
 
   @override

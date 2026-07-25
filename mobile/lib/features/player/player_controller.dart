@@ -8,18 +8,21 @@ import '../../data/api/api_session.dart';
 import '../../data/models/media_item.dart';
 
 class PlayerController extends ChangeNotifier {
+  /// 创建播放控制器；startFromBeginning 为 true 时不读取既有进度。
   PlayerController({
     required this.item,
     required MediaController media,
     ApiSession? apiSession,
+    this.startFromBeginning = false,
     this.autoHideDelay = const Duration(seconds: 4),
   }) : _media = media,
        _apiSession = apiSession,
-       _position = item.duration * item.progress;
+       _position = startFromBeginning ? Duration.zero : item.duration * item.progress;
 
   final MediaItem item;
   final MediaController _media;
   final ApiSession? _apiSession;
+  final bool startFromBeginning;
   final Duration autoHideDelay;
   late Duration _position;
   Timer? _hideTimer;
@@ -85,7 +88,9 @@ class PlayerController extends ChangeNotifier {
     try {
       await controller.initialize();
       if (_disposed) return;
-      final initial = controller.value.duration * item.progress;
+      final initial = startFromBeginning
+          ? Duration.zero
+          : controller.value.duration * item.progress;
       if (initial > Duration.zero) await controller.seekTo(initial);
       await controller.play();
       _playing = true;

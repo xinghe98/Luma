@@ -15,4 +15,5 @@ type CatalogRepository interface {
 	Get(context.Context, string, string) (domain.CatalogItem, error)
 	ListIssues(context.Context, int) ([]domain.CatalogIssue, error)
 	GetCandidate(context.Context, string) (domain.CatalogCandidate, error)
+	UpdateFavorite(context.Context, string, string, bool, int64, time.Time) (domain.CatalogUserData, error)
 }

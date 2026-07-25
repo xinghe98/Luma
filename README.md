@@ -63,8 +63,8 @@ metadata:
 | `request_timeout` | 单次 Provider 操作超时 |
 | `workers` | 后台刮削并发数 |
 | `requests_per_second` | 全部在线 Provider 共用的进程级请求速率上限 |
-| `auto_match_threshold` | 第一候选达到此分数才允许自动确认 |
-| `auto_match_margin` | 第一候选至少领先第二候选的分差 |
+| `auto_match_threshold` | 第一候选达到此分数才允许自动确认；默认 `0`，有候选即自动选择 |
+| `auto_match_margin` | 第一候选至少领先第二候选的分差；默认 `0`，不因同分而等待人工确认 |
 | `proxy_url` | 可选 HTTP/HTTPS 代理；空值使用 Go 标准环境代理 |
 | `providers.nfo.enabled` | 是否读取已扫描到的标准工作级 NFO |
 | `providers.tmdb.enabled` | 是否注册 TMDb 在线刮削器 |

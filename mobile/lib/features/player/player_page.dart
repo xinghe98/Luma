@@ -10,10 +10,16 @@ import 'player_interaction_controller.dart';
 import 'player_system_ui.dart';
 import 'widgets/player_scene.dart';
 
+/// 播放指定媒体，并可选择忽略已保存的续播进度。
 class PlayerPage extends StatefulWidget {
-  const PlayerPage({super.key, required this.mediaId});
+  const PlayerPage({
+    super.key,
+    required this.mediaId,
+    this.startFromBeginning = false,
+  });
 
   final String mediaId;
+  final bool startFromBeginning;
 
   @override
   State<PlayerPage> createState() => _PlayerPageState();
@@ -43,6 +49,7 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
       item: item,
       media: media,
       apiSession: AppScope.of(context).apiSession,
+      startFromBeginning: widget.startFromBeginning,
     );
     final interaction = PlayerInteractionController(
       player: controller,

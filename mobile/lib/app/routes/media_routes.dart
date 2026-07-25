@@ -58,6 +58,10 @@ GoRoute(
           : null,
       repository: dependencies.catalog,
       onOpenMedia: context.openPlayer,
+      onOpenMediaFromStart: (mediaId) => context.openPlayer(
+        mediaId,
+        startFromBeginning: true,
+      ),
     ),
   ),
 ),
@@ -107,8 +111,15 @@ GoRoute(
   parentNavigatorKey: rootNavigatorKey,
   name: AppRoute.player,
   path: '/player/:mediaId',
-  builder: (_, state) =>
-      PlayerPage(mediaId: state.pathParameters['mediaId']!),
+  builder: (_, state) {
+    final routeData = state.extra is PlayerRouteData
+        ? state.extra as PlayerRouteData
+        : const PlayerRouteData();
+    return PlayerPage(
+      mediaId: state.pathParameters['mediaId']!,
+      startFromBeginning: routeData.startFromBeginning,
+    );
+  },
 )
 ];
 
