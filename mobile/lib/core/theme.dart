@@ -11,5 +11,6 @@ abstract final class LumaTheme {
 
   static ThemeData dark() => _dark ??= LumaThemeBuilder.build(Brightness.dark);
 
-  static ThemeData light() => _light ??= LumaThemeBuilder.build(Brightness.light);
+  static ThemeData light() =>
+      _light ??= LumaThemeBuilder.build(Brightness.light);
 }

@@ -15,6 +15,7 @@ export 'app_route.dart';
 
 final _rootNavigatorKey = GlobalKey<NavigatorState>(debugLabel: 'root');
 
+/// 创建应用路由，并在登录跳转期间保留原始受保护地址。
 GoRouter createAppRouter(AppDependencies dependencies) => GoRouter(
   navigatorKey: _rootNavigatorKey,
   initialLocation: AppDestination.home.path,
@@ -22,8 +23,24 @@ GoRouter createAppRouter(AppDependencies dependencies) => GoRouter(
   redirect: (context, state) {
     final path = state.uri.path;
     final isConnection = path == '/connect';
-    if (!dependencies.session.isConnected && !isConnection) return '/connect';
+    if (!dependencies.session.isConnected && !isConnection) {
+      return Uri(
+        path: '/connect',
+        queryParameters: {'from': state.uri.toString()},
+      ).toString();
+    }
     if (dependencies.session.isConnected && isConnection) {
+      final destination = state.uri.queryParameters['from'];
+      final destinationUri = destination == null
+          ? null
+          : Uri.tryParse(destination);
+      if (destinationUri != null &&
+          !destinationUri.hasScheme &&
+          !destinationUri.hasAuthority &&
+          destinationUri.path.startsWith('/') &&
+          destinationUri.path != '/connect') {
+        return destination;
+      }
       return AppDestination.home.path;
     }
     return null;
@@ -38,8 +55,6 @@ GoRouter createAppRouter(AppDependencies dependencies) => GoRouter(
     ...buildMediaRoutes(dependencies, _rootNavigatorKey),
     ...buildSettingsRoutes(dependencies, _rootNavigatorKey),
   ],
-  errorBuilder: (_, _) => const UnavailableRoutePage(
-    title: '找不到页面',
-    message: '该地址不存在，或对应内容已经不可用。',
-  ),
+  errorBuilder: (_, _) =>
+      const UnavailableRoutePage(title: '找不到页面', message: '该地址不存在，或对应内容已经不可用。'),
 );

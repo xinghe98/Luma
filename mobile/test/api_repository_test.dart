@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -6,14 +7,16 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:luma/data/api/api_client.dart';
 import 'package:luma/data/api/api_session.dart';
 import 'package:luma/data/api/api_session_interceptor.dart';
-import 'package:luma/data/repositories/api_media_repository.dart';
-import 'package:luma/data/repositories/api_source_repository.dart';
-import 'package:luma/data/repositories/source_repository.dart';
 import 'package:luma/data/models/api_source.dart';
 import 'package:luma/data/models/media_filter.dart';
 import 'package:luma/data/models/media_types.dart';
+import 'package:luma/data/repositories/api_media_repository.dart';
+import 'package:luma/data/repositories/api_source_repository.dart';
+import 'package:luma/data/repositories/source_repository.dart';
 import 'package:luma/data/services/api_connection_service.dart';
 import 'package:luma/data/services/connection_service.dart';
+import 'package:luma/data/services/device_key_store.dart';
+import 'package:luma/data/services/device_name_resolver.dart';
 import 'package:luma/data/storage/credential_store.dart';
 import 'package:luma/data/storage/server_alias_store.dart';
 
@@ -217,6 +220,76 @@ void main() {
     expect(items.single.title, 'Refreshed');
   });
 
+  test(
+    'out-of-order user-data responses cannot lower cached revision',
+    () async {
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      addTearDown(() => server.close(force: true));
+      final firstPatchStarted = Completer<void>();
+      final releaseFirstPatch = Completer<void>();
+      var patchRequests = 0;
+
+      server.listen((request) async {
+        if (request.uri.path == '/custom/media') {
+          await _json(request.response, {
+            'items': [_summary],
+            'next_cursor': null,
+          });
+          return;
+        }
+        if (request.uri.path == '/custom/media/media-1/user-data' &&
+            request.method == 'PATCH') {
+          patchRequests++;
+          final body =
+              jsonDecode(await utf8.decoder.bind(request).join()) as Map;
+          if (patchRequests == 1) {
+            expect(body['favorite'], isTrue);
+            firstPatchStarted.complete();
+            await releaseFirstPatch.future;
+            await _json(
+              request.response,
+              _userData(revision: 2, favorite: true),
+            );
+          } else {
+            expect(body['favorite'], isFalse);
+            await _json(
+              request.response,
+              _userData(revision: 3, favorite: false),
+            );
+          }
+          return;
+        }
+        request.response.statusCode = HttpStatus.notFound;
+        await request.response.close();
+      });
+
+      final session = ApiSession(
+        origin: 'http://${server.address.host}:${server.port}',
+        token: 'token',
+      );
+      final dio = Dio()..interceptors.add(ApiSessionInterceptor(session));
+      addTearDown(dio.close);
+      final repository = ApiMediaRepository(
+        ApiClient(dio, apiPrefix: '/custom/'),
+        _TestSourceRepository(),
+      );
+
+      await repository.loadMedia();
+      final older = repository.setFavorite('media-1', true);
+      await firstPatchStarted.future;
+      final newer = await repository.setFavorite('media-1', false);
+      releaseFirstPatch.complete();
+      final lateOlder = await older;
+      final staleSummary = await repository.searchPage(const MediaFilter());
+
+      expect(newer.userDataRevision, 3);
+      expect(lateOlder.userDataRevision, 3);
+      expect(lateOlder.isFavorite, isFalse);
+      expect(staleSummary.items.single.userDataRevision, 3);
+      expect(staleSummary.items.single.isFavorite, isFalse);
+    },
+  );
+
   test('normalizeOrigin keeps non-root path prefixes', () {
     expect(
       ApiConnectionService.normalizeOrigin(Uri.parse('http://host/luma/')),
@@ -291,7 +364,34 @@ void main() {
   test('failed connection probe leaves the active session untouched', () async {
     final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     addTearDown(() => server.close(force: true));
+    final authorizations = <String?>[];
     server.listen((request) async {
+      final path = request.uri.path;
+      authorizations.add(
+        request.headers.value(HttpHeaders.authorizationHeader),
+      );
+      if (path.endsWith('/health') || path.endsWith('/auth/login')) {
+        if (path.endsWith('/auth/login')) {
+          await _json(request.response, {
+            'session_token': 'candidate-token',
+            'token_type': 'Bearer',
+            'expires_at': null,
+            'user': {
+              'id': 'u1',
+              'name': 'Candidate',
+              'username': 'candidate',
+              'role': 'member',
+              'enabled': true,
+              'online': false,
+              'created_at': '2024-06-01T12:00:00.000Z',
+              'updated_at': '2024-06-01T12:00:00.000Z',
+            },
+          });
+          return;
+        }
+        await _json(request.response, {'status': 'ok'});
+        return;
+      }
       expect(
         request.headers.value(HttpHeaders.authorizationHeader),
         'Bearer candidate-token',
@@ -312,6 +412,8 @@ void main() {
       apiSession: active,
       credentialStore: credentials,
       aliasStore: const _MemoryAliasStore(),
+      deviceNameResolver: const _FixedDeviceNameResolver(),
+      deviceKeyStore: MemoryDeviceKeyStore(),
     );
 
     final result = await service.login(
@@ -326,7 +428,44 @@ void main() {
     expect(active.origin, 'http://active.example.test');
     expect(active.token, 'active-token');
     expect(credentials.writes, isEmpty);
+    expect(authorizations, contains('Bearer candidate-token'));
   });
+
+  test(
+    'loadDetail starts independent detail and user-data requests together',
+    () async {
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      addTearDown(() => server.close(force: true));
+      final bothStarted = Completer<void>();
+      var started = 0;
+
+      server.listen((request) async {
+        started++;
+        if (started == 2) bothStarted.complete();
+        await bothStarted.future.timeout(const Duration(seconds: 1));
+        if (request.uri.path.endsWith('/user-data')) {
+          await _json(request.response, _userData(revision: 2));
+        } else {
+          await _json(request.response, _detail);
+        }
+      });
+
+      final session = ApiSession(
+        origin: 'http://${server.address.host}:${server.port}',
+        token: 'token',
+      );
+      final dio = Dio()..interceptors.add(ApiSessionInterceptor(session));
+      addTearDown(dio.close);
+      final repository = ApiMediaRepository(
+        ApiClient(dio, apiPrefix: '/custom/'),
+        _TestSourceRepository(),
+      );
+
+      final detail = await repository.loadDetail('media-1');
+      expect(detail.sourceName, 'Main Library');
+      expect(started, 2);
+    },
+  );
 }
 
 final class _TestSourceRepository implements SourceRepository {
@@ -376,6 +515,13 @@ final class _MemoryAliasStore implements ServerAliasStore {
 
   @override
   Future<void> write(String origin, String alias) async {}
+}
+
+final class _FixedDeviceNameResolver implements DeviceNameResolver {
+  const _FixedDeviceNameResolver();
+
+  @override
+  Future<String> resolve() async => 'Test Device';
 }
 
 Future<void> _json(

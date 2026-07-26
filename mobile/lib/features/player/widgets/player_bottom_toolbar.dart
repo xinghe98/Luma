@@ -38,9 +38,9 @@ class PlayerBottomToolbar extends StatelessWidget {
             padding: const EdgeInsets.all(LumaSpacing.sm),
             child: Text(
               '${controller.speed}x',
-              style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                color: extras.onPlayerInk,
-              ),
+              style: Theme.of(
+                context,
+              ).textTheme.labelLarge?.copyWith(color: extras.onPlayerInk),
             ),
           ),
         ),

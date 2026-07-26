@@ -22,12 +22,14 @@ class BrandMark extends StatelessWidget {
   }) {
     final isDark = brightness == Brightness.dark;
     return switch (variant) {
-      BrandMarkVariant.symbol => isDark
-          ? 'assets/luma-symbol-white-transparent.png'
-          : 'assets/luma-symbol-color-transparent.png',
-      BrandMarkVariant.horizontal => isDark
-          ? 'assets/luma-logo-horizontal-white-transparent.png'
-          : 'assets/luma-logo-horizontal-color-transparent.png',
+      BrandMarkVariant.symbol =>
+        isDark
+            ? 'assets/luma-symbol-white-transparent.png'
+            : 'assets/luma-symbol-color-transparent.png',
+      BrandMarkVariant.horizontal =>
+        isDark
+            ? 'assets/luma-logo-horizontal-white-transparent.png'
+            : 'assets/luma-logo-horizontal-color-transparent.png',
     };
   }
 

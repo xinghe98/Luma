@@ -147,32 +147,48 @@ func TestLocalFactoryOpenContentRejectsSymlinkEscape(t *testing.T) {
 	}
 }
 
-// TestLocalFactoryCachesResolvedRoot 验证根路径缓存命中且失效后可恢复。
-func TestLocalFactoryCachesResolvedRoot(t *testing.T) {
+// TestLocalFactoryRevalidatesResolvedRoot 验证每次重新解析来源根目录都会再次应用白名单。
+func TestLocalFactoryRevalidatesResolvedRoot(t *testing.T) {
 	root := t.TempDir()
 	if err := os.WriteFile(filepath.Join(root, "clip.mp4"), []byte("video"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	factory, err := NewLocalFactory(fakeFileIdentifier{}, fakeStorageClock{})
+	validator := &countingRootValidator{root: root}
+	factory, err := NewLocalFactory(fakeFileIdentifier{}, fakeStorageClock{}, validator)
 	if err != nil {
 		t.Fatal(err)
 	}
-	first, err := factory.resolveRoot(root)
+	_, err = factory.resolveRoot(root)
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := factory.resolveRoot(root)
-	if err != nil || first != second {
-		t.Fatalf("cached root mismatch: %q vs %q err=%v", first, second, err)
+	_, err = factory.resolveRoot(root)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if _, ok := factory.resolvedRoots.Load(root); !ok {
-		t.Fatal("expected resolved root cache entry")
+	if validator.calls != 2 {
+		t.Fatalf("白名单校验次数 = %d，期望 2", validator.calls)
 	}
 	content, err := factory.OpenContent(context.Background(), root, "clip.mp4")
 	if err != nil {
 		t.Fatal(err)
 	}
 	_ = content.Reader.Close()
+	if validator.calls != 3 {
+		t.Fatalf("打开内容后的白名单校验次数 = %d，期望 3", validator.calls)
+	}
+}
+
+// countingRootValidator 记录本地工厂重新校验根目录的次数。
+type countingRootValidator struct {
+	root  string
+	calls int
+}
+
+// ValidateSourceRoot 返回测试根目录并累计调用次数。
+func (v *countingRootValidator) ValidateSourceRoot(string) (string, error) {
+	v.calls++
+	return v.root, nil
 }
 
 // TestLocalFactoryOpenContentUnavailableRoot 验证根目录不可用时返回 SOURCE_OFFLINE。

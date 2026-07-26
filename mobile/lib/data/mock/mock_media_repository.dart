@@ -30,11 +30,15 @@ class MockMediaRepository implements MediaRepository {
   }
 
   @override
-  Future<MediaListPage> searchPage(MediaFilter filter, {String? cursor}) async {
+  Future<MediaListPage> searchPage(
+    MediaFilter filter, {
+    String? cursor,
+    int? limit,
+  }) async {
     await Future<void>.delayed(const Duration(milliseconds: 80));
     final all = filterMediaItems(_items, filter);
     final start = int.tryParse(cursor ?? '0') ?? 0;
-    final end = (start + _pageSize).clamp(0, all.length);
+    final end = (start + (limit ?? _pageSize)).clamp(0, all.length);
     final slice = all.sublist(start.clamp(0, all.length), end);
     final next = end < all.length ? '$end' : null;
     return MediaListPage(items: slice, nextCursor: next);

@@ -10,7 +10,7 @@ import (
 	"github.com/xinghe98/Luma/backend/internal/domain"
 )
 
-// UpdateFavorite 使用乐观并发更新作品收藏，并确认调用者仍有对应来源权限。
+// UpdateFavorite 使用乐观并发更新作品收藏，并确认调用者仍有启用且未删除的来源权限。
 func (r *CatalogRepository) UpdateFavorite(ctx context.Context, itemID, userID string, favorite bool, revision int64, now time.Time) (domain.CatalogUserData, error) {
 	result := domain.CatalogUserData{CatalogItemID: itemID, Favorite: favorite}
 	tx, err := r.db.BeginTx(ctx, nil)
@@ -19,8 +19,13 @@ func (r *CatalogRepository) UpdateFavorite(ctx context.Context, itemID, userID s
 	}
 	defer tx.Rollback()
 	var exists int
-	err = tx.QueryRowContext(ctx, `SELECT 1 FROM catalog_items c JOIN source_grants g ON g.source_id=c.source_id
-		WHERE c.id=? AND g.user_id=?`, itemID, userID).Scan(&exists)
+	err = tx.QueryRowContext(ctx, `SELECT 1 FROM catalog_items c
+		JOIN sources s ON s.id=c.source_id AND s.enabled=1 AND s.deleted_at_ms IS NULL
+		JOIN source_grants g ON g.source_id=c.source_id
+		WHERE c.id=? AND g.user_id=? AND EXISTS (
+			SELECT 1 FROM catalog_media_links l JOIN media_items m ON m.id=l.media_id
+			WHERE l.catalog_item_id=c.id AND l.match_status='matched' AND m.status<>'missing' AND m.source_id=c.source_id
+		)`, itemID, userID).Scan(&exists)
 	if errors.Is(err, sql.ErrNoRows) {
 		return result, domain.ErrCatalogNotFound
 	}

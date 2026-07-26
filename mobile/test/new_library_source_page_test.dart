@@ -23,7 +23,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('服务端文件夹路径'), findsNothing);
-      expect(find.textContaining('媒体目录'), findsOneWidget);
+      expect(find.text('媒体目录 · 仅可选择服务器已配置的目录'), findsOneWidget);
       expect(find.byType(DropdownButtonFormField<String>), findsNothing);
 
       await tester.tap(find.text('选择已配置的媒体目录'));

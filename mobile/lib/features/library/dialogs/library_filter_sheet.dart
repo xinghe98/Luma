@@ -30,10 +30,7 @@ Future<LibraryFilters?> showLibraryFilterSheet(
               Text('筛选媒体', style: Theme.of(context).textTheme.titleLarge),
               const SizedBox(height: LumaSpacing.lg),
               if (showWatchStatus) ...[
-                Text(
-                  '观看状态',
-                  style: Theme.of(context).textTheme.labelLarge,
-                ),
+                Text('观看状态', style: Theme.of(context).textTheme.labelLarge),
                 const SizedBox(height: LumaSpacing.xs),
                 Wrap(
                   spacing: LumaSpacing.xs,

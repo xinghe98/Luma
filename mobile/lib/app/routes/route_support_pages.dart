@@ -70,6 +70,8 @@ class AccessUserRoutePageState extends State<AccessUserRoutePage> {
     return null;
   }
 
+  void _retry() => setState(() => _request = _load());
+
   @override
   Widget build(BuildContext context) {
     final sources = widget.sources;
@@ -85,14 +87,20 @@ class AccessUserRoutePageState extends State<AccessUserRoutePage> {
       future: _request,
       builder: (context, snapshot) {
         if (snapshot.connectionState != ConnectionState.done) {
-          return const Scaffold(
-            body: SettingsListSkeleton(items: 3),
+          return Scaffold(
+            appBar: AppBar(title: const Text('成员详情')),
+            body: const SettingsListSkeleton(items: 3),
           );
         }
         if (snapshot.hasError) {
-          return UnavailableRoutePage(
-            title: '无法读取成员资料',
-            message: '请检查服务器连接后重试。',
+          return Scaffold(
+            appBar: AppBar(title: const Text('成员详情')),
+            body: EmptyState(
+              icon: Icons.cloud_off_rounded,
+              title: '无法读取成员资料',
+              message: '请检查服务器连接后重试。',
+              action: FilledButton(onPressed: _retry, child: const Text('重试')),
+            ),
           );
         }
         final user = snapshot.data;

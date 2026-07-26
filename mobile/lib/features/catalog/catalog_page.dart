@@ -33,17 +33,19 @@ class CatalogPage extends StatefulWidget {
     required this.onOpenPersonalVideos,
   });
 
-  final ValueChanged<CatalogItem> onOpenCatalog;
+  final CatalogOpenCallback onOpenCatalog;
   final MediaOpenCallback onOpenPersonalMedia;
   final VoidCallback onOpenSearch;
   final ValueChanged<List<CatalogItem>> onOpenMovies;
   final ValueChanged<List<CatalogItem>> onOpenSeries;
+
   /// 打开完整个人视频库，并携带当前分区已经加载的条目作为首帧数据。
   final ValueChanged<List<MediaItem>> onOpenPersonalVideos;
 
   @override
   State<CatalogPage> createState() => _CatalogPageState();
 }
+
 class _CatalogPageState extends State<CatalogPage>
     with AutomaticKeepAliveClientMixin<CatalogPage> {
   CatalogController? _movies;
@@ -68,6 +70,7 @@ class _CatalogPageState extends State<CatalogPage>
       fixedType: MediaType.video,
       fixedLibraryKind: 'personal',
       media: dependencies.media,
+      pageSize: 6,
     );
     // 电影先发起请求；首帧布局后会按可视范围补齐邻近分区。
     _movies!.ensureLoaded();
@@ -124,11 +127,7 @@ class _CatalogPageState extends State<CatalogPage>
     if (!_scroll.hasClients) return;
     final position = _scroll.position;
     if (position.pixels <= position.minScrollExtent) return;
-    position.animateTo(
-      position.minScrollExtent,
-      duration: LumaMotion.normal,
-      curve: LumaMotion.standard,
-    );
+    position.jumpTo(position.minScrollExtent);
   }
 
   @override
@@ -153,8 +152,9 @@ class _CatalogPageState extends State<CatalogPage>
             movies.items.isEmpty &&
             series.items.isEmpty &&
             personalItems.isEmpty;
-        void openPersonalVideos() =>
-            widget.onOpenPersonalVideos(personalItems);
+        void openPersonalVideos() => widget.onOpenPersonalVideos(
+          personalItems.take(6).toList(growable: false),
+        );
         return Scaffold(
           appBar: AppBar(
             title: ScrollToTopAppBarTitle(
@@ -214,8 +214,9 @@ class _CatalogPageState extends State<CatalogPage>
                         ),
                       ),
                     ),
-                    if (!personalVideos.hasStarted ||
-                        personalVideos.loadState == LoadState.loading)
+                    if (personalItems.isEmpty &&
+                        (!personalVideos.hasStarted ||
+                            personalVideos.loadState == LoadState.loading))
                       SliverToBoxAdapter(
                         child: KeyedSubtree(
                           key: _personalSectionKey,
@@ -225,7 +226,8 @@ class _CatalogPageState extends State<CatalogPage>
                           ),
                         ),
                       )
-                    else if (personalVideos.loadState == LoadState.error)
+                    else if (personalItems.isEmpty &&
+                        personalVideos.loadState == LoadState.error)
                       SliverToBoxAdapter(
                         child: KeyedSubtree(
                           key: _personalSectionKey,
@@ -256,6 +258,26 @@ class _CatalogPageState extends State<CatalogPage>
                           ),
                         ),
                       ),
+                      if (personalVideos.loadState == LoadState.loading)
+                        const SliverToBoxAdapter(
+                          child: LinearProgressIndicator(minHeight: 2),
+                        )
+                      else if (personalVideos.loadState == LoadState.error)
+                        SliverToBoxAdapter(
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: LumaLayout.pagePaddingH,
+                            ),
+                            child: Align(
+                              alignment: Alignment.centerLeft,
+                              child: TextButton.icon(
+                                onPressed: personalVideos.refresh,
+                                icon: const Icon(Icons.refresh_rounded),
+                                label: const Text('刷新失败，当前保留上次内容'),
+                              ),
+                            ),
+                          ),
+                        ),
                       SliverPadding(
                         padding: const EdgeInsets.fromLTRB(
                           LumaLayout.pagePaddingH,

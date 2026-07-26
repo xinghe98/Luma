@@ -7,6 +7,13 @@ on:
   pull_request:
     paths: ["backend/**", ".github/workflows/backend.yml"]
 
+permissions:
+  contents: read
+
+concurrency:
+  group: backend-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   # 双平台矩阵确保路径、SQLite 和生命周期代码保持可移植。
   test:
@@ -21,8 +28,31 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version-file: backend/go.mod
+          go-version: 1.25.x
+          check-latest: true
           cache-dependency-path: backend/go.sum
       - run: go test ./...
+
+  # Linux 上集中执行可复现性、安全扫描和全部发布入口构建。
+  secure-build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: 1.25.x
+          check-latest: true
+          cache-dependency-path: backend/go.sum
+      - run: test -z "$(gofmt -l .)"
+      - name: Validate API contract and workflow structure
+        run: go test ./internal/api -run 'Test(OpenAPI|BackendWorkflow)'
+      - run: go mod verify
       - run: go vet ./...
-      - run: go build ./cmd/server
+      - run: go test -race ./...
+      - run: go install golang.org/x/vuln/cmd/govulncheck@v1.1.4
+      - run: govulncheck ./...
+      - run: go build ./cmd/server ./cmd/admin
+      - run: docker build --file Dockerfile --tag luma-server:ci .

@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
 import '../../app/app_scope.dart';
+import '../../app/route_transition.dart';
 import '../../core/theme.dart';
+import '../../data/models/media_item.dart';
 import '../../data/models/media_types.dart';
 import '../../shared/media/media_artwork.dart';
 import '../../shared/layout/scroll_to_top_app_bar_title.dart';
@@ -10,19 +12,19 @@ import 'details_controller.dart';
 import 'widgets/detail_information.dart';
 
 class MediaDetailPage extends StatefulWidget {
+  /// 显示媒体详情，优先使用路由携带条目并在真实入场动画后刷新。
   const MediaDetailPage({
     super.key,
     required this.mediaId,
+    this.initialItem,
     this.heroTag,
-    this.initialLoadDelay = Duration.zero,
   });
 
   final String mediaId;
+  final MediaItem? initialItem;
 
   /// 与来源卡片封面一致的 Hero tag，为空则不启用过渡动画。
   final String? heroTag;
-
-  final Duration initialLoadDelay;
 
   @override
   State<MediaDetailPage> createState() => _MediaDetailPageState();
@@ -31,31 +33,34 @@ class MediaDetailPage extends StatefulWidget {
 class _MediaDetailPageState extends State<MediaDetailPage> {
   DetailsController? _controller;
   final _scroll = ScrollController();
-  bool _heroTransitionSettled = false;
-
-  @override
-  void initState() {
-    super.initState();
-    if (widget.heroTag == null) {
-      _heroTransitionSettled = true;
-      return;
-    }
-    _settleHeroTransition();
-  }
-
-  Future<void> _settleHeroTransition() async {
-    await Future<void>.delayed(LumaMotion.slow);
-    if (mounted) setState(() => _heroTransitionSettled = true);
-  }
+  bool _loadScheduled = false;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    _controller ??= DetailsController(
+    if (_controller != null) return;
+    final media = AppScope.of(context).media;
+    final initialItem = widget.initialItem;
+    if (initialItem != null && initialItem.id == widget.mediaId) {
+      media.remember(initialItem, notify: false);
+    }
+    _controller = DetailsController(
       mediaId: widget.mediaId,
-      media: AppScope.of(context).media,
-      initialLoadDelay: widget.initialLoadDelay,
+      media: media,
+      loadImmediately: false,
+      showCachedBeforeInitialLoad: initialItem != null,
     );
+    if (!_loadScheduled) {
+      _loadScheduled = true;
+      _refreshAfterTransition();
+    }
+  }
+
+  /// 路由与 Hero 完全结束后再刷新，避免共享封面飞行期间替换图片来源。
+  Future<void> _refreshAfterTransition() async {
+    await waitForRouteTransition(context);
+    if (!mounted) return;
+    await _controller?.reload();
   }
 
   @override
@@ -107,14 +112,15 @@ class _MediaDetailPageState extends State<MediaDetailPage> {
           );
         }
         final coverRadius = context.luma.coverRadius;
-        final useCardThumbnail =
-            item.type == MediaType.video || !_heroTransitionSettled;
         final cover = AspectRatio(
           aspectRatio: item.isPortrait ? 3 / 4 : 16 / 10,
           child: MediaArtwork(
             item: item,
             borderRadius: coverRadius,
-            useCardThumbnail: useCardThumbnail,
+            useCardThumbnail: item.type == MediaType.video,
+            cacheWidth: widget.heroTag == null
+                ? null
+                : MediaArtwork.heroThumbnailCacheWidth,
           ),
         );
         final artwork = widget.heroTag == null
@@ -142,7 +148,9 @@ class _MediaDetailPageState extends State<MediaDetailPage> {
                     children: [
                       if (controller.detailError != null)
                         Padding(
-                          padding: const EdgeInsets.only(bottom: LumaSpacing.sm),
+                          padding: const EdgeInsets.only(
+                            bottom: LumaSpacing.sm,
+                          ),
                           child: MaterialBanner(
                             content: Text(controller.detailError!),
                             actions: [
@@ -159,7 +167,9 @@ class _MediaDetailPageState extends State<MediaDetailPage> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Expanded(flex: 5, child: artwork),
-                            const SizedBox(width: LumaSpacing.xl + LumaSpacing.xxs),
+                            const SizedBox(
+                              width: LumaSpacing.xl + LumaSpacing.xxs,
+                            ),
                             Expanded(
                               flex: 6,
                               child: DetailInformation(controller: controller),

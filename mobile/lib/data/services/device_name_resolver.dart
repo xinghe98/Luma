@@ -1,4 +1,4 @@
-// 登录设备命名组件将移动端型号转换为本地营销名称，并为桌面端读取主机名。
+// 登录设备命名：移动端取真实机型，桌面端取机型/主机名并拼接系统用户名。
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/foundation.dart';
 
@@ -10,7 +10,8 @@ abstract interface class DeviceNameResolver {
   Future<String> resolve();
 }
 
-/// PlatformDeviceNameResolver 从系统设备信息生成会话显示名称，不采集设备唯一标识。
+/// PlatformDeviceNameResolver 从系统设备信息生成会话显示名称。
+/// 不采集硬件唯一标识；桌面用户名来自环境变量或 device_info。
 final class PlatformDeviceNameResolver implements DeviceNameResolver {
   /// PlatformDeviceNameResolver 可注入设备信息读取器，便于测试和替换平台实现。
   PlatformDeviceNameResolver({DeviceInfoPlugin? deviceInfo})
@@ -24,9 +25,9 @@ final class PlatformDeviceNameResolver implements DeviceNameResolver {
       final name = switch (defaultTargetPlatform) {
         TargetPlatform.android => _androidName(await _deviceInfo.androidInfo),
         TargetPlatform.iOS => _iosName(await _deviceInfo.iosInfo),
-        TargetPlatform.windows ||
-        TargetPlatform.macOS ||
-        TargetPlatform.linux => localDesktopHostName(),
+        TargetPlatform.windows => _windowsName(await _deviceInfo.windowsInfo),
+        TargetPlatform.macOS => _macName(await _deviceInfo.macOsInfo),
+        TargetPlatform.linux => _linuxName(await _deviceInfo.linuxInfo),
         _ => '',
       };
       return _boundedName(name);
@@ -35,13 +36,42 @@ final class PlatformDeviceNameResolver implements DeviceNameResolver {
     }
   }
 
-  String _androidName(AndroidDeviceInfo info) {
-    final key = '${info.brand.toLowerCase()}:${info.model.toLowerCase()}';
-    return _androidMarketingModels[key] ?? _joinName(info.brand, info.model);
-  }
+  String _androidName(AndroidDeviceInfo info) =>
+      _joinName(info.brand, info.model);
 
   String _iosName(IosDeviceInfo info) {
-    return _iosMarketingModels[info.utsname.machine] ?? info.modelName;
+    final marketing = _iosMarketingModels[info.utsname.machine];
+    if (marketing != null && marketing.isNotEmpty) return marketing;
+    final modelName = info.modelName.trim();
+    if (modelName.isNotEmpty) return modelName;
+    final machine = info.utsname.machine.trim();
+    return machine.isNotEmpty ? machine : info.model.trim();
+  }
+
+  String _windowsName(WindowsDeviceInfo info) {
+    final model = info.computerName.trim().isNotEmpty
+        ? info.computerName.trim()
+        : localDesktopHostName();
+    final user = info.userName.trim().isNotEmpty
+        ? info.userName.trim()
+        : localDesktopUserName();
+    return _joinModelAndUser(model, user);
+  }
+
+  String _macName(MacOsDeviceInfo info) {
+    final model = info.modelName.trim().isNotEmpty
+        ? info.modelName.trim()
+        : (info.computerName.trim().isNotEmpty
+              ? info.computerName.trim()
+              : localDesktopHostName());
+    return _joinModelAndUser(model, localDesktopUserName());
+  }
+
+  String _linuxName(LinuxDeviceInfo info) {
+    final model = info.prettyName.trim().isNotEmpty
+        ? info.prettyName.trim()
+        : localDesktopHostName();
+    return _joinModelAndUser(model, localDesktopUserName());
   }
 
   String _fallbackName() {
@@ -54,6 +84,16 @@ final class PlatformDeviceNameResolver implements DeviceNameResolver {
     if (normalized.isEmpty) return _fallbackName();
     return normalized.length <= 80 ? normalized : normalized.substring(0, 80);
   }
+}
+
+/// _joinModelAndUser 将机型与系统用户名拼为「机型 · 用户名」。
+String _joinModelAndUser(String model, String user) {
+  final m = model.trim();
+  final u = user.trim();
+  if (m.isEmpty) return u;
+  if (u.isEmpty) return m;
+  if (m.toLowerCase().contains(u.toLowerCase())) return m;
+  return '$m · $u';
 }
 
 String _joinName(String brand, String model) {
@@ -80,15 +120,8 @@ const _iosMarketingModels = <String, String>{
   'iPhone17,2': 'iPhone 16 Pro Max',
   'iPhone17,3': 'iPhone 16',
   'iPhone17,4': 'iPhone 16 Plus',
-};
-
-const _androidMarketingModels = <String, String>{
-  'xiaomi:23127pn0cc': 'Xiaomi 14 Pro',
-  'xiaomi:23127pn0cg': 'Xiaomi 14 Pro',
-  'xiaomi:23124ra7ec': 'Redmi K70',
-  'xiaomi:23113rkc6c': 'Redmi K70E',
-  'samsung:sm-s9180': 'Samsung Galaxy S23 Ultra',
-  'samsung:sm-s9280': 'Samsung Galaxy S24 Ultra',
-  'huawei:alt-al00': 'HUAWEI Mate 60 Pro',
-  'oneplus:pjc110': 'OnePlus 12',
+  'iPhone17,5': 'iPhone 16e',
+  'iPhone18,1': 'iPhone 17 Pro',
+  'iPhone18,2': 'iPhone 17 Pro Max',
+  'iPhone18,3': 'iPhone 17',
 };

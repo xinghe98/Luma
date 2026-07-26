@@ -240,11 +240,13 @@ func (r *CatalogRepository) Prune(ctx context.Context, now time.Time) error {
 	return tx.Commit()
 }
 
+// ListIssues 返回有效来源中需要人工复核的匹配问题。
 func (r *CatalogRepository) ListIssues(ctx context.Context, limit int) ([]domain.CatalogIssue, error) {
 	rows, err := r.db.QueryContext(ctx, `SELECT m.id, m.filename, m.source_id, s.library_kind, COALESCE(c.title, ''), se.season_number, e.episode_number
 		FROM catalog_media_links l JOIN media_items m ON m.id = l.media_id JOIN sources s ON s.id = m.source_id
 		LEFT JOIN catalog_items c ON c.id = l.catalog_item_id LEFT JOIN catalog_seasons se ON se.id = l.season_id
 		LEFT JOIN catalog_episodes e ON e.id = l.episode_id WHERE l.match_status = 'needs_review'
+		AND m.status <> 'missing' AND s.enabled = 1 AND s.deleted_at_ms IS NULL
 		ORDER BY l.updated_at_ms DESC LIMIT ?`, limit)
 	if err != nil {
 		return nil, err

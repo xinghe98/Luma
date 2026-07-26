@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"path/filepath"
 	"testing"
 
@@ -15,7 +16,7 @@ func TestManagedSourceCreationDoesNotWriteConfiguredRoots(t *testing.T) {
 		t.Fatal(err)
 	}
 	sources := &provisioningSources{}
-	service, err := NewManagedMediaSourceService(sources, provisioningAccess{}, provisioningScans{}, store)
+	service, err := NewManagedMediaSourceService(sources, &provisioningAccess{}, provisioningScans{}, store)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -31,8 +32,64 @@ func TestManagedSourceCreationDoesNotWriteConfiguredRoots(t *testing.T) {
 	}
 }
 
+// TestManagedSourceCreationCompensatesGrantFailure 验证授权失败不会留下可用来源或已授予权限。
+func TestManagedSourceCreationCompensatesGrantFailure(t *testing.T) {
+	store, err := config.NewAllowedRootsStore(filepath.Join(t.TempDir(), "missing-config.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	sources := &provisioningSources{}
+	access := &provisioningAccess{grants: map[string]bool{}, failGrant: "user_b"}
+	managed, err := NewManagedMediaSourceService(sources, access, provisioningScans{}, store)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = managed.Create(context.Background(), ManagedMediaSourceCommand{
+		Name: "家庭影片", RootPath: "/media/family", LibraryKind: domain.LibraryKindPersonal,
+		UserIDs: []string{"user_a", "user_b", "user_a"},
+	})
+	if !errors.Is(err, errProvisioningGrant) {
+		t.Fatalf("creation error = %v", err)
+	}
+	if !sources.deleted || len(access.grants) != 0 {
+		t.Fatalf("deleted=%v grants=%v", sources.deleted, access.grants)
+	}
+}
+
+// TestManagedSourceCreationCompensatesScanFailure 验证首次扫描失败会清理全部初始授权和来源。
+func TestManagedSourceCreationCompensatesScanFailure(t *testing.T) {
+	store, err := config.NewAllowedRootsStore(filepath.Join(t.TempDir(), "missing-config.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	sources := &provisioningSources{}
+	access := &provisioningAccess{grants: map[string]bool{}}
+	managed, err := NewManagedMediaSourceService(sources, access, provisioningScans{err: errProvisioningScan}, store)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = managed.Create(context.Background(), ManagedMediaSourceCommand{
+		Name: "电影", RootPath: "/media/movies", LibraryKind: domain.LibraryKindMovies,
+		UserIDs: []string{"user_a", "user_b"},
+	})
+	if !errors.Is(err, errProvisioningScan) {
+		t.Fatalf("creation error = %v", err)
+	}
+	if !sources.deleted || len(access.grants) != 0 {
+		t.Fatalf("deleted=%v grants=%v", sources.deleted, access.grants)
+	}
+}
+
+var (
+	errProvisioningGrant = errors.New("grant failed")
+	errProvisioningScan  = errors.New("scan failed")
+)
+
 type provisioningSources struct {
 	command domain.CreateSourceCommand
+	deleted bool
 }
 
 func (s *provisioningSources) Create(_ context.Context, command domain.CreateSourceCommand) (domain.Source, error) {
@@ -40,14 +97,34 @@ func (s *provisioningSources) Create(_ context.Context, command domain.CreateSou
 	return domain.Source{ID: "source_test"}, nil
 }
 
-func (*provisioningSources) Delete(context.Context, string) error { return nil }
+func (s *provisioningSources) Delete(context.Context, string) error {
+	s.deleted = true
+	return nil
+}
 
-type provisioningAccess struct{}
+type provisioningAccess struct {
+	grants    map[string]bool
+	failGrant string
+}
 
-func (provisioningAccess) GrantSource(context.Context, string, string) error { return nil }
+func (a *provisioningAccess) GrantSource(_ context.Context, userID, _ string) error {
+	if a.grants == nil {
+		a.grants = map[string]bool{}
+	}
+	if userID == a.failGrant {
+		return errProvisioningGrant
+	}
+	a.grants[userID] = true
+	return nil
+}
 
-type provisioningScans struct{}
+func (a *provisioningAccess) RevokeSource(_ context.Context, userID, _ string) error {
+	delete(a.grants, userID)
+	return nil
+}
 
-func (provisioningScans) Start(context.Context, string) (domain.ScanJob, error) {
-	return domain.ScanJob{ID: "scan_test"}, nil
+type provisioningScans struct{ err error }
+
+func (s provisioningScans) Start(context.Context, string) (domain.ScanJob, error) {
+	return domain.ScanJob{ID: "scan_test"}, s.err
 }

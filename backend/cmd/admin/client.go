@@ -2,6 +2,8 @@ package main
 
 import (
 	"bytes"
+	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,7 +13,9 @@ import (
 	"net/url"
 	"os"
 	"path"
+	"path/filepath"
 	"strings"
+	"time"
 )
 
 type client struct {
@@ -80,13 +84,13 @@ func (c client) request(method, endpoint string, body any) ([]byte, error) {
 	return data, nil
 }
 
-// login 仅在命令启动时提交管理员密码，后续请求复用内存中的会话。
-func (c *client) login(username, password string) error {
+// login 仅在命令启动时提交管理员密码和安装级标识，后续请求复用内存中的会话。
+func (c *client) login(username, password, deviceKey string) error {
 	if strings.TrimSpace(username) == "" || password == "" {
 		return errors.New("set LUMA_ADMIN_USERNAME and LUMA_ADMIN_PASSWORD_FILE or provide -username and -password-file")
 	}
 	data, err := c.requestWithoutAuthorization(http.MethodPost, "/api/v1/auth/login", map[string]string{
-		"username": username, "password": password, "device_name": "luma-admin",
+		"username": username, "password": password, "device_name": "luma-admin", "device_key": deviceKey,
 	})
 	if err != nil {
 		return err
@@ -102,6 +106,15 @@ func (c *client) login(username, password string) error {
 	}
 	c.session = result.SessionToken
 	return nil
+}
+
+// logout 尝试撤销当前进程取得的会话；未登录时不发请求。
+func (c client) logout() error {
+	if c.session == "" {
+		return nil
+	}
+	_, err := c.request(http.MethodPost, "/api/v1/auth/logout", nil)
+	return err
 }
 
 func (c client) requestWithoutAuthorization(method, endpoint string, body any) ([]byte, error) {
@@ -157,6 +170,75 @@ func readAdminPassword(filename string) (string, error) {
 		return "", errors.New("administrator password file is empty")
 	}
 	return value, nil
+}
+
+// loadOrCreateAdminDeviceKey 读取安装级随机标识；路径为空时使用用户配置目录。
+// 首次创建采用排他写入，多个 CLI 同时启动时会复用胜出的完整值。
+func loadOrCreateAdminDeviceKey(filename string) (string, error) {
+	if strings.TrimSpace(filename) == "" {
+		configDir, err := os.UserConfigDir()
+		if err != nil {
+			return "", fmt.Errorf("locate user config directory: %w", err)
+		}
+		filename = filepath.Join(configDir, "Luma", "admin-device-key")
+	}
+	if key, err := readAdminDeviceKey(filename); err == nil {
+		return key, nil
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return "", err
+	}
+	if err := os.MkdirAll(filepath.Dir(filename), 0o700); err != nil {
+		return "", fmt.Errorf("create device key directory: %w", err)
+	}
+	random := make([]byte, 24)
+	if _, err := rand.Read(random); err != nil {
+		return "", fmt.Errorf("generate device key: %w", err)
+	}
+	key := base64.RawURLEncoding.EncodeToString(random)
+	file, err := os.OpenFile(filename, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if errors.Is(err, os.ErrExist) {
+		return waitForAdminDeviceKey(filename)
+	}
+	if err != nil {
+		return "", fmt.Errorf("create device key file: %w", err)
+	}
+	if _, err := file.WriteString(key + "\n"); err != nil {
+		_ = file.Close()
+		_ = os.Remove(filename)
+		return "", fmt.Errorf("write device key file: %w", err)
+	}
+	if err := file.Close(); err != nil {
+		_ = os.Remove(filename)
+		return "", fmt.Errorf("close device key file: %w", err)
+	}
+	return key, nil
+}
+
+// waitForAdminDeviceKey 等待并发创建者完成短文件写入，避免读取到暂时的空文件。
+func waitForAdminDeviceKey(filename string) (string, error) {
+	var err error
+	for range 20 {
+		var key string
+		key, err = readAdminDeviceKey(filename)
+		if err == nil {
+			return key, nil
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	return "", err
+}
+
+// readAdminDeviceKey 校验持久化标识，避免空值或损坏内容创建不可替换会话。
+func readAdminDeviceKey(filename string) (string, error) {
+	data, err := os.ReadFile(filename)
+	if err != nil {
+		return "", err
+	}
+	key := strings.TrimSpace(string(data))
+	if key == "" || len(key) > 64 {
+		return "", errors.New("administrator device key file must contain 1 to 64 characters")
+	}
+	return key, nil
 }
 
 func validateAdminOrigin(raw string, allowInsecure bool) (string, error) {

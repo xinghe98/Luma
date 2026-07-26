@@ -12,10 +12,12 @@ import (
 	"github.com/xinghe98/Luma/backend/internal/domain"
 )
 
+// List 返回调用者可访问且来源仍启用、未删除的作品摘要。
 func (r *CatalogRepository) List(ctx context.Context, request domain.CatalogListRequest, userID string) ([]domain.CatalogItem, error) {
 	return r.queryItems(ctx, request, userID, "", false)
 }
 
+// Get 返回调用者可访问的作品详情；来源失效或作品不可见时返回作品不存在。
 func (r *CatalogRepository) Get(ctx context.Context, id, userID string) (domain.CatalogItem, error) {
 	items, err := r.queryItems(ctx, domain.CatalogListRequest{Limit: 1}, userID, id, true)
 	if err != nil {
@@ -28,7 +30,16 @@ func (r *CatalogRepository) Get(ctx context.Context, id, userID string) (domain.
 }
 
 func (r *CatalogRepository) queryItems(ctx context.Context, request domain.CatalogListRequest, userID, id string, includeEpisodes bool) ([]domain.CatalogItem, error) {
-	where := `WHERE EXISTS (SELECT 1 FROM catalog_media_links visible WHERE visible.catalog_item_id = c.id AND visible.match_status = 'matched')
+	where := `WHERE EXISTS (
+		SELECT 1 FROM catalog_media_links visible
+		JOIN media_items visible_media ON visible_media.id = visible.media_id
+		JOIN sources visible_source ON visible_source.id = visible_media.source_id
+		WHERE visible.catalog_item_id = c.id AND visible.match_status = 'matched'
+		AND visible_media.status <> 'missing' AND visible_media.source_id = c.source_id
+		AND visible_source.enabled = 1 AND visible_source.deleted_at_ms IS NULL
+	)
+		AND EXISTS (SELECT 1 FROM sources catalog_source WHERE catalog_source.id = c.source_id
+			AND catalog_source.enabled = 1 AND catalog_source.deleted_at_ms IS NULL)
 		AND EXISTS (SELECT 1 FROM source_grants grant_access WHERE grant_access.source_id = c.source_id AND grant_access.user_id = ?)`
 	args := []any{userID}
 	if id != "" {
@@ -78,7 +89,7 @@ func (r *CatalogRepository) queryItems(ctx context.Context, request domain.Catal
 		), '')
 		FROM wanted w JOIN catalog_items c ON c.id = w.id
 		JOIN catalog_media_links l ON l.catalog_item_id = c.id AND l.match_status = 'matched'
-		JOIN media_items m ON m.id = l.media_id AND m.status <> 'missing'
+		JOIN media_items m ON m.id = l.media_id AND m.status <> 'missing' AND m.source_id = c.source_id
 		LEFT JOIN catalog_seasons se ON se.id = l.season_id
 		LEFT JOIN catalog_episodes e ON e.id = l.episode_id
 		LEFT JOIN media_user_data u ON u.media_id = m.id AND u.user_id = ?
@@ -175,7 +186,7 @@ func (r *CatalogRepository) querySummaries(ctx context.Context, where string, ar
 			) AS thumbnail_rank
 		FROM wanted w JOIN catalog_items c ON c.id = w.id
 		JOIN catalog_media_links l ON l.catalog_item_id = c.id AND l.match_status = 'matched'
-		JOIN media_items m ON m.id = l.media_id AND m.status <> 'missing'
+		JOIN media_items m ON m.id = l.media_id AND m.status <> 'missing' AND m.source_id = c.source_id
 		LEFT JOIN catalog_seasons se ON se.id = l.season_id
 		LEFT JOIN catalog_episodes e ON e.id = l.episode_id
 		LEFT JOIN media_user_data u ON u.media_id = m.id AND u.user_id = ?
@@ -340,8 +351,8 @@ func (r *CatalogRepository) attachCatalogVersions(ctx context.Context, items []d
 			COALESCE(u.progress_ms,0),COALESCE(u.completed,0)
 			FROM catalog_media_links l JOIN media_items m ON m.id=l.media_id
 			LEFT JOIN media_user_data u ON u.media_id=m.id AND u.user_id=?
-			WHERE l.catalog_item_id=? AND l.match_status='matched' AND m.status<>'missing'
-			ORDER BY COALESCE(m.width,0) DESC,COALESCE(m.height,0) DESC,m.file_size DESC,m.id`, userID, item.ID)
+			WHERE l.catalog_item_id=? AND l.match_status='matched' AND m.status<>'missing' AND m.source_id=?
+			ORDER BY COALESCE(m.width,0) DESC,COALESCE(m.height,0) DESC,m.file_size DESC,m.id`, userID, item.ID, item.SourceID)
 		if err != nil {
 			return err
 		}

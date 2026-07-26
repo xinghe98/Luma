@@ -3,6 +3,7 @@ import '../models/api_catalog.dart';
 abstract interface class CatalogRepository {
   Future<List<CatalogItem>> list({CatalogKind? kind, String? query});
   Future<CatalogItem> detail(String id);
+
   /// 保存作品级收藏，revision 不一致时由实现抛出接口错误。
   Future<CatalogFavorite> setFavorite({
     required String catalogId,

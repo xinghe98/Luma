@@ -22,9 +22,9 @@ class MediaBadge extends StatelessWidget {
         ),
         child: Text(
           label,
-          style: Theme.of(context).textTheme.labelSmall?.copyWith(
-            color: extras.onPlayerInk,
-          ),
+          style: Theme.of(
+            context,
+          ).textTheme.labelSmall?.copyWith(color: extras.onPlayerInk),
         ),
       ),
     );

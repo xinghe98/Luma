@@ -21,6 +21,7 @@ class OrganizationPage extends StatefulWidget {
 class _OrganizationPageState extends State<OrganizationPage> {
   List<CatalogIssue>? _issues;
   Object? _error;
+  bool _loading = false;
 
   @override
   void initState() {
@@ -29,23 +30,48 @@ class _OrganizationPageState extends State<OrganizationPage> {
   }
 
   Future<void> _load() async {
-    setState(() => _error = null);
+    setState(() {
+      _error = null;
+      _loading = true;
+    });
     try {
       final issues = await widget.repository.issues();
       if (mounted) setState(() => _issues = issues);
     } on Object catch (error) {
       if (mounted) setState(() => _error = error);
+    } finally {
+      if (mounted) setState(() => _loading = false);
     }
   }
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('待整理文件')),
-    body: _error != null
-        ? ErrorState(onRetry: _load)
-        : _issues == null
-        ? const SettingsListSkeleton(items: 5)
-        : _issues!.isEmpty
+    appBar: AppBar(
+      title: const Text('待整理文件'),
+      actions: [
+        IconButton(
+          tooltip: '刷新待整理文件',
+          onPressed: _loading ? null : _load,
+          icon: const Icon(Icons.refresh_rounded),
+        ),
+      ],
+    ),
+    body: _buildBody(),
+  );
+
+  Widget _buildBody() {
+    final issues = _issues;
+    if (issues == null) {
+      if (_error != null) {
+        return ErrorState(
+          title: '无法读取待整理文件',
+          message: '请检查服务器连接后重试。',
+          onRetry: _load,
+        );
+      }
+      return const SettingsListSkeleton(items: 5);
+    }
+    final content = issues.isEmpty
         ? const EmptyState(
             icon: Icons.task_alt_rounded,
             title: '媒体库已整理',
@@ -53,10 +79,10 @@ class _OrganizationPageState extends State<OrganizationPage> {
           )
         : ListView.separated(
             padding: LumaLayout.pagePadding(top: LumaSpacing.xs),
-            itemCount: _issues!.length,
+            itemCount: issues.length,
             separatorBuilder: (_, _) => const Divider(),
             itemBuilder: (context, index) {
-              final issue = _issues![index];
+              final issue = issues[index];
               return ListTile(
                 contentPadding: EdgeInsets.zero,
                 leading: const Icon(Icons.rule_folder_outlined),
@@ -75,7 +101,20 @@ class _OrganizationPageState extends State<OrganizationPage> {
                 },
               );
             },
+          );
+    return Column(
+      children: [
+        if (_loading) const LinearProgressIndicator(minHeight: 2),
+        if (_error != null)
+          ErrorState(
+            compact: true,
+            title: '待整理文件刷新失败',
+            message: '当前仍显示上次成功加载的内容。',
+            retryLabel: '重试刷新',
+            onRetry: _load,
           ),
-  );
+        Expanded(child: content),
+      ],
+    );
+  }
 }
-

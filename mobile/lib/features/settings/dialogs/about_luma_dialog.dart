@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../core/theme.dart';
 import '../../../shared/branding/brand_mark.dart';
 
+/// 显示应用说明；关闭弹窗不会修改任何设置。
 void showAboutLumaDialog(BuildContext context) {
   showDialog<void>(
     context: context,
@@ -10,6 +11,7 @@ void showAboutLumaDialog(BuildContext context) {
     builder: (context) {
       final theme = Theme.of(context);
       return AlertDialog(
+        scrollable: true,
         title: const BrandMark(
           variant: BrandMarkVariant.horizontal,
           height: 32,

@@ -6,13 +6,17 @@ import '../../../core/theme.dart';
 import '../../../data/models/api_catalog.dart';
 import '../../../shared/formatters/duration_formatter.dart';
 import '../../../shared/media/authenticated_media_image.dart';
+import 'catalog_card.dart';
 import 'catalog_detail_theme.dart';
 
-/// 以叠层构图显示横幅、海报、标题信息和播放操作。
+/// 以自然高度布局横幅、海报、标题信息和播放操作，适配窄屏与大字体。
 class CatalogDetailHero extends StatelessWidget {
+  /// 构建作品详情首屏；[heroTag] 仅连接来源海报，不叠加页面位移动画。
   const CatalogDetailHero({
     super.key,
     required this.item,
+    this.heroTag,
+    required this.loadBackdrop,
     required this.favorite,
     required this.savingFavorite,
     required this.onPlay,
@@ -21,6 +25,11 @@ class CatalogDetailHero extends StatelessWidget {
   });
 
   final CatalogItem item;
+  final String? heroTag;
+
+  /// 路由过渡结束后才加载大背景图，等待期间保持稳定底色。
+  final bool loadBackdrop;
+
   final bool favorite;
   final bool savingFavorite;
   final ValueChanged<String> onPlay;
@@ -32,38 +41,47 @@ class CatalogDetailHero extends StatelessWidget {
     builder: (context, constraints) {
       final isWide =
           constraints.maxWidth >= LumaLayout.detailTwoColumnBreakpoint;
-      final posterWidth = isWide ? 208.0 : 136.0;
-      final posterLeft = isWide
-          ? ((constraints.maxWidth - LumaLayout.detailMaxWidth).clamp(
-                      0,
-                      double.infinity,
-                    ) /
-                    2) +
-                LumaSpacing.lg
-          : LumaSpacing.lg;
-      final informationLeft = posterLeft + posterWidth + LumaSpacing.md;
-      return SizedBox(
-        height: 592,
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            AuthenticatedMediaImage(
-              path: item.backdropUrl.isEmpty
-                  ? item.thumbnailUrl
-                  : item.backdropUrl,
-              cacheWidth: 1280,
-              fallback: ColoredBox(
-                color: CatalogDetailPalette.surface,
-                child: Icon(
-                  item.kind == CatalogKind.movie
-                      ? Icons.movie_outlined
-                      : Icons.tv_outlined,
-                  color: CatalogDetailPalette.muted,
-                  size: 76,
-                ),
+      // 资料区始终与海报并列，常规手机宽度仅缩小海报而不改成上下结构。
+      // 这样评分、时长和标签会持续处于海报右侧的同一视觉组。
+      final stackIdentity = constraints.maxWidth < 260;
+      final posterWidth = isWide
+          ? 208.0
+          : constraints.maxWidth < 360
+          ? 104.0
+          : 128.0;
+      const backdropFallback = ColoredBox(color: CatalogDetailPalette.surface);
+      final posterContent = _HeroPoster(item: item);
+      final poster = SizedBox(
+        width: posterWidth,
+        child: heroTag == null
+            ? posterContent
+            : Hero(
+                tag: heroTag!,
+                createRectTween: CatalogCard.straightRectTween,
+                flightShuttleBuilder: CatalogCard.preserveSourceHeroFlight,
+                child: posterContent,
               ),
-            ),
-            const DecoratedBox(
+      );
+      final information = _HeroInformation(item: item);
+      return Stack(
+        children: [
+          Positioned.fill(
+            child: loadBackdrop
+                ? AuthenticatedMediaImage(
+                    path: item.backdropUrl.isEmpty
+                        ? item.thumbnailUrl
+                        : item.backdropUrl,
+                    cacheWidth: isWide ? 1280 : 960,
+                    fadeInDuration: LumaMotion.forContext(
+                      context,
+                      LumaMotion.normal,
+                    ),
+                    fallback: backdropFallback,
+                  )
+                : backdropFallback,
+          ),
+          const Positioned.fill(
+            child: DecoratedBox(
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   begin: Alignment.topCenter,
@@ -77,61 +95,115 @@ class CatalogDetailHero extends StatelessWidget {
                 ),
               ),
             ),
-            Positioned(
-              left: posterLeft,
-              top: 160,
-              width: posterWidth,
-              child: _HeroPoster(item: item),
-            ),
-            Positioned(
-              left: informationLeft,
-              right: LumaSpacing.md,
-              top: 246,
-              child: _HeroInformation(item: item),
-            ),
-            Positioned(
-              left: LumaSpacing.lg,
-              right: LumaSpacing.lg,
-              top: 440,
-              child: _PrimaryPlayButton(item: item, onPlay: onPlay),
-            ),
-            Positioned(
-              left: LumaSpacing.lg,
-              right: LumaSpacing.lg,
-              top: 508,
-              child: Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: _startMediaId(item).isEmpty
-                          ? null
-                          : () => onPlayFromStart(_startMediaId(item)),
-                      icon: const Icon(Icons.replay_rounded),
-                      label: const Text('从头播放'),
-                      style: _secondaryActionStyle(),
-                    ),
+          ),
+          SafeArea(
+            bottom: false,
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(
+                  maxWidth: LumaLayout.detailMaxWidth,
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                    LumaSpacing.lg,
+                    kToolbarHeight + LumaSpacing.xl,
+                    LumaSpacing.lg,
+                    LumaSpacing.xl,
                   ),
-                  const SizedBox(width: LumaSpacing.sm),
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: savingFavorite ? null : onToggleFavorite,
-                      icon: Icon(
-                        favorite
-                            ? Icons.favorite_rounded
-                            : Icons.favorite_border_rounded,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      if (stackIdentity) ...[
+                        Align(alignment: Alignment.centerLeft, child: poster),
+                        const SizedBox(height: LumaSpacing.lg),
+                        information,
+                      ] else
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            poster,
+                            const SizedBox(width: LumaSpacing.md),
+                            Expanded(child: information),
+                          ],
+                        ),
+                      const SizedBox(height: LumaSpacing.xl),
+                      _PrimaryPlayButton(item: item, onPlay: onPlay),
+                      const SizedBox(height: LumaSpacing.sm),
+                      _SecondaryActions(
+                        item: item,
+                        vertical: stackIdentity,
+                        favorite: favorite,
+                        savingFavorite: savingFavorite,
+                        onPlayFromStart: onPlayFromStart,
+                        onToggleFavorite: onToggleFavorite,
                       ),
-                      label: Text(favorite ? '已收藏' : '加入喜欢'),
-                      style: _secondaryActionStyle(),
-                    ),
+                    ],
                   ),
-                ],
+                ),
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       );
     },
   );
+}
+
+class _SecondaryActions extends StatelessWidget {
+  const _SecondaryActions({
+    required this.item,
+    required this.vertical,
+    required this.favorite,
+    required this.savingFavorite,
+    required this.onPlayFromStart,
+    required this.onToggleFavorite,
+  });
+
+  final CatalogItem item;
+  final bool vertical;
+  final bool favorite;
+  final bool savingFavorite;
+  final ValueChanged<String> onPlayFromStart;
+  final VoidCallback onToggleFavorite;
+
+  @override
+  Widget build(BuildContext context) {
+    final children = [
+      OutlinedButton.icon(
+        onPressed: _startMediaId(item).isEmpty
+            ? null
+            : () => onPlayFromStart(_startMediaId(item)),
+        icon: const Icon(Icons.replay_rounded),
+        label: const Text('从头播放'),
+        style: _secondaryActionStyle(),
+      ),
+      OutlinedButton.icon(
+        onPressed: savingFavorite ? null : onToggleFavorite,
+        icon: Icon(
+          favorite ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+        ),
+        label: Text(favorite ? '已收藏' : '加入喜欢'),
+        style: _secondaryActionStyle(),
+      ),
+    ];
+    if (vertical) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          children.first,
+          const SizedBox(height: LumaSpacing.sm),
+          children.last,
+        ],
+      );
+    }
+    return Row(
+      children: [
+        Expanded(child: children.first),
+        const SizedBox(width: LumaSpacing.sm),
+        Expanded(child: children.last),
+      ],
+    );
+  }
 
   ButtonStyle _secondaryActionStyle() => OutlinedButton.styleFrom(
     foregroundColor: CatalogDetailPalette.text,
@@ -191,8 +263,6 @@ class _HeroInformation extends StatelessWidget {
       children: [
         Text(
           item.title,
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
           style: Theme.of(context).textTheme.headlineSmall?.copyWith(
             color: CatalogDetailPalette.text,
             fontWeight: FontWeight.w700,
@@ -203,8 +273,6 @@ class _HeroInformation extends StatelessWidget {
             padding: const EdgeInsets.only(top: LumaSpacing.xxs),
             child: Text(
               item.originalTitle,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                 color: CatalogDetailPalette.muted,
               ),
@@ -213,8 +281,6 @@ class _HeroInformation extends StatelessWidget {
         const SizedBox(height: LumaSpacing.sm),
         Text(
           details.join(' · '),
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
           style: Theme.of(
             context,
           ).textTheme.bodyMedium?.copyWith(color: CatalogDetailPalette.muted),
@@ -268,7 +334,6 @@ class _PrimaryPlayButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      height: 56,
       child: FilledButton.icon(
         onPressed: item.playableMediaId.isEmpty
             ? null
@@ -278,6 +343,7 @@ class _PrimaryPlayButton extends StatelessWidget {
         style: FilledButton.styleFrom(
           backgroundColor: CatalogDetailPalette.accent,
           foregroundColor: CatalogDetailPalette.background,
+          minimumSize: const Size.fromHeight(56),
           textStyle: Theme.of(
             context,
           ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),

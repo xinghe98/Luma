@@ -12,6 +12,7 @@ import (
 	"github.com/xinghe98/Luma/backend/internal/domain"
 )
 
+// TestCatalogRepositoryGroupsMoviesAndEpisodes 验证作品聚合及失效来源不可见。
 func TestCatalogRepositoryGroupsMoviesAndEpisodes(t *testing.T) {
 	ctx := context.Background()
 	db, err := Open(ctx, config.DatabaseConfig{Path: filepath.Join(t.TempDir(), "catalog.db"), BusyTimeoutMS: 1000})
@@ -140,6 +141,29 @@ func TestCatalogRepositoryGroupsMoviesAndEpisodes(t *testing.T) {
 	movieDetail, err = repository.Get(ctx, movie.ID, "user_local")
 	if err != nil || !movieDetail.Favorite || movieDetail.FavoriteRevision != 1 {
 		t.Fatalf("movie favorite=%#v error=%v", movieDetail, err)
+	}
+	for name, statement := range map[string]string{
+		"disabled": `UPDATE sources SET enabled=0,status='disabled' WHERE id='movies'`,
+		"deleted":  `UPDATE sources SET enabled=1,status='online',deleted_at_ms=12345 WHERE id='movies'`,
+	} {
+		t.Run("hidden "+name+" source", func(t *testing.T) {
+			if _, err := db.Exec(`UPDATE sources SET enabled=1,status='online',deleted_at_ms=NULL WHERE id='movies'`); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := db.Exec(statement); err != nil {
+				t.Fatal(err)
+			}
+			movies, err := repository.List(ctx, domain.CatalogListRequest{Kind: domain.CatalogKindMovie, Limit: 10}, "user_local")
+			if err != nil || len(movies) != 0 {
+				t.Fatalf("movies=%#v error=%v", movies, err)
+			}
+			if _, err := repository.Get(ctx, movie.ID, "user_local"); !errors.Is(err, domain.ErrCatalogNotFound) {
+				t.Fatalf("detail error=%v", err)
+			}
+			if _, err := repository.UpdateFavorite(ctx, movie.ID, "user_local", false, 1, now); !errors.Is(err, domain.ErrCatalogNotFound) {
+				t.Fatalf("favorite error=%v", err)
+			}
+		})
 	}
 }
 

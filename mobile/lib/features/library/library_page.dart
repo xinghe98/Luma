@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../app/app_scope.dart';
 import '../../app/controllers/media_controller.dart';
+import '../../app/route_transition.dart';
 import '../../core/extensions.dart';
 import '../../core/theme.dart';
 import '../../data/models/media_item.dart';
@@ -18,6 +21,7 @@ import 'library_controller.dart';
 
 /// 固定类型的媒体库页：底部导航拆分为影音库与图片库两个入口。
 class LibraryPage extends StatefulWidget {
+  /// 构建固定类型媒体库，并在路由动画结束后按 [pageSize] 启动远程分页。
   const LibraryPage({
     super.key,
     required this.type,
@@ -28,7 +32,8 @@ class LibraryPage extends StatefulWidget {
     this.embedded = false,
     this.title,
     this.initialItems = const [],
-  });
+    this.pageSize = 48,
+  }) : assert(pageSize >= 1 && pageSize <= 100);
 
   final MediaType type;
   final MediaOpenCallback onOpenMedia;
@@ -38,6 +43,9 @@ class LibraryPage extends StatefulWidget {
 
   /// 上一级列表已加载的条目，会在远程刷新完成前作为此页的稳定首帧内容。
   final List<MediaItem> initialItems;
+
+  /// 单次远程分页条数；进入页面时会等路由动画结束后再请求第一页。
+  final int pageSize;
 
   /// 嵌入影视库分页时仅渲染内容和局部工具栏，避免嵌套 Scaffold/AppBar。
   final bool embedded;
@@ -66,14 +74,17 @@ class _LibraryPageState extends State<LibraryPage>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    if (_controller != null) return;
     final media = AppScope.of(context).media;
-    _controller ??= LibraryController(
+    final controller = LibraryController(
       fixedType: widget.type,
       fixedLibraryKind: widget.fixedLibraryKind,
       media: media,
       initialItems: widget.initialItems,
+      pageSize: widget.pageSize,
     );
-    _controller!.ensureLoaded();
+    _controller = controller;
+    unawaited(controller.ensureLoadedAfter(waitForRouteTransition(context)));
   }
 
   @override
@@ -87,7 +98,10 @@ class _LibraryPageState extends State<LibraryPage>
 
   void _onScroll() {
     final controller = _controller;
-    if (controller == null || !controller.hasMore || controller.isLoadingMore) {
+    if (controller == null ||
+        !controller.hasMore ||
+        controller.isLoadingMore ||
+        controller.hasLoadMoreError) {
       return;
     }
     if (!_scroll.hasClients) return;
@@ -97,6 +111,7 @@ class _LibraryPageState extends State<LibraryPage>
     }
   }
 
+  /// 构建媒体库内容，并在筛选生效时保留清除筛选入口。
   @override
   Widget build(BuildContext context) {
     super.build(context);
@@ -131,38 +146,25 @@ class _LibraryPageState extends State<LibraryPage>
                     const SliverToBoxAdapter(
                       child: LinearProgressIndicator(minHeight: 2),
                     ),
-                  SliverPadding(
-                    padding: const EdgeInsets.fromLTRB(
-                      LumaLayout.pagePaddingH,
-                      LumaSpacing.xs,
-                      LumaLayout.pagePaddingH,
-                      0,
-                    ),
-                    sliver: SliverToBoxAdapter(
-                      child: Row(
-                        children: [
-                          Text(
-                            controller.hasMore
-                                ? '已加载 ${items.length} 个项目'
-                                : '${items.length} 个项目',
-                            style: Theme.of(context).textTheme.bodyMedium
-                                ?.copyWith(
-                                  color: Theme.of(
-                                    context,
-                                  ).colorScheme.onSurfaceVariant,
-                                ),
+                  if (controller.hasExtraFilters)
+                    SliverPadding(
+                      padding: const EdgeInsets.fromLTRB(
+                        LumaLayout.pagePaddingH,
+                        LumaSpacing.xs,
+                        LumaLayout.pagePaddingH,
+                        0,
+                      ),
+                      sliver: SliverToBoxAdapter(
+                        child: Align(
+                          alignment: Alignment.centerRight,
+                          child: TextButton.icon(
+                            onPressed: controller.clearFilters,
+                            icon: const Icon(Icons.close_rounded, size: 18),
+                            label: const Text('清除筛选'),
                           ),
-                          const Spacer(),
-                          if (controller.hasExtraFilters)
-                            TextButton.icon(
-                              onPressed: controller.clearFilters,
-                              icon: const Icon(Icons.close_rounded, size: 18),
-                              label: const Text('清除筛选'),
-                            ),
-                        ],
+                        ),
                       ),
                     ),
-                  ),
                   if (showInitialSkeleton)
                     const SliverPadding(
                       padding: EdgeInsets.fromLTRB(
@@ -199,6 +201,16 @@ class _LibraryPageState extends State<LibraryPage>
                       ),
                     )
                   else ...[
+                    if (loadState == LoadState.error)
+                      SliverToBoxAdapter(
+                        child: ErrorState(
+                          compact: true,
+                          title: '媒体库刷新失败',
+                          message: '当前仍显示相同筛选条件下的上次结果。',
+                          retryLabel: '重新刷新',
+                          onRetry: controller.refresh,
+                        ),
+                      ),
                     if (isVideo)
                       SliverPadding(
                         padding: const EdgeInsets.fromLTRB(
@@ -231,7 +243,17 @@ class _LibraryPageState extends State<LibraryPage>
                               context.toggleFavoriteWithFeedback(media, item),
                         ),
                       ),
-                    if (controller.isLoadingMore || controller.hasMore)
+                    if (controller.hasLoadMoreError)
+                      SliverToBoxAdapter(
+                        child: ErrorState(
+                          compact: true,
+                          title: '下一页加载失败',
+                          message: '已加载的项目不会丢失，可以继续重试。',
+                          retryLabel: '重试下一页',
+                          onRetry: controller.loadMore,
+                        ),
+                      )
+                    else if (controller.isLoadingMore)
                       const SliverToBoxAdapter(
                         child: Padding(
                           padding: EdgeInsets.fromLTRB(

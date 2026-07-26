@@ -3,6 +3,7 @@ package sqlite
 
 import (
 	"context"
+	"errors"
 	"path/filepath"
 	"testing"
 	"time"
@@ -12,6 +13,7 @@ import (
 	"github.com/xinghe98/Luma/backend/internal/domain"
 )
 
+// TestCatalogMetadataQueueIdentityAndRichResult 验证资料持久化及失效来源图片不可见。
 func TestCatalogMetadataQueueIdentityAndRichResult(t *testing.T) {
 	ctx := context.Background()
 	db, err := Open(ctx, config.DatabaseConfig{
@@ -116,6 +118,25 @@ func TestCatalogMetadataQueueIdentityAndRichResult(t *testing.T) {
 	if err != nil || profile.OpaqueKey != "/profile.jpg" {
 		t.Fatalf("profile=%#v error=%v", profile, err)
 	}
+	for name, statement := range map[string]string{
+		"disabled": `UPDATE sources SET enabled=0,status='disabled' WHERE id='movies'`,
+		"deleted":  `UPDATE sources SET enabled=1,status='online',deleted_at_ms=12345 WHERE id='movies'`,
+	} {
+		t.Run("artwork hidden for "+name+" source", func(t *testing.T) {
+			if _, err := db.Exec(`UPDATE sources SET enabled=1,status='online',deleted_at_ms=NULL WHERE id='movies'`); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := db.Exec(statement); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := repository.GetCatalogArtwork(ctx, profile.ID, "user_local"); !errors.Is(err, domain.ErrCatalogNotFound) {
+				t.Fatalf("artwork error=%v", err)
+			}
+		})
+	}
+	if _, err := db.Exec(`UPDATE sources SET enabled=1,status='online',deleted_at_ms=NULL WHERE id='movies'`); err != nil {
+		t.Fatal(err)
+	}
 
 	// An identity lock fixes the selected record, not its metadata snapshot.
 	if count, err := repository.EnqueuePendingMetadata(
@@ -125,5 +146,21 @@ func TestCatalogMetadataQueueIdentityAndRichResult(t *testing.T) {
 	}
 	if _, err := repository.ClaimMetadata(ctx, "worker_three", now.Add(40*24*time.Hour)); err != nil {
 		t.Fatalf("claim locked refresh: %v", err)
+	}
+	if _, err := db.Exec(`CREATE TRIGGER reject_metadata_status_refresh
+		BEFORE UPDATE OF metadata_status ON catalog_items
+		BEGIN SELECT RAISE(ABORT, 'reject metadata status refresh'); END`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repository.RefreshMetadata(ctx, itemID, "", now.Add(41*24*time.Hour)); err == nil {
+		t.Fatal("refresh should return the metadata status update error")
+	}
+	var jobStatus, metadataStatus string
+	if err := db.QueryRow(`SELECT j.status,c.metadata_status FROM catalog_scrape_jobs j
+		JOIN catalog_items c ON c.id=j.catalog_item_id WHERE c.id=?`, itemID).Scan(&jobStatus, &metadataStatus); err != nil {
+		t.Fatal(err)
+	}
+	if jobStatus != "running" || metadataStatus != "refreshing" {
+		t.Fatalf("partial refresh persisted: job=%s metadata=%s", jobStatus, metadataStatus)
 	}
 }

@@ -69,10 +69,7 @@ class _PlayerVideoSurfaceState extends State<PlayerVideoSurface> {
         return ColoredBox(
           color: Colors.black,
           child: Center(
-            child: AspectRatio(
-              aspectRatio: ratio,
-              child: VideoPlayer(video),
-            ),
+            child: AspectRatio(aspectRatio: ratio, child: VideoPlayer(video)),
           ),
         );
       }

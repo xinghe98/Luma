@@ -20,7 +20,7 @@ import (
 
 // AuthenticationUseCase 是登录与登出所需的最小用例边界。
 type AuthenticationUseCase interface {
-	Login(context.Context, string, string, string) (domain.IssuedSession, error)
+	Login(context.Context, string, string, string, string) (domain.IssuedSession, error)
 	Logout(context.Context, string) error
 }
 
@@ -36,6 +36,8 @@ type loginFailure struct {
 	until time.Time
 }
 
+const maxLoginFailureKeys = 4096
+
 // NewAuthHandler 创建认证 Handler。
 func NewAuthHandler(service AuthenticationUseCase) (*AuthHandler, error) {
 	if service == nil {
@@ -44,12 +46,13 @@ func NewAuthHandler(service AuthenticationUseCase) (*AuthHandler, error) {
 	return &AuthHandler{service: service, failures: map[string]loginFailure{}}, nil
 }
 
-// Login 验证用户名密码并返回一条新的设备会话。
+// Login 验证用户名密码并原子替换同设备会话；仅未授权错误计入失败限流，其他错误按类别返回。
 func (h *AuthHandler) Login(c *gin.Context) {
 	var body struct {
 		Username   string `json:"username"`
 		Password   string `json:"password"`
 		DeviceName string `json:"device_name"`
+		DeviceKey  string `json:"device_key"`
 	}
 	if err := apirequest.DecodeJSON(c, &body); err != nil {
 		response.Error(c, http.StatusBadRequest, "INVALID_REQUEST", err.Error(), nil)
@@ -61,10 +64,17 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		response.Error(c, http.StatusTooManyRequests, "RATE_LIMITED", "too many login attempts", nil)
 		return
 	}
-	issued, err := h.service.Login(c.Request.Context(), body.Username, body.Password, body.DeviceName)
+	issued, err := h.service.Login(c.Request.Context(), body.Username, body.Password, body.DeviceName, body.DeviceKey)
 	if err != nil {
-		h.recordFailure(key)
-		response.Error(c, http.StatusUnauthorized, "UNAUTHORIZED", "invalid username or password", nil)
+		switch {
+		case errors.Is(err, domain.ErrUnauthorized):
+			h.recordFailure(key)
+			response.Error(c, http.StatusUnauthorized, "UNAUTHORIZED", "invalid username or password", nil)
+		case errors.Is(err, domain.ErrInvalidRequest):
+			response.Error(c, http.StatusBadRequest, "INVALID_REQUEST", err.Error(), nil)
+		default:
+			response.Error(c, http.StatusInternalServerError, "INTERNAL_ERROR", "internal server error", nil)
+		}
 		return
 	}
 	h.clearFailure(key)
@@ -106,21 +116,30 @@ func (h *AuthHandler) recordFailure(key string) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	now := time.Now()
-	value := h.failures[key]
+	value, exists := h.failures[key]
 	if now.After(value.until) {
 		value = loginFailure{until: now.Add(15 * time.Minute)}
+	}
+	if !exists && len(h.failures) >= maxLoginFailureKeys {
+		for old, candidate := range h.failures {
+			if now.After(candidate.until) {
+				delete(h.failures, old)
+			}
+		}
+		if len(h.failures) >= maxLoginFailureKeys {
+			var oldestKey string
+			var oldestUntil time.Time
+			for old, candidate := range h.failures {
+				if oldestKey == "" || candidate.until.Before(oldestUntil) {
+					oldestKey, oldestUntil = old, candidate.until
+				}
+			}
+			delete(h.failures, oldestKey)
+		}
 	}
 	value.count++
 	value.until = now.Add(15 * time.Minute)
 	h.failures[key] = value
-	if len(h.failures) > 4096 {
-		for old, candidate := range h.failures {
-			if now.After(candidate.until) {
-				delete(h.failures, old)
-				break
-			}
-		}
-	}
 }
 func (h *AuthHandler) clearFailure(key string) {
 	h.mu.Lock()

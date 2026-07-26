@@ -1,6 +1,8 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:go_router/go_router.dart';
 
 import 'app/app_dependencies.dart';
 import 'app/app_router.dart';
@@ -8,7 +10,6 @@ import 'app/app_scope.dart';
 import 'core/theme.dart';
 import 'features/player/widgets/mini_player_overlay.dart';
 import 'shared/branding/brand_mark.dart';
-import 'package:go_router/go_router.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -20,15 +21,23 @@ Future<void> main() async {
   imageCache.maximumSize = 150;
   // 手机减少纹理驻留量；平板保留更大的缓存，避免宽屏多列反复解码。
   imageCache.maximumSizeBytes = (isLargeScreen ? 64 : 48) << 20;
-  final dependencies = AppDependencies.create();
-  runApp(LumaApp(dependencies: dependencies));
-  unawaited(dependencies.restoreSession());
+  runApp(LumaApp.production());
 }
 
 class LumaApp extends StatefulWidget {
-  const LumaApp({super.key, required this.dependencies});
+  /// 使用外部依赖构建应用；依赖生命周期仍由调用方负责。
+  const LumaApp({super.key, required this.dependencies})
+    : ownsDependencies = false;
+
+  /// 创建并持有生产依赖，应用卸载时会统一释放。
+  LumaApp.production({super.key})
+    : dependencies = AppDependencies.create(),
+      ownsDependencies = true;
 
   final AppDependencies dependencies;
+
+  /// 为 true 时依赖由本组件创建，并随组件一起释放。
+  final bool ownsDependencies;
 
   @override
   State<LumaApp> createState() => _LumaAppState();
@@ -41,11 +50,15 @@ class _LumaAppState extends State<LumaApp> {
   void initState() {
     super.initState();
     _router = createAppRouter(widget.dependencies);
+    if (widget.ownsDependencies) {
+      unawaited(widget.dependencies.restoreSession());
+    }
   }
 
   @override
   void dispose() {
     _router.dispose();
+    if (widget.ownsDependencies) widget.dependencies.dispose();
     super.dispose();
   }
 
@@ -62,6 +75,13 @@ class _LumaAppState extends State<LumaApp> {
         builder: (context, _) => MaterialApp.router(
           debugShowCheckedModeBanner: false,
           title: '轻影 Luma',
+          locale: const Locale('zh', 'CN'),
+          localizationsDelegates: const [
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
+          supportedLocales: const [Locale('zh', 'CN')],
           theme: LumaTheme.light(),
           darkTheme: LumaTheme.dark(),
           themeMode: widget.dependencies.settings.themeMode,
@@ -134,15 +154,19 @@ class _LaunchBrandOverlayState extends State<_LaunchBrandOverlay> {
   Widget build(BuildContext context) => Stack(
     fit: StackFit.expand,
     children: [
-      widget.child,
+      if (_isVisible) ExcludeSemantics(child: widget.child) else widget.child,
       if (_isVisible)
-        IgnorePointer(
-          child: ColoredBox(
-            color: Theme.of(context).scaffoldBackgroundColor,
-            child: const Center(
-              child: BrandMark(
-                variant: BrandMarkVariant.horizontal,
-                height: 180,
+        Semantics(
+          container: true,
+          label: '轻影正在启动',
+          child: AbsorbPointer(
+            child: ColoredBox(
+              color: Theme.of(context).scaffoldBackgroundColor,
+              child: const Center(
+                child: BrandMark(
+                  variant: BrandMarkVariant.horizontal,
+                  height: 180,
+                ),
               ),
             ),
           ),

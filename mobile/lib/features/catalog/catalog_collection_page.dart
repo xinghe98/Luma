@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../app/app_scope.dart';
+import '../../app/route_transition.dart';
 import '../../core/theme.dart';
 import '../../data/models/api_catalog.dart';
 import '../../shared/states/empty_state.dart';
@@ -21,7 +24,7 @@ class CatalogCollectionPage extends StatelessWidget {
 
   final CatalogKind kind;
   final List<CatalogItem> initialItems;
-  final ValueChanged<CatalogItem> onOpenCatalog;
+  final CatalogOpenCallback onOpenCatalog;
   final VoidCallback onOpenSearch;
 
   @override
@@ -54,7 +57,7 @@ class CatalogCollectionBody extends StatefulWidget {
 
   final CatalogKind kind;
   final List<CatalogItem> initialItems;
-  final ValueChanged<CatalogItem> onOpenCatalog;
+  final CatalogOpenCallback onOpenCatalog;
 
   @override
   State<CatalogCollectionBody> createState() => _CatalogCollectionBodyState();
@@ -70,11 +73,14 @@ class _CatalogCollectionBodyState extends State<CatalogCollectionBody>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    _controller ??= CatalogController(
+    if (_controller != null) return;
+    final controller = CatalogController(
       AppScope.of(context).catalog,
       kind: widget.kind,
       initialItems: widget.initialItems,
-    )..ensureLoaded();
+    );
+    _controller = controller;
+    unawaited(controller.ensureLoadedAfter(waitForRouteTransition(context)));
   }
 
   @override
@@ -156,10 +162,13 @@ class _CatalogCollectionBodyState extends State<CatalogCollectionBody>
                         ),
                         itemBuilder: (context, index) {
                           final item = controller.items[index];
+                          final heroTag = CatalogCard.heroTagFor(item);
                           return RepaintBoundary(
                             child: CatalogCard(
                               item: item,
-                              onTap: () => widget.onOpenCatalog(item),
+                              heroTag: heroTag,
+                              onTap: () =>
+                                  widget.onOpenCatalog(item, heroTag: heroTag),
                             ),
                           );
                         },

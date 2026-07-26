@@ -30,11 +30,22 @@ class MediaCard extends StatelessWidget {
     final duration = formatDuration(item.duration);
     final coverRadius = context.luma.coverRadius;
     final artwork = heroTag == null
-        ? MediaArtwork(item: item, useCardThumbnail: true)
+        ? MediaArtwork(
+            item: item,
+            useCardThumbnail: item.type == MediaType.video,
+          )
         : Hero(
             tag: heroTag!,
             flightShuttleBuilder: MediaArtwork.preserveSourceHeroFlight,
-            child: MediaArtwork(item: item, useCardThumbnail: true),
+            child: MediaArtwork(
+              item: item,
+              // 图片详情也使用默认缩略图，保证 Hero 落点能沿用已解码图片。
+              useCardThumbnail: item.type == MediaType.video,
+              cacheWidth: MediaArtwork.heroThumbnailCacheWidth,
+              cacheHeight: item.type == MediaType.video
+                  ? MediaArtwork.heroThumbnailCacheHeight
+                  : null,
+            ),
           );
     return Semantics(
       button: true,

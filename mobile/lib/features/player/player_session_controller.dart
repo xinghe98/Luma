@@ -10,14 +10,18 @@ import 'player_controller.dart';
 
 class PlayerSessionController extends ChangeNotifier {
   /// 创建播放会话；媒体控制器和会话信息用于创建底层播放器。
+  /// 播放器关闭并完成进度同步后，会通过回调标记关联作品需要刷新。
   PlayerSessionController({
     required MediaController media,
     required ApiSession apiSession,
+    ValueChanged<String?>? onCatalogInvalidated,
   }) : _media = media,
-       _apiSession = apiSession;
+       _apiSession = apiSession,
+       _onCatalogInvalidated = onCatalogInvalidated;
 
   final MediaController _media;
   final ApiSession _apiSession;
+  final ValueChanged<String?>? _onCatalogInvalidated;
   PlayerController? _player;
   bool _minimized = false;
   bool _notifyScheduled = false;
@@ -29,10 +33,11 @@ class PlayerSessionController extends ChangeNotifier {
   /// 小窗是否应显示在应用根层之上。
   bool get minimized => _minimized && _player != null;
 
-  /// 以指定媒体启动或复用会话；同一媒体不会重新初始化解码器。
+  /// 以指定媒体启动或复用会话；同媒体从头播放会重置现有解码器位置。
   void start(MediaItem item, {bool startFromBeginning = false}) {
     final active = _player;
     if (active != null && active.item.id == item.id) {
+      if (startFromBeginning) active.restartFromBeginning();
       // 已在全屏会话中则无需通知，避免 didChangeDependencies 期间 markNeedsBuild。
       if (!_minimized) return;
       _minimized = false;
@@ -44,7 +49,7 @@ class PlayerSessionController extends ChangeNotifier {
       _minimized = false;
       _notifySafely();
       // 新媒体的启动不等待旧解码器的网络进度同步。
-      active.shutdown();
+      _shutdownAndInvalidate(active);
     }
     final player = PlayerController(
       item: item,
@@ -72,14 +77,23 @@ class PlayerSessionController extends ChangeNotifier {
     _notifySafely();
   }
 
-  /// 停止当前会话，保存进度后释放播放器。
-  Future<void> close() async {
+  /// 停止当前会话并保存进度；断开服务器时可跳过随后无意义的作品刷新。
+  Future<void> close({bool invalidateCatalog = true}) async {
     final player = _player;
     if (player == null) return;
     _player = null;
     _minimized = false;
     _notifySafely();
     await player.shutdown();
+    if (invalidateCatalog) {
+      _onCatalogInvalidated?.call(player.item.catalogItemId);
+    }
+  }
+
+  /// 保存旧播放器进度后标记关联作品过期，不阻塞新媒体起播。
+  Future<void> _shutdownAndInvalidate(PlayerController player) async {
+    await player.shutdown();
+    if (!_disposed) _onCatalogInvalidated?.call(player.item.catalogItemId);
   }
 
   /// build 阶段合并为帧末一次通知，避免「setState during build」。

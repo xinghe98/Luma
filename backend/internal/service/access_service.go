@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 	"unicode/utf8"
 
 	"github.com/xinghe98/Luma/backend/internal/domain"
@@ -19,20 +20,21 @@ type AccessService struct {
 	repository repository.AccessRepository
 	ids        IDGenerator
 	clock      Clock
+	sessionTTL time.Duration
 	presence   interface{ IsOnline(string) bool }
 	mu         sync.Mutex
 }
 
-// NewAccessService 创建访问控制服务；依赖必须由 Composition Root 注入。
-func NewAccessService(repo repository.AccessRepository, ids IDGenerator, clock Clock, presence ...interface{ IsOnline(string) bool }) (*AccessService, error) {
-	if repo == nil || ids == nil || clock == nil {
+// NewAccessService 创建访问控制服务；会话期限必须为正，其他依赖由 Composition Root 注入。
+func NewAccessService(repo repository.AccessRepository, ids IDGenerator, clock Clock, sessionTTL time.Duration, presence ...interface{ IsOnline(string) bool }) (*AccessService, error) {
+	if repo == nil || ids == nil || clock == nil || sessionTTL <= 0 {
 		return nil, fmt.Errorf("访问控制依赖不能为空")
 	}
 	var tracker interface{ IsOnline(string) bool }
 	if len(presence) > 0 {
 		tracker = presence[0]
 	}
-	return &AccessService{repository: repo, ids: ids, clock: clock, presence: tracker}, nil
+	return &AccessService{repository: repo, ids: ids, clock: clock, sessionTTL: sessionTTL, presence: tracker}, nil
 }
 
 // EnsureBootstrapAdmin 在本地管理员尚无密码时初始化其账号，并返回是否首次初始化。
@@ -110,7 +112,7 @@ func (s *AccessService) createUser(ctx context.Context, name, username, password
 	return user, nil
 }
 
-// UpdateUser 更新显示名称或启用状态；停用账号会立即撤销其会话。
+// UpdateUser 更新显示名称或启用状态；仓储会在停用账号的同一事务内撤销其会话。
 func (s *AccessService) UpdateUser(ctx context.Context, id string, name *string, enabled *bool) (domain.User, error) {
 	user, err := s.repository.GetUser(ctx, strings.TrimSpace(id))
 	if err != nil {
@@ -133,23 +135,27 @@ func (s *AccessService) UpdateUser(ctx context.Context, id string, name *string,
 	if err := s.repository.UpdateUser(ctx, user); err != nil {
 		return domain.User{}, err
 	}
-	if enabled != nil && !*enabled {
-		if err := s.repository.RevokeUserSessions(ctx, user.ID, user.UpdatedAt); err != nil {
-			return domain.User{}, err
-		}
-	}
 	user.PasswordHash = ""
 	return user, nil
 }
 
-// Login 验证账号密码并创建永久有效、可撤销的独立设备会话。
-func (s *AccessService) Login(ctx context.Context, username, password, deviceName string) (domain.IssuedSession, error) {
+// Login 验证账号密码并创建具有绝对期限、可撤销的独立设备会话。
+// 若提供 deviceKey，仓储会在创建新会话的同一事务内撤销该设备的旧有效会话。
+func (s *AccessService) Login(ctx context.Context, username, password, deviceName, deviceKey string) (domain.IssuedSession, error) {
 	username, err := normalizeUsername(username)
 	if err != nil {
 		return domain.IssuedSession{}, domain.ErrUnauthorized
 	}
 	user, err := s.repository.FindUserByUsername(ctx, username)
-	if err != nil || !user.Enabled || !security.VerifyPassword(user.PasswordHash, password) {
+	if err != nil {
+		security.ConsumePasswordVerificationTime(password)
+		if errors.Is(err, domain.ErrUserNotFound) {
+			return domain.IssuedSession{}, domain.ErrUnauthorized
+		}
+		return domain.IssuedSession{}, err
+	}
+	passwordValid := security.VerifyPassword(user.PasswordHash, password)
+	if !user.Enabled || !passwordValid {
 		return domain.IssuedSession{}, domain.ErrUnauthorized
 	}
 	deviceName = strings.TrimSpace(deviceName)
@@ -158,6 +164,10 @@ func (s *AccessService) Login(ctx context.Context, username, password, deviceNam
 	}
 	if utf8.RuneCountInString(deviceName) > 80 {
 		return domain.IssuedSession{}, fmt.Errorf("%w: 设备名称最多 80 个字符", domain.ErrInvalidRequest)
+	}
+	deviceKey = strings.TrimSpace(deviceKey)
+	if utf8.RuneCountInString(deviceKey) > 64 {
+		return domain.IssuedSession{}, fmt.Errorf("%w: 设备标识最多 64 个字符", domain.ErrInvalidRequest)
 	}
 	secret, err := security.GenerateSessionSecret()
 	if err != nil {
@@ -168,9 +178,14 @@ func (s *AccessService) Login(ctx context.Context, username, password, deviceNam
 		return domain.IssuedSession{}, err
 	}
 	now := s.clock.Now().UTC()
+	expiresAt := now.Add(s.sessionTTL)
 	prefix := secret[:min(8, len(secret))]
-	session := domain.Session{ID: id, UserID: user.ID, Name: deviceName, SecretHash: security.HashSessionSecret(secret), SecretPrefix: prefix, CreatedAt: now, UpdatedAt: now}
-	if err := s.repository.CreateSession(ctx, session); err != nil {
+	session := domain.Session{
+		ID: id, UserID: user.ID, Name: deviceName, DeviceKey: deviceKey,
+		SecretHash: security.HashSessionSecret(secret), SecretPrefix: prefix,
+		ExpiresAt: &expiresAt, CreatedAt: now, UpdatedAt: now,
+	}
+	if err := s.repository.ReplaceSession(ctx, session); err != nil {
 		return domain.IssuedSession{}, err
 	}
 	user.PasswordHash = ""
@@ -185,20 +200,17 @@ func (s *AccessService) Logout(ctx context.Context, credentialID string) error {
 	return s.repository.RevokeSession(ctx, credentialID, s.clock.Now().UTC())
 }
 
-// ResetPassword 设置新密码并撤销该账号所有已登录设备。
+// ResetPassword 在同一仓储事务内设置新密码并撤销该账号所有已登录设备。
 func (s *AccessService) ResetPassword(ctx context.Context, userID, password string) error {
 	hash, err := security.HashPassword(password)
 	if err != nil {
 		return fmt.Errorf("%w: %v", domain.ErrInvalidRequest, err)
 	}
 	now := s.clock.Now().UTC()
-	if err := s.repository.UpdatePassword(ctx, strings.TrimSpace(userID), hash, now); err != nil {
-		return err
-	}
-	return s.repository.RevokeUserSessions(ctx, strings.TrimSpace(userID), now)
+	return s.repository.ResetPassword(ctx, strings.TrimSpace(userID), hash, now)
 }
 
-// ListSessions 返回成员所有登录设备，不返回会话明文。
+// ListSessions 返回成员尚未撤销的登录设备，不返回会话明文。
 func (s *AccessService) ListSessions(ctx context.Context, userID string) ([]domain.Session, error) {
 	return s.repository.ListSessions(ctx, strings.TrimSpace(userID))
 }

@@ -89,7 +89,9 @@ final class CatalogDecoder {
 
   List<CatalogNamedValue> _decodeNamedValues(Object? value) {
     if (value == null) return const [];
-    if (value is! List) throw const FormatException('Expected named value list');
+    if (value is! List) {
+      throw const FormatException('Expected named value list');
+    }
     return value
         .map((item) => objectValue(item, 'catalog named value'))
         .map(
@@ -103,7 +105,9 @@ final class CatalogDecoder {
 
   List<CatalogCredit> _decodeCredits(Object? value) {
     if (value == null) return const [];
-    if (value is! List) throw const FormatException('Expected catalog credit list');
+    if (value is! List) {
+      throw const FormatException('Expected catalog credit list');
+    }
     return value
         .map((item) => objectValue(item, 'catalog credit'))
         .map(
@@ -121,7 +125,9 @@ final class CatalogDecoder {
 
   List<CatalogVersion> _decodeVersions(Object? value) {
     if (value == null) return const [];
-    if (value is! List) throw const FormatException('Expected catalog version list');
+    if (value is! List) {
+      throw const FormatException('Expected catalog version list');
+    }
     return value
         .map((item) => objectValue(item, 'catalog version'))
         .map(
@@ -144,7 +150,9 @@ final class CatalogDecoder {
 
   Map<String, String> _decodeExternalIDs(Object? value) {
     if (value == null) return const {};
-    if (value is! Map) throw const FormatException('Expected external ID object');
+    if (value is! Map) {
+      throw const FormatException('Expected external ID object');
+    }
     return Map<String, String>.unmodifiable(
       value.map((key, item) => MapEntry(key.toString(), item.toString())),
     );

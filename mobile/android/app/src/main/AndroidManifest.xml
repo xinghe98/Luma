@@ -26,6 +26,16 @@
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
+            <!-- 稳定自定义深链格式为 luma://app/<route>。 -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="luma" android:host="app" android:pathPrefix="/media" />
+                <data android:scheme="luma" android:host="app" android:pathPrefix="/catalog" />
+                <data android:scheme="luma" android:host="app" android:pathPrefix="/player" />
+                <data android:scheme="luma" android:host="app" android:pathPrefix="/settings" />
+            </intent-filter>
         </activity>
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->

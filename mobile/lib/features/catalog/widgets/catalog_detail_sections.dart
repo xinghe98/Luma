@@ -18,7 +18,9 @@ class CatalogSectionHeading extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Row(
     children: [
-      Expanded(child: Text(title, style: Theme.of(context).textTheme.titleLarge)),
+      Expanded(
+        child: Text(title, style: Theme.of(context).textTheme.titleLarge),
+      ),
       if (trailing != null)
         Text(
           trailing!,
@@ -38,7 +40,10 @@ class CatalogCreditStrip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cast = credits.where((credit) => credit.role == 'actor').take(12).toList();
+    final cast = credits
+        .where((credit) => credit.role == 'actor')
+        .take(12)
+        .toList();
     final visibleCredits = cast.isEmpty ? credits.take(12).toList() : cast;
     return SizedBox(
       height: 120,
@@ -46,9 +51,8 @@ class CatalogCreditStrip extends StatelessWidget {
         scrollDirection: Axis.horizontal,
         itemCount: visibleCredits.length,
         separatorBuilder: (_, _) => const SizedBox(width: LumaSpacing.md),
-        itemBuilder: (context, index) => _CreditPortrait(
-          credit: visibleCredits[index],
-        ),
+        itemBuilder: (context, index) =>
+            _CreditPortrait(credit: visibleCredits[index]),
       ),
     );
   }
@@ -75,7 +79,10 @@ class _CreditPortrait extends StatelessWidget {
               fit: BoxFit.cover,
               fallback: const ColoredBox(
                 color: Color(0xFF30312B),
-                child: Icon(Icons.person_rounded, color: CatalogDetailPalette.muted),
+                child: Icon(
+                  Icons.person_rounded,
+                  color: CatalogDetailPalette.muted,
+                ),
               ),
             ),
           ),
@@ -117,7 +124,6 @@ class CatalogVersionTile extends StatelessWidget {
     final metadata = [
       if (version.videoCodec.isNotEmpty) version.videoCodec.toUpperCase(),
       if (version.audioCodec.isNotEmpty) version.audioCodec.toUpperCase(),
-      if (version.fileSize > 0) _formatFileSize(version.fileSize),
     ].join(' · ');
     return InkWell(
       onTap: onPlay,
@@ -128,7 +134,7 @@ class CatalogVersionTile extends StatelessWidget {
         ),
         child: Row(
           children: [
-            _VersionBadge(label: version.label),
+            _VersionBadge(label: version.label, resolution: version.resolution),
             const SizedBox(width: LumaSpacing.md),
             Expanded(
               child: Column(
@@ -141,9 +147,7 @@ class CatalogVersionTile extends StatelessWidget {
                   if (metadata.isNotEmpty)
                     Text(
                       metadata,
-                      style: Theme.of(
-                        context,
-                      ).textTheme.bodySmall?.copyWith(
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
                         color: CatalogDetailPalette.muted,
                       ),
                     ),
@@ -153,9 +157,7 @@ class CatalogVersionTile extends StatelessWidget {
             if (version.fileSize > 0)
               Text(
                 _formatFileSize(version.fileSize),
-                style: Theme.of(
-                  context,
-                ).textTheme.bodyMedium?.copyWith(
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                   color: CatalogDetailPalette.muted,
                 ),
               ),
@@ -172,13 +174,21 @@ class CatalogVersionTile extends StatelessWidget {
 }
 
 class _VersionBadge extends StatelessWidget {
-  const _VersionBadge({required this.label});
+  const _VersionBadge({required this.label, required this.resolution});
 
   final String label;
+  final String resolution;
 
   @override
   Widget build(BuildContext context) {
-    final display = label.toUpperCase().contains('4K') ? '4K\nHDR' : '1080p\nFHD';
+    final value = '$resolution $label'.toUpperCase();
+    final display = switch (value) {
+      final text when text.contains('2160') || text.contains('4K') => '4K\nUHD',
+      final text when text.contains('1080') => '1080p\nFHD',
+      final text when text.contains('720') => '720p\nHD',
+      final text when text.contains('576') || text.contains('480') => 'SD',
+      _ => resolution.trim().isEmpty ? '本地\n版本' : resolution.trim(),
+    };
     return Container(
       width: 50,
       height: 58,
@@ -280,9 +290,7 @@ class CatalogEpisodeTile extends StatelessWidget {
                       padding: const EdgeInsets.only(top: LumaSpacing.xs),
                       child: Text(
                         metadata,
-                        style: Theme.of(
-                          context,
-                        ).textTheme.bodySmall?.copyWith(
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
                           color: CatalogDetailPalette.muted,
                         ),
                       ),

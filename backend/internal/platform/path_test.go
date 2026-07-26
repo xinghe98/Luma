@@ -67,3 +67,38 @@ func TestPathPolicyRejectsSymlinkEscape(t *testing.T) {
 		t.Fatal("symlink escape accepted")
 	}
 }
+
+// TestPathPolicyReevaluatesAllowedRoot 验证白名单链接目标变化后不会继续使用旧最终路径。
+func TestPathPolicyReevaluatesAllowedRoot(t *testing.T) {
+	base := t.TempDir()
+	first := filepath.Join(base, "first")
+	second := filepath.Join(base, "second")
+	for _, directory := range []string{first, second} {
+		if err := os.Mkdir(directory, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	link := filepath.Join(base, "allowed")
+	if err := os.Symlink(first, link); err != nil {
+		t.Skipf("当前环境不支持符号链接: %v", err)
+	}
+	policy, err := NewPathPolicy([]string{link})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := policy.ValidateSourceRoot(first); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(link); err != nil {
+		t.Skipf("无法重绑定测试链接: %v", err)
+	}
+	if err := os.Symlink(second, link); err != nil {
+		t.Skipf("无法重建测试链接: %v", err)
+	}
+	if _, err := policy.ValidateSourceRoot(first); err == nil {
+		t.Fatal("白名单重绑定后仍接受旧目标")
+	}
+	if _, err := policy.ValidateSourceRoot(second); err != nil {
+		t.Fatalf("白名单重绑定后的新目标被拒绝: %v", err)
+	}
+}

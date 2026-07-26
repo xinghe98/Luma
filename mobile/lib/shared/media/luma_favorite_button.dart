@@ -21,7 +21,7 @@ class LumaFavoriteButton extends StatelessWidget {
     final label = tooltip ?? (isFavorite ? '取消收藏' : '收藏');
     final heartColor = Theme.of(context).colorScheme.error;
     final icon = AnimatedSwitcher(
-      duration: LumaMotion.fast,
+      duration: LumaMotion.forContext(context, LumaMotion.fast),
       switchInCurve: LumaMotion.standard,
       switchOutCurve: LumaMotion.standard,
       transitionBuilder: (child, animation) =>

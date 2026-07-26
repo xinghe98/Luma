@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -21,6 +22,17 @@ import (
 type stagedBackgroundRunner struct {
 	prepareStarted chan struct{}
 	prepareRelease chan struct{}
+}
+
+type cancellableBackgroundRunner struct{}
+
+// Prepare 模拟无需恢复的后台组件。
+func (cancellableBackgroundRunner) Prepare(context.Context) error { return nil }
+
+// Run 等待应用取消后台生命周期。
+func (cancellableBackgroundRunner) Run(ctx context.Context) error {
+	<-ctx.Done()
+	return nil
 }
 
 func (r *stagedBackgroundRunner) Prepare(ctx context.Context) error {
@@ -97,6 +109,35 @@ func TestAppDoesNotServeHTTPBeforeWorkerRecovery(t *testing.T) {
 	}
 }
 
+// TestAppServeTLSRejectsInvalidCertificate 验证配置证书时确实进入 TLS 服务分支并传播加载错误。
+func TestAppServeTLSRejectsInvalidCertificate(t *testing.T) {
+	base := t.TempDir()
+	cert := filepath.Join(base, "server.crt")
+	key := filepath.Join(base, "server.key")
+	if err := os.WriteFile(cert, []byte("invalid certificate"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(key, []byte("invalid key"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	application := &App{
+		config: config.Config{Server: config.ServerConfig{
+			TLSCertFile: cert, TLSKeyFile: key, ShutdownTimeout: time.Second,
+		}},
+		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+		server: &http.Server{Handler: http.NotFoundHandler()},
+		worker: cancellableBackgroundRunner{},
+	}
+	err = application.Serve(context.Background(), listener)
+	if err == nil || !strings.Contains(err.Error(), "serve HTTP") {
+		t.Fatalf("TLS certificate error = %v", err)
+	}
+}
+
 // TestAppStartsServesHealthAndShutsDown 验证应用完整注入链、启动和优雅关闭。
 func TestAppStartsServesHealthAndShutsDown(t *testing.T) {
 	base := t.TempDir()
@@ -114,12 +155,13 @@ func TestAppStartsServesHealthAndShutsDown(t *testing.T) {
 	cfg := config.Config{
 		Server: config.ServerConfig{
 			Host: "127.0.0.1", Port: 0, ReadHeaderTimeout: time.Second,
-			IdleTimeout: time.Second, ShutdownTimeout: 5 * time.Second,
+			ReadTimeout: time.Second, IdleTimeout: time.Second, ShutdownTimeout: 5 * time.Second,
 		},
 		Security: config.SecurityConfig{
-			AdminUsername: "admin",
+			AdminUsername:     "admin",
 			AdminPasswordFile: filepath.Join(base, "secrets", "admin_password"),
-			AllowedRoots: []string{mediaRoot},
+			SessionDuration:   30 * 24 * time.Hour,
+			AllowedRoots:      []string{mediaRoot},
 		},
 		Database: config.DatabaseConfig{
 			Path: filepath.Join(base, "media.db"), BusyTimeoutMS: 1000, WAL: true,
@@ -179,15 +221,30 @@ func TestAppStartsServesHealthAndShutsDown(t *testing.T) {
 		cancel()
 		t.Fatal(err)
 	}
-	var login struct { SessionToken string `json:"session_token"` }
-	if err := json.NewDecoder(response.Body).Decode(&login); err != nil { _ = response.Body.Close(); cancel(); t.Fatal(err) }
+	var login struct {
+		SessionToken string `json:"session_token"`
+	}
+	if err := json.NewDecoder(response.Body).Decode(&login); err != nil {
+		_ = response.Body.Close()
+		cancel()
+		t.Fatal(err)
+	}
 	_ = response.Body.Close()
-	if response.StatusCode != http.StatusOK || login.SessionToken == "" { cancel(); t.Fatalf("login status = %d", response.StatusCode) }
+	if response.StatusCode != http.StatusOK || login.SessionToken == "" {
+		cancel()
+		t.Fatalf("login status = %d", response.StatusCode)
+	}
 	request, err := http.NewRequest(http.MethodGet, "http://"+listener.Addr().String()+"/api/v1/system/info", nil)
-	if err != nil { cancel(); t.Fatal(err) }
+	if err != nil {
+		cancel()
+		t.Fatal(err)
+	}
 	request.Header.Set("Authorization", "Bearer "+login.SessionToken)
 	response, err = http.DefaultClient.Do(request)
-	if err != nil { cancel(); t.Fatal(err) }
+	if err != nil {
+		cancel()
+		t.Fatal(err)
+	}
 	var systemInfo struct {
 		Database     string   `json:"database"`
 		Capabilities []string `json:"capabilities"`

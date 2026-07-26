@@ -4,7 +4,7 @@
 
 ## 影视库
 
-媒体源支持四种用途：`personal`、`photos`、`movies` 和 `tv`。旧媒体源升级后默认为 `personal`，不会改变现有媒体展示。可在 App 的“设置 → 媒体源类型”中修改，然后重新扫描。
+媒体源类型当前固定为 `local`，可指向本地目录或由操作系统挂载的 SMB 目录。每个来源的视频用途可选 `personal`、`movies` 或 `tv`；图片无论来源用途都会进入图片库。历史 `photos` 用途升级后迁为 `personal`。可在 App 的“设置 → 媒体源”中修改视频用途，然后重新扫描。
 
 推荐目录结构：
 
@@ -97,7 +97,7 @@ LUMA_TMDB_ACCESS_TOKEN=你的_Read_Access_Token
 
 ## 成员账号与目录隐私
 
-首次启动会生成管理员初始密码文件。管理员登录后创建成员账号、设置密码，并授予成员可访问的媒体源。媒体列表、作品库、详情、缩略图、原图和视频流都会执行同一份来源授权检查；每台已登录设备都有独立、可撤销的会话。
+首次启动会生成管理员初始密码文件，管理员用户名来自 `security.admin_username`，默认是 `admin`。管理员登录后创建成员账号、设置密码，并授予成员可访问的媒体源。用户名为 3 至 32 个 ASCII 字母、数字、点、下划线或连字符，密码为 10 至 128 个 Unicode 字符且最多 512 个 UTF-8 字节。媒体列表、作品库、详情、缩略图、原图和视频流都会执行同一份来源授权检查；每台安装会使用稳定随机 `device_key` 维持一条可撤销会话，不采集硬件唯一标识。
 
 `security.allowed_roots` 可以配置多条盘符或共享目录，它只是“服务端允许创建来源的安全白名单”，不是用户权限。每个实际目录仍需创建为独立媒体源，之后再按成员授权：
 
@@ -225,7 +225,7 @@ curl -X POST http://127.0.0.1:8080/api/v1/sources/{source_id}/scan \
 
 要求：
 
-- Go 1.24 或更高版本（仅构建时需要）
+- Go 1.25 或更高版本（仅构建时需要）
 - `ffmpeg` 和 `ffprobe`
 - 一个可读取媒体、可写数据目录的专用系统用户
 
@@ -339,7 +339,7 @@ sudo cat /var/lib/luma/secrets/admin_password
 要求：
 
 - PowerShell 7+
-- Go 1.24 或更高版本（仅构建时需要）
+- Go 1.25 或更高版本（仅构建时需要）
 - Windows 版 `ffmpeg.exe` 和 `ffprobe.exe`
 - 安装服务时使用管理员 PowerShell
 
@@ -448,3 +448,7 @@ cd backend
 go test ./...
 go run ./cmd/server -config configs/config.example.yaml -log-format text
 ```
+
+Android 构建默认使用 `google()`、Maven Central 和 Gradle Plugin Portal。仅当当前网络无法访问官方仓库时，可设置环境变量 `LUMA_USE_CHINA_MIRRORS=true`，或向 Gradle 传入 `--project-prop "luma.useChinaMirrors=true"`，临时在官方仓库之前加入阿里云镜像。
+
+仓库文本默认使用 LF；`.bat`、`.cmd` 和 `.ps1` 使用 CRLF。提交前分别运行 `gofmt`、`dart format`，不要依赖编辑器自动改写整仓行尾。

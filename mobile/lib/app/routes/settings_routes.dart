@@ -57,6 +57,7 @@ List<RouteBase> buildSettingsRoutes(
     parentNavigatorKey: rootNavigatorKey,
     name: AppRoute.accessManagement,
     path: '/settings/access',
+    redirect: (_, _) => _guardAccessManagement(dependencies),
     builder: (_, _) {
       final sources = dependencies.sources;
       if (sources == null) {
@@ -75,6 +76,7 @@ List<RouteBase> buildSettingsRoutes(
     parentNavigatorKey: rootNavigatorKey,
     name: AppRoute.newMember,
     path: '/settings/access/new',
+    redirect: (_, _) => _guardAccessManagement(dependencies),
     builder: (_, _) {
       final sources = dependencies.sources;
       if (sources == null) {
@@ -90,6 +92,7 @@ List<RouteBase> buildSettingsRoutes(
     parentNavigatorKey: rootNavigatorKey,
     name: AppRoute.memberDetail,
     path: '/settings/access/:userId',
+    redirect: (_, _) => _guardAccessManagement(dependencies),
     builder: (_, state) => AccessUserRoutePage(
       access: dependencies.access,
       sources: dependencies.sources,
@@ -103,3 +106,14 @@ List<RouteBase> buildSettingsRoutes(
     ),
   ),
 ];
+
+/// 与设置页入口使用相同权限，阻止成员通过深链进入访问管理页面。
+String? _guardAccessManagement(AppDependencies dependencies) {
+  final server = dependencies.session.server;
+  final allowed =
+      server != null &&
+      server.userRole == 'admin' &&
+      server.capabilities.contains('users.manage') &&
+      dependencies.sources != null;
+  return allowed ? null : '/settings';
+}

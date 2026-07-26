@@ -1,50 +1,61 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../../app/route_transition.dart';
 import '../../../core/theme.dart';
 import '../../../data/models/media_item.dart';
 import '../../../shared/media/authenticated_media_image.dart';
 
-/// 全屏图片预览：双指缩放、双击放大/还原，可选进入详情。
-/// [heroTag] 与来源缩略图一致时启用共享元素过渡，避免生硬弹出。
-void showImagePreviewDialog(
+/// 图片预览关闭后交还给调用方的后续动作。
+enum ImagePreviewAction { openDetails }
+
+/// 打开不透明的全屏图片预览，支持缩放、还原和进入详情。
+/// 有 [heroTag] 时从来源缩略图原地放大；无来源时退化为短淡入。
+Future<ImagePreviewAction?> showImagePreviewDialog(
   BuildContext context,
   MediaItem item, {
-  VoidCallback? onOpenDetails,
   String? heroTag,
-}) {
-  showGeneralDialog<void>(
-    context: context,
-    barrierDismissible: true,
-    barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
-    // 小尺寸图片按比例显示时，预览外区域使用实底，不能透出媒体瀑布流。
-    barrierColor: context.luma.playerInk,
-    transitionDuration: LumaMotion.forContext(context, LumaMotion.fast),
+}) async {
+  final route = PageRouteBuilder<ImagePreviewAction>(
+    opaque: true,
+    settings: const RouteSettings(name: 'image-preview'),
+    transitionsBuilder: (_, _, _, child) => child,
+    transitionDuration: LumaMotion.forContext(context, LumaMotion.slow),
+    reverseTransitionDuration: LumaMotion.forContext(context, LumaMotion.slow),
     pageBuilder: (context, animation, secondaryAnimation) {
-      return ImagePreviewDialog(
-        item: item,
-        onOpenDetails: onOpenDetails,
-        heroTag: heroTag,
-      );
+      return ImagePreviewDialog(item: item, heroTag: heroTag);
     },
-    // 图片由 Hero 负责位移动画；实底遮罩由 barrier 淡入，整页不再额外 Fade，
-    // 避免与 Hero 叠加造成闪一下。
-    transitionBuilder: (context, animation, secondaryAnimation, child) => child,
   );
+  final result = await Navigator.of(
+    context,
+    rootNavigator: true,
+  ).push<ImagePreviewAction>(route);
+  final animation = route.animation;
+  if (animation != null && animation.status != AnimationStatus.dismissed) {
+    final completer = Completer<void>();
+    void waitForDismissed(AnimationStatus status) {
+      if (status == AnimationStatus.dismissed && !completer.isCompleted) {
+        completer.complete();
+      }
+    }
+
+    animation.addStatusListener(waitForDismissed);
+    waitForDismissed(animation.status);
+    await completer.future;
+    animation.removeStatusListener(waitForDismissed);
+  }
+  await WidgetsBinding.instance.endOfFrame;
+  return result;
 }
 
 class ImagePreviewDialog extends StatefulWidget {
-  const ImagePreviewDialog({
-    super.key,
-    required this.item,
-    this.onOpenDetails,
-    this.heroTag,
-  });
+  /// 构建全屏图片预览；[heroTag] 为空时使用无共享元素的降级动效。
+  const ImagePreviewDialog({super.key, required this.item, this.heroTag});
 
   final MediaItem item;
-  final VoidCallback? onOpenDetails;
   final String? heroTag;
 
   @override
@@ -54,25 +65,25 @@ class ImagePreviewDialog extends StatefulWidget {
 class _ImagePreviewDialogState extends State<ImagePreviewDialog> {
   final _transform = TransformationController();
   TapDownDetails? _doubleTapDetails;
-  bool _originalReady = false;
   bool _originalLoadAllowed = false;
+  bool _transitionWaitStarted = false;
+  bool _closing = false;
 
   static const _minScale = 1.0;
   static const _maxScale = 4.0;
   static const _doubleTapScale = 2.5;
 
   @override
-  void initState() {
-    super.initState();
-    if (widget.heroTag == null) {
-      _originalLoadAllowed = true;
-    } else {
-      _allowOriginalLoadAfterTransition();
-    }
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_transitionWaitStarted) return;
+    _transitionWaitStarted = true;
+    _allowOriginalLoadAfterTransition();
   }
 
+  /// Hero 与页面动画完成后才允许请求原图，确保飞行始终复用来源缩略图。
   Future<void> _allowOriginalLoadAfterTransition() async {
-    await Future<void>.delayed(LumaMotion.fast);
+    await waitForRouteTransition(context);
     if (mounted) setState(() => _originalLoadAllowed = true);
   }
 
@@ -97,8 +108,13 @@ class _ImagePreviewDialogState extends State<ImagePreviewDialog> {
       ..scaleByDouble(_doubleTapScale, _doubleTapScale, 1, 1);
   }
 
-  void _markOriginalReady() {
-    if (mounted && !_originalReady) setState(() => _originalReady = true);
+  /// 先还原缩放并隐藏原图，再触发反向 Hero，确保图片准确缩回来源卡片。
+  Future<void> _close([ImagePreviewAction? action]) async {
+    if (_closing) return;
+    setState(() => _closing = true);
+    _transform.value = Matrix4.identity();
+    await WidgetsBinding.instance.endOfFrame;
+    if (mounted) Navigator.pop(context, action);
   }
 
   @override
@@ -131,111 +147,171 @@ class _ImagePreviewDialogState extends State<ImagePreviewDialog> {
     final cacheHeight = targetHeight.round().clamp(1, 4096).toInt();
     final thumbCacheWidth = (size.width * dpr).round().clamp(1, 1280).toInt();
     final thumbCacheHeight = (size.height * dpr).round().clamp(1, 1280).toInt();
+    final displaySize = _containedSize(size, ratio);
 
     final originalPath =
         (item.originalUrl != null && item.originalUrl!.isNotEmpty)
         ? item.originalUrl!
         : item.thumbnailUrl;
     final thumbPath = item.thumbnailUrl;
-    final hasDistinctOriginal =
-        originalPath.isNotEmpty && originalPath != thumbPath;
-
-    // 缩略图垫底（列表里通常已缓存，首帧即可 contain 铺开），原图叠上淡入。
-    // 避免原先 MediaArtwork(cover) → 原图(contain) 的比例跳变闪动。
-    final image = Stack(
-      fit: StackFit.expand,
-      alignment: Alignment.center,
-      children: [
-        if (thumbPath.isNotEmpty && (!hasDistinctOriginal || !_originalReady))
-          AuthenticatedMediaImage(
-            path: thumbPath,
-            fit: BoxFit.contain,
-            cacheWidth: thumbCacheWidth,
-            cacheHeight: thumbCacheHeight,
-            resizePolicy: ResizeImagePolicy.fit,
-            fallback: const SizedBox.expand(),
-          ),
-        if (_originalLoadAllowed && hasDistinctOriginal)
-          AuthenticatedMediaImage(
-            path: originalPath,
-            fit: BoxFit.contain,
-            fullResolution: true,
-            cacheWidth: cacheWidth,
-            cacheHeight: cacheHeight,
-            fadeInDuration: LumaMotion.normal,
-            resizePolicy: ResizeImagePolicy.fit,
-            onImageLoaded: _markOriginalReady,
-            fallback: const SizedBox.expand(),
-          )
-        else if (_originalLoadAllowed && originalPath.isNotEmpty)
-          AuthenticatedMediaImage(
-            path: originalPath,
-            fit: BoxFit.contain,
-            fullResolution: true,
-            cacheWidth: cacheWidth,
-            cacheHeight: cacheHeight,
-            resizePolicy: ResizeImagePolicy.fit,
-            fallback: const SizedBox.expand(),
-          ),
-      ],
+    // 缩略图始终垫底并参与 Hero，原图只在转场完成后叠加，退出前先移除。
+    final thumbnail = Material(
+      type: MaterialType.transparency,
+      child: thumbPath.isEmpty
+          ? const SizedBox.expand()
+          : AuthenticatedMediaImage(
+              path: thumbPath,
+              fit: BoxFit.contain,
+              cacheWidth: thumbCacheWidth,
+              cacheHeight: thumbCacheHeight,
+              resizePolicy: ResizeImagePolicy.fit,
+              fallback: const SizedBox.expand(),
+            ),
+    );
+    final heroThumbnail = widget.heroTag == null
+        ? thumbnail
+        : Hero(
+            tag: widget.heroTag!,
+            createRectTween: _straightRectTween,
+            flightShuttleBuilder: _thumbnailFlightShuttle,
+            child: thumbnail,
+          );
+    final image = SizedBox(
+      width: displaySize.width,
+      height: displaySize.height,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          heroThumbnail,
+          if (_originalLoadAllowed && !_closing && originalPath.isNotEmpty)
+            AuthenticatedMediaImage(
+              path: originalPath,
+              fit: BoxFit.contain,
+              fullResolution: true,
+              cacheWidth: cacheWidth,
+              cacheHeight: cacheHeight,
+              fadeInDuration: LumaMotion.forContext(context, LumaMotion.normal),
+              resizePolicy: ResizeImagePolicy.fit,
+              fallback: const SizedBox.expand(),
+            ),
+        ],
+      ),
     );
 
-    final heroChild = Material(type: MaterialType.transparency, child: image);
-    final preview = widget.heroTag == null
-        ? heroChild
-        : Hero(tag: widget.heroTag!, child: heroChild);
+    final preview = widget.heroTag == null && routeAnimation != null
+        ? FadeTransition(
+            opacity: CurvedAnimation(
+              parent: routeAnimation,
+              curve: Curves.easeOutQuart,
+              reverseCurve: Curves.easeInCubic,
+            ),
+            child: image,
+          )
+        : image;
 
-    final chrome = routeAnimation == null
-        ? _PreviewChrome(top: top, onOpenDetails: widget.onOpenDetails)
+    final chromeWidget = _PreviewChrome(
+      onDetails: () => unawaited(_close(ImagePreviewAction.openDetails)),
+      onClose: () => unawaited(_close()),
+    );
+    final chromeContent = routeAnimation == null
+        ? chromeWidget
         : FadeTransition(
             opacity: CurvedAnimation(
               parent: routeAnimation,
               curve: const Interval(0.45, 1, curve: Curves.easeOut),
               reverseCurve: const Interval(0, 0.55, curve: Curves.easeIn),
             ),
-            child: _PreviewChrome(
-              top: top,
-              onOpenDetails: widget.onOpenDetails,
-            ),
+            child: chromeWidget,
           );
+    final chrome = Positioned(
+      top: top + LumaSpacing.xs,
+      left: LumaSpacing.xs,
+      right: LumaSpacing.xs,
+      child: chromeContent,
+    );
 
-    return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: SystemUiOverlayStyle.light,
-      child: Material(
-        // 使用独立的播放环境底色，保证小图预览不会露出底层内容。
-        color: context.luma.playerInk,
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            Semantics(
-              image: true,
-              label: '图片预览：${item.title}',
-              hint: '可双指缩放或双击放大',
-              child: GestureDetector(
-                onDoubleTapDown: (details) => _doubleTapDetails = details,
-                onDoubleTap: _onDoubleTap,
-                child: InteractiveViewer(
-                  transformationController: _transform,
-                  minScale: _minScale,
-                  maxScale: _maxScale,
-                  clipBehavior: Clip.none,
-                  child: SizedBox.expand(child: preview),
+    final backdrop = ColoredBox(color: context.luma.playerInk);
+    return PopScope(
+      canPop: _closing,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop && !_closing) unawaited(_close());
+      },
+      child: AnnotatedRegion<SystemUiOverlayStyle>(
+        value: SystemUiOverlayStyle.light,
+        child: Material(
+          type: MaterialType.transparency,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              if (routeAnimation == null)
+                backdrop
+              else
+                FadeTransition(
+                  opacity: CurvedAnimation(
+                    parent: routeAnimation,
+                    curve: Curves.easeOutQuart,
+                    reverseCurve: Curves.easeInCubic,
+                  ),
+                  child: backdrop,
+                ),
+              Semantics(
+                image: true,
+                label: '图片预览：${item.title}',
+                hint: '可双指缩放或双击放大',
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onDoubleTapDown: (details) => _doubleTapDetails = details,
+                  onDoubleTap: _onDoubleTap,
+                  child: Center(
+                    child: InteractiveViewer(
+                      transformationController: _transform,
+                      minScale: _minScale,
+                      maxScale: _maxScale,
+                      clipBehavior: Clip.none,
+                      child: preview,
+                    ),
+                  ),
                 ),
               ),
-            ),
-            chrome,
-          ],
+              chrome,
+            ],
+          ),
         ),
       ),
     );
   }
 }
 
-class _PreviewChrome extends StatelessWidget {
-  const _PreviewChrome({required this.top, this.onOpenDetails});
+Size _containedSize(Size viewport, double aspectRatio) {
+  final viewportRatio = viewport.width / viewport.height;
+  if (viewportRatio > aspectRatio) {
+    return Size(viewport.height * aspectRatio, viewport.height);
+  }
+  return Size(viewport.width, viewport.width / aspectRatio);
+}
 
-  final double top;
-  final VoidCallback? onOpenDetails;
+RectTween _straightRectTween(Rect? begin, Rect? end) =>
+    RectTween(begin: begin, end: end);
+
+Widget _thumbnailFlightShuttle(
+  BuildContext flightContext,
+  Animation<double> animation,
+  HeroFlightDirection direction,
+  BuildContext fromHeroContext,
+  BuildContext toHeroContext,
+) {
+  // 正向保留来源缩略图，反向直接使用目标卡片，避免把已缩放的原图带回列表。
+  final endpoint = direction == HeroFlightDirection.push
+      ? fromHeroContext.widget as Hero
+      : toHeroContext.widget as Hero;
+  return endpoint.child;
+}
+
+class _PreviewChrome extends StatelessWidget {
+  const _PreviewChrome({required this.onDetails, required this.onClose});
+
+  final VoidCallback onDetails;
+  final VoidCallback onClose;
 
   @override
   Widget build(BuildContext context) {
@@ -244,33 +320,22 @@ class _PreviewChrome extends StatelessWidget {
       backgroundColor: extras.badgeScrim,
       foregroundColor: extras.onPlayerInk,
     );
-    return Positioned(
-      top: top + LumaSpacing.xs,
-      left: LumaSpacing.xs,
-      right: LumaSpacing.xs,
-      child: Row(
-        children: [
-          if (onOpenDetails != null)
-            IconButton.filledTonal(
-              tooltip: '详情',
-              style: chromeStyle,
-              onPressed: () {
-                Navigator.pop(context);
-                onOpenDetails!();
-              },
-              icon: const Icon(Icons.info_outline_rounded),
-            )
-          else
-            const Spacer(),
-          const Spacer(),
-          IconButton.filledTonal(
-            tooltip: '关闭',
-            style: chromeStyle,
-            onPressed: () => Navigator.pop(context),
-            icon: const Icon(Icons.close_rounded),
-          ),
-        ],
-      ),
+    return Row(
+      children: [
+        IconButton.filledTonal(
+          tooltip: '详情',
+          style: chromeStyle,
+          onPressed: onDetails,
+          icon: const Icon(Icons.info_outline_rounded),
+        ),
+        const Spacer(),
+        IconButton.filledTonal(
+          tooltip: '关闭',
+          style: chromeStyle,
+          onPressed: onClose,
+          icon: const Icon(Icons.close_rounded),
+        ),
+      ],
     );
   }
 }

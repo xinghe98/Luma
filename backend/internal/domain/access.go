@@ -31,12 +31,13 @@ type User struct {
 	UpdatedAt    time.Time
 }
 
-// Session 保存登录设备会话元数据。密钥摘要永远不得出现在 API 响应或日志中。
+// Session 保存登录设备会话元数据。密钥摘要与 device_key 永远不得出现在 API 响应或日志中。
 type Session struct {
 	ID           string
 	RequestID    string
 	UserID       string
 	Name         string
+	DeviceKey    string
 	SecretHash   string
 	SecretPrefix string
 	ExpiresAt    *time.Time

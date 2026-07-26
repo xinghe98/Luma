@@ -9,6 +9,15 @@ backend/*.db-shm
 backend/*.db-wal
 backend/configs/config.yaml
 backend/.env
+# 运行时密钥和本地凭据不得进入版本控制。
+backend/**/secrets/
+backend/**/admin_password
+backend/**/*-password.txt
+backend/**/*_password.txt
+backend/**/*.pem
+backend/**/*.key
+backend/.env.*
+!backend/.env.example
 # Runtime-generated server configuration snapshots.
 backend/configs/.luma-config-*.yaml
 .gocache/

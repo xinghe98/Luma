@@ -1,3 +1,5 @@
+// 播放控制器封装视频解码、播放状态、交互状态与进度持久化。
+// 初始化和重试使用 generation 丢弃旧回包，销毁后不再更新任何可见状态。
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
@@ -17,13 +19,17 @@ class PlayerController extends ChangeNotifier {
     this.autoHideDelay = const Duration(seconds: 4),
   }) : _media = media,
        _apiSession = apiSession,
-       _position = startFromBeginning ? Duration.zero : item.duration * item.progress;
+       _startAtZero = startFromBeginning,
+       _position = startFromBeginning
+           ? Duration.zero
+           : item.duration * item.progress;
 
   final MediaItem item;
   final MediaController _media;
   final ApiSession? _apiSession;
   final bool startFromBeginning;
   final Duration autoHideDelay;
+  bool _startAtZero;
   late Duration _position;
   Timer? _hideTimer;
   Timer? _saveTimer;
@@ -41,6 +47,7 @@ class PlayerController extends ChangeNotifier {
   bool _resumeAfterScrub = false;
   Duration? _scrubOrigin;
   double _speed = 1;
+  int _initializationGeneration = 0;
 
   Duration get position => _position;
   bool get playing => _playing;
@@ -55,6 +62,7 @@ class PlayerController extends ChangeNotifier {
   Duration get duration =>
       initialized ? _videoController!.value.duration : item.duration;
 
+  /// 启动播放与定时保存；可播放地址缺失时保留错误供用户重试。
   void start() {
     final session = _apiSession;
     final streamUrl = item.streamUrl;
@@ -79,27 +87,96 @@ class PlayerController extends ChangeNotifier {
   }
 
   Future<void> _initializeVideo(ApiSession session, String streamUrl) async {
+    final generation = ++_initializationGeneration;
+    final access = session.resolveResource(streamUrl);
     final controller = VideoPlayerController.networkUrl(
-      Uri.parse(session.resolve(streamUrl)),
-      httpHeaders: session.authorizationHeaders,
+      Uri.parse(access.url),
+      httpHeaders: access.headers,
     );
+    final previous = _videoController;
+    if (previous != null) {
+      previous.removeListener(_syncVideoState);
+      await previous.dispose();
+      if (_disposed || generation != _initializationGeneration) {
+        await controller.dispose();
+        return;
+      }
+    }
     _videoController = controller;
     controller.addListener(_syncVideoState);
     try {
       await controller.initialize();
-      if (_disposed) return;
-      final initial = startFromBeginning
+      if (_disposed || generation != _initializationGeneration) {
+        controller.removeListener(_syncVideoState);
+        await controller.dispose();
+        return;
+      }
+      final initial = _startAtZero
           ? Duration.zero
           : controller.value.duration * item.progress;
       if (initial > Duration.zero) await controller.seekTo(initial);
       await controller.play();
+      if (_disposed || generation != _initializationGeneration) return;
+      _startAtZero = false;
+      _initializationFailed = false;
+      _error = null;
       _playing = true;
       notifyListeners();
     } on Object catch (error) {
-      if (_disposed) return;
+      if (_disposed || generation != _initializationGeneration) return;
       _initializationFailed = true;
       _error = error.toString();
       _playing = false;
+      notifyListeners();
+    }
+  }
+
+  /// 重新创建失败的视频解码器；地址仍不可用时更新错误但不离开播放器。
+  Future<void> retry() async {
+    if (_disposed) return;
+    final session = _apiSession;
+    final streamUrl = item.streamUrl;
+    _error = null;
+    _initializationFailed = false;
+    _playing = false;
+    notifyListeners();
+    if (item.status != 'ready') {
+      _error = '媒体尚未就绪，当前状态：${item.status}';
+      notifyListeners();
+      return;
+    }
+    if (session == null || streamUrl == null || streamUrl.isEmpty) {
+      _error = '服务端未返回可播放的视频流地址';
+      notifyListeners();
+      return;
+    }
+    await _initializeVideo(session, streamUrl);
+  }
+
+  /// 将当前媒体定位到零并继续播放；初始化尚未完成时改写本次起播位置。
+  Future<void> restartFromBeginning() async {
+    if (_disposed) return;
+    _startAtZero = true;
+    _completedSaved = false;
+    _position = Duration.zero;
+    final video = _videoController;
+    if (video == null || !video.value.isInitialized) {
+      notifyListeners();
+      if (_initializationFailed) await retry();
+      return;
+    }
+    try {
+      await video.seekTo(Duration.zero);
+      if (_disposed) return;
+      await video.play();
+      if (_disposed) return;
+      _startAtZero = false;
+      _playing = true;
+      _error = null;
+      notifyListeners();
+    } on Object catch (error) {
+      if (_disposed) return;
+      _error = error.toString();
       notifyListeners();
     }
   }
@@ -343,6 +420,7 @@ class PlayerController extends ChangeNotifier {
   void dispose() {
     if (_disposed) return;
     _disposed = true;
+    _initializationGeneration++;
     _hideTimer?.cancel();
     _saveTimer?.cancel();
     _syncThrottle?.cancel();

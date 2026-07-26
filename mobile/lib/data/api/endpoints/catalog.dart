@@ -30,5 +30,4 @@ mixin _CatalogEndpoints on _ApiTransport {
       data: data,
     );
   }
-
 }

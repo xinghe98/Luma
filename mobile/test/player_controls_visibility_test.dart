@@ -7,9 +7,11 @@ import 'package:luma/features/player/player_device_controls.dart';
 import 'package:luma/features/player/player_interaction_controller.dart';
 
 void main() {
-  Future<_Harness> createHarness() async {
+  Future<_Harness> createHarness(WidgetTester tester) async {
     final media = MediaController(MockMediaRepository());
-    await media.load();
+    final loading = media.load();
+    await tester.pump(const Duration(milliseconds: 650));
+    await loading;
     final item = media.items.firstWhere((item) => item.type == MediaType.video);
     final player = PlayerController(item: item, media: media);
     final interaction = PlayerInteractionController(
@@ -22,33 +24,37 @@ void main() {
   testWidgets('controls automatically hide after four seconds of inactivity', (
     tester,
   ) async {
-    final harness = await createHarness();
-    addTearDown(harness.dispose);
+    final harness = await createHarness(tester);
+    try {
+      harness.player.start();
+      expect(harness.player.controlsVisible, isTrue);
 
-    harness.player.start();
-    expect(harness.player.controlsVisible, isTrue);
+      await tester.pump(const Duration(seconds: 3, milliseconds: 999));
+      expect(harness.player.controlsVisible, isTrue);
 
-    await tester.pump(const Duration(seconds: 3, milliseconds: 999));
-    expect(harness.player.controlsVisible, isTrue);
-
-    await tester.pump(const Duration(milliseconds: 1));
-    expect(harness.player.controlsVisible, isFalse);
+      await tester.pump(const Duration(milliseconds: 1));
+      expect(harness.player.controlsVisible, isFalse);
+    } finally {
+      harness.dispose();
+    }
   });
 
   testWidgets(
     'a tap on the video surface toggles controls and restarts hiding',
     (tester) async {
-      final harness = await createHarness();
-      addTearDown(harness.dispose);
+      final harness = await createHarness(tester);
+      try {
+        harness.interaction.handleTap();
+        expect(harness.player.controlsVisible, isFalse);
 
-      harness.interaction.handleTap();
-      expect(harness.player.controlsVisible, isFalse);
+        harness.interaction.handleTap();
+        expect(harness.player.controlsVisible, isTrue);
 
-      harness.interaction.handleTap();
-      expect(harness.player.controlsVisible, isTrue);
-
-      await tester.pump(const Duration(seconds: 4));
-      expect(harness.player.controlsVisible, isFalse);
+        await tester.pump(const Duration(seconds: 4));
+        expect(harness.player.controlsVisible, isFalse);
+      } finally {
+        harness.dispose();
+      }
     },
   );
 }

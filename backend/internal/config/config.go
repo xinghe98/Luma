@@ -26,8 +26,16 @@ type ServerConfig struct {
 	Host string `yaml:"host"`
 	// Port 是 HTTP 服务监听端口。
 	Port int `yaml:"port"`
+	// TLSCertFile 是可选的 PEM 证书链文件。
+	TLSCertFile string `yaml:"tls_cert_file"`
+	// TLSKeyFile 是与证书匹配的 PEM 私钥文件。
+	TLSKeyFile string `yaml:"tls_key_file"`
+	// AllowInsecureRemote 允许在非回环地址上提供明文 HTTP，适用于本机反向代理或受限容器网络。
+	AllowInsecureRemote bool `yaml:"allow_insecure_remote"`
 	// ReadHeaderTimeout 是读取请求头的最长时间。
 	ReadHeaderTimeout time.Duration `yaml:"read_header_timeout"`
+	// ReadTimeout 是读取完整请求（包括正文）的最长时间。
+	ReadTimeout time.Duration `yaml:"read_timeout"`
 	// IdleTimeout 是空闲连接的最长保留时间。
 	IdleTimeout time.Duration `yaml:"idle_timeout"`
 	// ShutdownTimeout 是优雅关闭的最长等待时间。
@@ -45,6 +53,8 @@ type SecurityConfig struct {
 	AdminUsername string `yaml:"admin_username"`
 	// AdminPasswordFile 保存首次初始化管理员的密码。
 	AdminPasswordFile string `yaml:"admin_password_file"`
+	// SessionDuration 是设备会话自签发起的绝对有效期。
+	SessionDuration time.Duration `yaml:"session_duration"`
 	// AllowedOrigins 是允许访问 API 的浏览器来源列表。
 	AllowedOrigins []string `yaml:"allowed_origins"`
 	// AllowedRoots 是可以添加为媒体源的根目录白名单。

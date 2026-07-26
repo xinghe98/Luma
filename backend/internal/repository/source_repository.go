@@ -19,6 +19,6 @@ type SourceRepository interface {
 	Update(context.Context, domain.Source) error
 	// SetStatus 更新媒体源运行状态。
 	SetStatus(context.Context, string, string, time.Time) error
-	// SoftDelete 软删除媒体源（写入 deleted_at_ms），释放根路径占用并保留索引与用户数据。
+	// SoftDelete 删除媒体源；未初始化来源会硬删除，已有扫描或媒体记录时软删除并保留索引与用户数据。
 	SoftDelete(context.Context, string, time.Time) error
 }

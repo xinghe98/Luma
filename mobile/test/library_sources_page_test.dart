@@ -41,6 +41,26 @@ void main() {
     expect(find.text('家庭影片'), findsOneWidget);
     expect(find.byTooltip('新增媒体源'), findsOneWidget);
   });
+
+  testWidgets('refresh failure keeps previously loaded media sources', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: LibrarySourcesPage(
+          repository: _RefreshFailingSourceRepository(),
+          access: const UnavailableAccessRepository(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('刷新媒体源'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('家庭影片'), findsOneWidget);
+    expect(find.text('媒体源刷新失败'), findsOneWidget);
+  });
 }
 
 class _FakeSourceRepository implements MutableSourceRepository {
@@ -69,6 +89,35 @@ class _FakeSourceRepository implements MutableSourceRepository {
 
   @override
   Future<List<Source>> list({bool refresh = false}) async => _sources;
+
+  @override
+  Future<Source> updateLibraryKind(String id, String libraryKind) =>
+      throw UnimplementedError();
+}
+
+class _RefreshFailingSourceRepository implements MutableSourceRepository {
+  var _calls = 0;
+
+  @override
+  Future<List<Source>> list({bool refresh = false}) async {
+    _calls++;
+    if (_calls > 1) throw StateError('network unavailable');
+    return [_source()];
+  }
+
+  @override
+  Future<ManagedSourceCreation> createManagedSource({
+    required String name,
+    required String rootPath,
+    required String libraryKind,
+    required List<String> userIds,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<Source?> find(String id) async => null;
+
+  @override
+  Future<List<String>> listAvailableRoots() async => const [];
 
   @override
   Future<Source> updateLibraryKind(String id, String libraryKind) =>

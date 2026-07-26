@@ -39,7 +39,7 @@ type backgroundRunner interface {
 // Handler 返回应用使用的标准 HTTP Handler，供测试或外部监听器复用。
 func (a *App) Handler() http.Handler { return a.router }
 
-// Run 创建监听器并阻塞运行服务，直到退出或发生错误。
+// Run 创建监听器并按配置启用 HTTP 或 TLS，阻塞运行直到退出或发生错误。
 func (a *App) Run(ctx context.Context) error {
 	listener, err := net.Listen("tcp", a.server.Addr)
 	if err != nil {
@@ -48,7 +48,7 @@ func (a *App) Run(ctx context.Context) error {
 	return a.Serve(ctx, listener)
 }
 
-// Serve 在已创建的监听器上运行服务，便于测试生命周期且无需固定端口。
+// Serve 在已创建的监听器上按配置运行服务；TLS 文件加载失败会停止后台任务并返回错误。
 func (a *App) Serve(ctx context.Context, listener net.Listener) error {
 	if err := a.worker.Prepare(ctx); err != nil {
 		_ = listener.Close()
@@ -59,7 +59,12 @@ func (a *App) Serve(ctx context.Context, listener net.Listener) error {
 	serveError := make(chan error, 1)
 	workerError := make(chan error, 1)
 	go func() {
-		a.logger.Info("HTTP server starting", "address", listener.Addr().String())
+		tlsEnabled := a.config.Server.TLSCertFile != ""
+		a.logger.Info("HTTP server starting", "address", listener.Addr().String(), "tls", tlsEnabled)
+		if tlsEnabled {
+			serveError <- a.server.ServeTLS(listener, a.config.Server.TLSCertFile, a.config.Server.TLSKeyFile)
+			return
+		}
 		serveError <- a.server.Serve(listener)
 	}()
 	go func() {

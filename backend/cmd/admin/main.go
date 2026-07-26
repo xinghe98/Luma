@@ -21,6 +21,7 @@ func run(args []string) error {
 	server := global.String("server", "http://127.0.0.1:8080", "Luma server origin")
 	username := global.String("username", os.Getenv("LUMA_ADMIN_USERNAME"), "administrator username")
 	passwordFile := global.String("password-file", os.Getenv("LUMA_ADMIN_PASSWORD_FILE"), "file containing the administrator password")
+	deviceKeyFile := global.String("device-key-file", os.Getenv("LUMA_ADMIN_DEVICE_KEY_FILE"), "file containing the installation device key")
 	allowInsecure := global.Bool("allow-insecure", false, "allow plain HTTP to a non-loopback host")
 	if err := global.Parse(args); err != nil {
 		return err
@@ -37,9 +38,14 @@ func run(args []string) error {
 	if err != nil {
 		return err
 	}
-	c := client{origin: origin, http: &http.Client{Timeout: 15 * time.Second}}
-	if err := c.login(*username, password); err != nil {
+	deviceKey, err := loadOrCreateAdminDeviceKey(*deviceKeyFile)
+	if err != nil {
 		return err
 	}
+	c := client{origin: origin, http: &http.Client{Timeout: 15 * time.Second}}
+	if err := c.login(*username, password, deviceKey); err != nil {
+		return err
+	}
+	defer func() { _ = c.logout() }()
 	return dispatch(c, remaining[0], remaining[1], remaining[2:])
 }

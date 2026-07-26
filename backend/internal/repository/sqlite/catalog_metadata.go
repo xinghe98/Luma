@@ -277,8 +277,13 @@ func (r *CatalogRepository) FailMetadata(ctx context.Context, itemID, code, mess
 	return requeue, tx.Commit()
 }
 
-// RefreshMetadata requeues one item, one source, or the complete catalog.
+// RefreshMetadata 在同一事务中重排指定范围的任务并同步作品状态；任一步失败都不保留半写结果。
 func (r *CatalogRepository) RefreshMetadata(ctx context.Context, itemID, sourceID string, now time.Time) (int, error) {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
 	where, args := "1=1", []any{}
 	if itemID != "" {
 		where, args = "id=?", []any{itemID}
@@ -291,13 +296,22 @@ func (r *CatalogRepository) RefreshMetadata(ctx context.Context, itemID, sourceI
 		locked_at_ms=NULL,locked_by=NULL,error_code=NULL,error_message=NULL,finished_at_ms=NULL,updated_at_ms=excluded.updated_at_ms`
 	values := []any{now.UnixMilli(), now.UnixMilli(), now.UnixMilli()}
 	values = append(values, args...)
-	result, err := r.db.ExecContext(ctx, statement, values...)
+	result, err := tx.ExecContext(ctx, statement, values...)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("refresh metadata jobs: %w", err)
 	}
-	count, _ := result.RowsAffected()
-	_, _ = r.db.ExecContext(ctx, `UPDATE catalog_items SET metadata_status='pending',
-		metadata_error_code=NULL,metadata_error_message=NULL WHERE `+where, args...)
+	count, err := result.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("count refreshed metadata jobs: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE catalog_items SET metadata_status='pending',
+		metadata_error_code=NULL,metadata_error_message=NULL,updated_at_ms=? WHERE `+where,
+		append([]any{now.UnixMilli()}, args...)...); err != nil {
+		return 0, fmt.Errorf("refresh catalog metadata status: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("commit metadata refresh: %w", err)
+	}
 	return int(count), nil
 }
 
@@ -361,7 +375,7 @@ func (r *CatalogRepository) ListMetadataCandidates(ctx context.Context, itemID s
 	return result, rows.Err()
 }
 
-// GetCatalogArtwork returns artwork only when the caller can access its source.
+// GetCatalogArtwork 仅在调用者有权限且来源仍启用、未删除时返回作品图片。
 func (r *CatalogRepository) GetCatalogArtwork(ctx context.Context, artworkID, userID string) (domain.CatalogArtwork, error) {
 	var value domain.CatalogArtwork
 	err := r.db.QueryRowContext(ctx, `SELECT a.id,a.catalog_item_id,c.source_id,a.provider,a.opaque_key,
@@ -371,6 +385,7 @@ func (r *CatalogRepository) GetCatalogArtwork(ctx context.Context, artworkID, us
 			UNION ALL
 			SELECT id,catalog_item_id,provider,opaque_key,storage_key,mime_type,content_sha256,status FROM catalog_credit_artwork
 		) a JOIN catalog_items c ON c.id=a.catalog_item_id
+		JOIN sources s ON s.id=c.source_id AND s.enabled=1 AND s.deleted_at_ms IS NULL
 		JOIN source_grants g ON g.source_id=c.source_id AND g.user_id=?
 		WHERE a.id=?`, userID, artworkID).
 		Scan(&value.ID, &value.ItemID, &value.SourceID, &value.Provider, &value.OpaqueKey,

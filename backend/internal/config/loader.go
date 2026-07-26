@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -11,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/xinghe98/Luma/backend/internal/platform"
 	"gopkg.in/yaml.v3"
 )
 
@@ -57,10 +59,14 @@ func Load(path string) (Config, error) {
 // defaults 返回可用于本地运行的默认配置值。
 func defaults() Config {
 	return Config{
-		Security: SecurityConfig{AdminUsername: "admin", AdminPasswordFile: "data/secrets/admin_password"},
+		Security: SecurityConfig{
+			AdminUsername: "admin", AdminPasswordFile: "data/secrets/admin_password",
+			SessionDuration: 30 * 24 * time.Hour,
+		},
 		Server: ServerConfig{
-			Host: "0.0.0.0", Port: 8080,
+			Host: "127.0.0.1", Port: 8080,
 			ReadHeaderTimeout: 10 * time.Second,
+			ReadTimeout:       30 * time.Second,
 			IdleTimeout:       60 * time.Second,
 			ShutdownTimeout:   30 * time.Second,
 		},
@@ -90,6 +96,8 @@ func defaults() Config {
 // resolvePaths 将配置中的相对路径转换为相对配置文件目录的绝对路径。
 func resolvePaths(cfg *Config, base string) error {
 	paths := []*string{
+		&cfg.Server.TLSCertFile,
+		&cfg.Server.TLSKeyFile,
 		&cfg.Security.AdminPasswordFile,
 		&cfg.Database.Path,
 		&cfg.Storage.ThumbnailDir,
@@ -127,8 +135,16 @@ func Validate(cfg Config) error {
 	if cfg.Server.Port < 1 || cfg.Server.Port > 65535 {
 		problems = append(problems, "server.port must be between 1 and 65535")
 	}
-	if cfg.Server.ReadHeaderTimeout <= 0 || cfg.Server.IdleTimeout <= 0 || cfg.Server.ShutdownTimeout <= 0 {
+	if cfg.Server.ReadHeaderTimeout <= 0 || cfg.Server.ReadTimeout <= 0 || cfg.Server.IdleTimeout <= 0 || cfg.Server.ShutdownTimeout <= 0 {
 		problems = append(problems, "server timeouts must be positive")
+	}
+	hasCert := strings.TrimSpace(cfg.Server.TLSCertFile) != ""
+	hasKey := strings.TrimSpace(cfg.Server.TLSKeyFile) != ""
+	if hasCert != hasKey {
+		problems = append(problems, "server.tls_cert_file and server.tls_key_file must be configured together")
+	}
+	if !hasCert && !isLoopbackHost(cfg.Server.Host) && !cfg.Server.AllowInsecureRemote {
+		problems = append(problems, "non-loopback plaintext HTTP requires server.allow_insecure_remote: true")
 	}
 	if strings.TrimSpace(cfg.Security.AdminUsername) == "" {
 		problems = append(problems, "security.admin_username is required")
@@ -136,35 +152,26 @@ func Validate(cfg Config) error {
 	if cfg.Security.AdminPasswordFile == "" {
 		problems = append(problems, "security.admin_password_file is required")
 	}
+	if cfg.Security.SessionDuration <= 0 {
+		problems = append(problems, "security.session_duration must be positive")
+	}
 	if len(cfg.Security.AllowedRoots) == 0 {
 		problems = append(problems, "security.allowed_roots must contain at least one directory")
 	}
 	for _, root := range cfg.Security.AllowedRoots {
-		info, err := os.Stat(root)
+		resolved, resolveErr := filepath.EvalSymlinks(root)
+		if resolveErr != nil {
+			problems = append(problems, fmt.Sprintf("security.allowed_roots %q is not accessible: %v", root, resolveErr))
+			continue
+		}
+		info, err := os.Stat(resolved)
 		if err != nil {
 			problems = append(problems, fmt.Sprintf("security.allowed_roots %q is not accessible: %v", root, err))
 		} else if !info.IsDir() {
 			problems = append(problems, fmt.Sprintf("security.allowed_roots %q is not a directory", root))
 		}
 	}
-	dataPaths := []struct {
-		// name 是配置字段名。
-		name string
-		// path 是配置字段对应的数据路径。
-		path string
-	}{
-		{"security.admin_password_file", cfg.Security.AdminPasswordFile},
-		{"database.path", cfg.Database.Path},
-		{"storage.thumbnail_dir", cfg.Storage.ThumbnailDir},
-		{"storage.cache_dir", cfg.Storage.CacheDir},
-	}
-	for _, dataPath := range dataPaths {
-		for _, root := range cfg.Security.AllowedRoots {
-			if pathIsWithin(root, dataPath.path) {
-				problems = append(problems, fmt.Sprintf("%s must be outside read-only media root %q", dataPath.name, root))
-			}
-		}
-	}
+	problems = append(problems, validateDataPathIsolation(cfg)...)
 	if cfg.Database.Path == "" {
 		problems = append(problems, "database.path is required")
 	}
@@ -193,6 +200,55 @@ func Validate(cfg Config) error {
 		return fmt.Errorf("invalid configuration: %s", strings.Join(problems, "; "))
 	}
 	return nil
+}
+
+// validateDataPathIsolation 以最终路径比较可写数据与只读媒体目录，并拒绝链接类数据路径。
+func validateDataPathIsolation(cfg Config) []string {
+	canonicalRoots := make([]string, 0, len(cfg.Security.AllowedRoots))
+	for _, root := range cfg.Security.AllowedRoots {
+		resolved, err := filepath.EvalSymlinks(root)
+		if err == nil {
+			canonicalRoots = append(canonicalRoots, filepath.Clean(resolved))
+		}
+	}
+	dataPaths := []struct {
+		// name 是配置字段名。
+		name string
+		// path 是配置字段对应的数据路径。
+		path string
+	}{
+		{"security.admin_password_file", cfg.Security.AdminPasswordFile},
+		{"database.path", cfg.Database.Path},
+		{"storage.thumbnail_dir", cfg.Storage.ThumbnailDir},
+		{"storage.cache_dir", cfg.Storage.CacheDir},
+	}
+	var problems []string
+	for _, dataPath := range dataPaths {
+		if dataPath.path == "" {
+			continue
+		}
+		canonicalDataPath, err := platform.CanonicalDataPath(dataPath.path)
+		if err != nil {
+			problems = append(problems, fmt.Sprintf("%s is unsafe: %v", dataPath.name, err))
+			continue
+		}
+		for _, root := range canonicalRoots {
+			if pathIsWithin(root, canonicalDataPath) {
+				problems = append(problems, fmt.Sprintf("%s must be outside read-only media root %q", dataPath.name, root))
+			}
+		}
+	}
+	return problems
+}
+
+// isLoopbackHost 仅接受明确的回环字面量或 localhost，避免 DNS 变化扩大明文监听范围。
+func isLoopbackHost(host string) bool {
+	host = strings.TrimSpace(strings.Trim(host, "[]"))
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 // validateMetadata 校验 Provider 无关的刮削策略；实现私有 options 由 Provider 自己校验。

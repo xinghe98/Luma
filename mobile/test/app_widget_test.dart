@@ -14,6 +14,7 @@ import 'package:luma/data/repositories/catalog_repository.dart';
 import 'package:luma/data/services/connection_service.dart';
 import 'package:luma/data/storage/server_alias_store.dart';
 import 'package:luma/features/catalog/catalog_page.dart';
+import 'package:luma/features/catalog/widgets/catalog_card.dart';
 import 'package:luma/features/connection/connection_page.dart';
 import 'package:luma/features/search/widgets/search_results.dart';
 import 'package:luma/features/settings/settings_page.dart';
@@ -27,10 +28,39 @@ void main() {
     connectionService: MockConnectionService(),
   );
 
+  Future<void> dismissLaunchOverlay(WidgetTester tester) async {
+    // 先让品牌资源预缓存完成，再推进最短展示时间。
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 1100));
+  }
+
+  testWidgets('production app disposes the dependencies it creates', (
+    tester,
+  ) async {
+    final app = LumaApp.production();
+    await tester.pumpWidget(app);
+    await tester.pumpWidget(const SizedBox.shrink());
+
+    expect(app.dependencies.isDisposed, isTrue);
+    expect(await app.dependencies.restoreSession(), isFalse);
+  });
+
+  testWidgets('应用使用中文 Material 默认语义', (tester) async {
+    final dependencies = createDependencies();
+    addTearDown(dependencies.dispose);
+    await tester.pumpWidget(LumaApp(dependencies: dependencies));
+
+    final context = tester.element(find.byType(ConnectionPage));
+    final localizations = MaterialLocalizations.of(context);
+    expect(localizations.backButtonTooltip, '返回');
+    expect(localizations.refreshIndicatorSemanticLabel, '刷新');
+  });
+
   testWidgets('connection page shows brand and validation feedback', (
     tester,
   ) async {
     await tester.pumpWidget(LumaApp(dependencies: createDependencies()));
+    await dismissLaunchOverlay(tester);
     expect(find.text('连接你的轻影服务器'), findsOneWidget);
     expect(
       tester.widget<Text>(find.text('连接你的轻影服务器')).textAlign,
@@ -67,6 +97,7 @@ void main() {
     );
     addTearDown(dependencies.dispose);
     await tester.pumpWidget(LumaApp(dependencies: dependencies));
+    await dismissLaunchOverlay(tester);
 
     expect(find.text('连接协议'), findsNothing);
     await tester.enterText(find.byType(TextField).at(0), '192.168.1.10');
@@ -111,9 +142,11 @@ void main() {
     tester,
   ) async {
     await tester.pumpWidget(LumaApp(dependencies: createDependencies()));
+    await dismissLaunchOverlay(tester);
     await tester.enterText(find.byType(TextField).at(0), '192.168.1.10');
     await tester.enterText(find.byType(TextField).at(1), '8080');
-    await tester.enterText(find.byType(TextField).at(2), 'test-token');
+    await tester.enterText(find.byType(TextField).at(2), 'test-user');
+    await tester.enterText(find.byType(TextField).at(3), 'test-password');
     await tester.tap(find.text('立即连接'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 1500));
@@ -150,6 +183,7 @@ void main() {
       find.byType(MasonryMediaTile),
     );
     expect(imageTiles, isNotEmpty);
+    expect(find.textContaining('个项目'), findsNothing);
     expect(
       imageTiles.every((tile) => tile.item.type == MediaType.image),
       isTrue,
@@ -218,7 +252,7 @@ void main() {
           dependencies: dependencies,
           child: MaterialApp(
             home: CatalogPage(
-              onOpenCatalog: (_) {},
+              onOpenCatalog: (_, {heroTag}) {},
               onOpenPersonalMedia: (item, {heroTag}) {},
               onOpenSearch: () {},
               onOpenMovies: (_) {},
@@ -235,6 +269,50 @@ void main() {
       expect(dependencies.media.loadState, LoadState.idle);
     },
   );
+
+  testWidgets('catalog shelf retains cards during refresh and refresh errors', (
+    tester,
+  ) async {
+    final catalog = _ShelfRefreshCatalogRepository();
+    final dependencies = AppDependencies(
+      mediaRepository: MockMediaRepository(),
+      catalogRepository: catalog,
+      connectionService: MockConnectionService(),
+    );
+    addTearDown(dependencies.dispose);
+    await tester.pumpWidget(
+      AppScope(
+        dependencies: dependencies,
+        child: MaterialApp(
+          home: CatalogPage(
+            onOpenCatalog: (_, {heroTag}) {},
+            onOpenPersonalMedia: (item, {heroTag}) {},
+            onOpenSearch: () {},
+            onOpenMovies: (_) {},
+            onOpenSeries: (_) {},
+            onOpenPersonalVideos: (_) {},
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+    expect(find.byType(CatalogCard), findsOneWidget);
+
+    final refresh = tester.widget<RefreshIndicator>(
+      find.byType(RefreshIndicator),
+    );
+    final refreshing = refresh.onRefresh();
+    await tester.pump();
+    expect(find.byType(CatalogCard), findsOneWidget);
+    expect(find.byType(LinearProgressIndicator), findsWidgets);
+
+    catalog.failMovieRefresh();
+    await refreshing;
+    await tester.pump();
+    expect(find.byType(CatalogCard), findsOneWidget);
+    expect(find.text('刷新失败，当前保留上次内容'), findsOneWidget);
+  });
 
   testWidgets('search reports search errors instead of empty results', (
     tester,
@@ -469,6 +547,67 @@ class _CountingCatalogRepository implements CatalogRepository {
   Future<List<CatalogItem>> list({CatalogKind? kind, String? query}) async {
     if (kind != null) calls[kind] = (calls[kind] ?? 0) + 1;
     return const [];
+  }
+
+  @override
+  Future<CatalogItem> detail(String id) => throw UnimplementedError();
+
+  @override
+  Future<CatalogFavorite> setFavorite({
+    required String catalogId,
+    required bool favorite,
+    required int revision,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<void> ignore(String mediaId) => throw UnimplementedError();
+
+  @override
+  Future<List<CatalogIssue>> issues() => throw UnimplementedError();
+
+  @override
+  Future<void> updateMatch({
+    required String mediaId,
+    required CatalogKind kind,
+    required String title,
+    int? year,
+    int? seasonNumber,
+    int? episodeNumber,
+  }) => throw UnimplementedError();
+}
+
+class _ShelfRefreshCatalogRepository implements CatalogRepository {
+  final _movieRefresh = Completer<List<CatalogItem>>();
+  var movieCalls = 0;
+
+  void failMovieRefresh() =>
+      _movieRefresh.completeError(StateError('refresh failed'));
+
+  @override
+  Future<List<CatalogItem>> list({CatalogKind? kind, String? query}) async {
+    if (kind != CatalogKind.movie) return [];
+    movieCalls++;
+    if (movieCalls > 1) return _movieRefresh.future;
+    return [
+      CatalogItem(
+        id: 'movie-1',
+        sourceId: 'source-1',
+        kind: CatalogKind.movie,
+        title: '保留的电影',
+        year: 2026,
+        mediaCount: 1,
+        episodeCount: 0,
+        completedCount: 0,
+        playableMediaId: 'media-1',
+        thumbnailUrl: '',
+        posterUrl: '',
+        durationMs: 3600000,
+        resolution: '1080p',
+        progressMs: 0,
+        completed: false,
+        updatedAt: DateTime(2026, 7, 26),
+      ),
+    ];
   }
 
   @override

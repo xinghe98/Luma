@@ -26,6 +26,9 @@ class SearchController extends ChangeNotifier {
   int _requestVersion = 0;
   LoadState _loadState = LoadState.ready;
   bool _disposed = false;
+  String? _nextCursor;
+  bool _loadingMore = false;
+  bool _loadMoreError = false;
 
   List<String> get recent => List.unmodifiable(_recent);
   String get query => _query;
@@ -34,6 +37,15 @@ class SearchController extends ChangeNotifier {
   String? get tagId => _tagId;
   List<Tag> get tags => _tags;
   LoadState get loadState => _loadState;
+
+  /// 当前搜索是否还有服务端游标可继续加载。
+  bool get hasMore => _nextCursor != null;
+
+  /// 是否正在追加搜索结果下一页。
+  bool get isLoadingMore => _loadingMore;
+
+  /// 最近一次追加是否失败；已有搜索结果会继续保留。
+  bool get hasLoadMoreError => _loadMoreError;
   bool get hasCriteria =>
       _query.trim().isNotEmpty || _type != null || _tag != null;
 
@@ -81,6 +93,9 @@ class SearchController extends ChangeNotifier {
     _tag = null;
     _tagId = null;
     _results = const [];
+    _nextCursor = null;
+    _loadingMore = false;
+    _loadMoreError = false;
     _requestVersion++;
     _loadState = LoadState.ready;
     notifyListeners();
@@ -91,11 +106,17 @@ class SearchController extends ChangeNotifier {
     final version = ++_requestVersion;
     if (!hasCriteria) {
       _results = const [];
+      _nextCursor = null;
+      _loadingMore = false;
+      _loadMoreError = false;
       _loadState = LoadState.ready;
       notifyListeners();
       return;
     }
     _loadState = LoadState.loading;
+    _nextCursor = null;
+    _loadingMore = false;
+    _loadMoreError = false;
     notifyListeners();
     // 快照筛选条件，避免旧 timer 在清空后意外发起无条件全库搜索。
     final filter = MediaFilter(
@@ -116,6 +137,7 @@ class SearchController extends ChangeNotifier {
       final results = await _media.searchPage(filter);
       if (_disposed || version != _requestVersion) return;
       _results = results.items;
+      _nextCursor = results.nextCursor;
       _loadState = LoadState.ready;
     } on Object {
       if (_disposed || version != _requestVersion) return;
@@ -126,12 +148,59 @@ class SearchController extends ChangeNotifier {
 
   void retry() => _scheduleSearch(immediate: true);
 
+  /// 使用当前条件和服务端游标追加下一页；失败时保留已有结果供用户重试。
+  Future<void> loadMore() async {
+    final cursor = _nextCursor;
+    if (cursor == null || _loadingMore || _loadState == LoadState.loading) {
+      return;
+    }
+    final version = _requestVersion;
+    _loadingMore = true;
+    _loadMoreError = false;
+    notifyListeners();
+    try {
+      final page = await _media.searchPage(
+        MediaFilter(text: _query, type: _type, tag: _tag, tagId: _tagId),
+        cursor: cursor,
+      );
+      if (_disposed || version != _requestVersion) return;
+      final ids = _results.map((item) => item.id).toSet();
+      _results = [..._results, ...page.items.where((item) => ids.add(item.id))];
+      _nextCursor = page.nextCursor;
+      _loadingMore = false;
+      notifyListeners();
+    } on Object {
+      if (_disposed || version != _requestVersion) return;
+      _loadingMore = false;
+      _loadMoreError = true;
+      notifyListeners();
+    }
+  }
+
   void _onMediaChanged() {
     if (_disposed) return;
-    final next = _media.tags;
-    if (identical(next, _tags)) return;
-    _tags = next;
-    notifyListeners();
+    var changed = false;
+    final nextTags = _media.tags;
+    if (!identical(nextTags, _tags)) {
+      _tags = nextTags;
+      changed = true;
+    }
+    final nextResults = [
+      for (final item in _results) _media.findById(item.id) ?? item,
+    ];
+    if (!_sameItems(_results, nextResults)) {
+      _results = nextResults;
+      changed = true;
+    }
+    if (changed) notifyListeners();
+  }
+
+  static bool _sameItems(List<MediaItem> left, List<MediaItem> right) {
+    if (left.length != right.length) return false;
+    for (var index = 0; index < left.length; index++) {
+      if (!identical(left[index], right[index])) return false;
+    }
+    return true;
   }
 
   @override

@@ -2,6 +2,7 @@ package media
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"mime"
 	"path/filepath"
@@ -36,19 +37,24 @@ func newFFprobeProber(executable string, runner commandRunner) (Prober, error) {
 
 // Probe 安全定位文件，执行 ffprobe 并保留原始 JSON。
 func (p *ffprobeProber) Probe(ctx context.Context, input domain.MediaInput) (domain.ProbeResult, error) {
-	path, err := resolveInputPath(input)
+	secured, err := openInputPath(input)
 	if err != nil {
 		return domain.ProbeResult{}, err
 	}
+	defer secured.Close()
 	output, err := p.runner.Run(ctx, p.executable,
-		"-v", "error", "-print_format", "json", "-show_format", "-show_streams", path)
+		"-v", "error", "-print_format", "json", "-show_format", "-show_streams", secured.path)
+	identityErr := secured.verify()
 	if err != nil {
-		return domain.ProbeResult{}, err
+		return domain.ProbeResult{}, errors.Join(err, identityErr)
+	}
+	if identityErr != nil {
+		return domain.ProbeResult{}, identityErr
 	}
 	result, err := parseProbeJSON(output)
 	if err != nil {
 		return domain.ProbeResult{}, fmt.Errorf("解析 ffprobe JSON: %w", err)
 	}
-	result.MIMEType = mime.TypeByExtension(filepath.Ext(path))
+	result.MIMEType = mime.TypeByExtension(filepath.Ext(secured.path))
 	return result, nil
 }

@@ -29,6 +29,19 @@ final class ApiClient extends _ApiTransport
     return ApiClient(dio, apiPrefix: _apiPrefix);
   }
 
+  /// 捕获当前会话 epoch，供包含多次 await 的仓储操作建立一致性边界。
+  int captureSessionEpoch() => _session?.epoch ?? 0;
+
+  /// 校验仓储操作仍属于捕获的会话；切换后抛错，禁止旧结果写入缓存。
+  void ensureSessionEpoch(int epoch) {
+    if (_session != null && _session!.epoch != epoch) {
+      throw const ApiException(
+        message: '会话已切换，忽略旧请求结果',
+        code: 'SESSION_CHANGED',
+      );
+    }
+  }
+
   void close() => _dio.close(force: true);
 }
 
@@ -38,6 +51,13 @@ abstract class _ApiTransport {
 
   final Dio _dio;
   final String _apiPrefix;
+
+  ApiSession? get _session {
+    for (final interceptor in _dio.interceptors.reversed) {
+      if (interceptor is ApiSessionInterceptor) return interceptor.session;
+    }
+    return null;
+  }
 
   Future<Map<String, dynamic>> _json(
     String method,

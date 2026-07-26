@@ -84,4 +84,3 @@ extension LumaThemeContext on BuildContext {
   LumaExtras get luma =>
       Theme.of(this).extension<LumaExtras>() ?? LumaExtras.light;
 }
-

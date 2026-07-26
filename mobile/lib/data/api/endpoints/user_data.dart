@@ -40,5 +40,4 @@ mixin _UserDataEndpoints on _ApiTransport {
 
   Future<Response<void>> deleteTag(String id) =>
       _empty('DELETE', _api('/tags/${_segment(id)}'));
-
 }

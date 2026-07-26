@@ -22,6 +22,12 @@ type ActiveScanChecker interface {
 	HasActiveJob(context.Context, string) (bool, error)
 }
 
+// SourceIndexedMediaChecker 定义根目录变更前检查既有媒体索引的能力。
+type SourceIndexedMediaChecker interface {
+	// HasIndexedMedia 判断来源是否已有媒体记录；检查失败时调用方必须禁止变更。
+	HasIndexedMedia(context.Context, string) (bool, error)
+}
+
 // SourceService 是媒体源管理的业务边界。
 type SourceService struct {
 	// repository 是注入的媒体源持久化接口。
@@ -30,24 +36,29 @@ type SourceService struct {
 	roots SourceRootValidator
 	// scans 用于在变更根目录前检查活跃扫描。
 	scans ActiveScanChecker
+	// indexedMedia 防止已有媒体 ID 在换根后立即指向另一批文件。
+	indexedMedia SourceIndexedMediaChecker
 	// ids 是注入的业务标识生成器。
 	ids IDGenerator
 	// clock 是注入的 UTC 时钟。
 	clock Clock
 }
 
-// NewSourceService 使用持久化、路径、扫描检查、标识和时钟依赖创建媒体源服务。
+// NewSourceService 使用持久化、路径、扫描与索引检查、标识和时钟依赖创建媒体源服务。
 func NewSourceService(
 	repository repository.SourceRepository,
 	roots SourceRootValidator,
 	scans ActiveScanChecker,
+	indexedMedia SourceIndexedMediaChecker,
 	ids IDGenerator,
 	clock Clock,
 ) (*SourceService, error) {
-	if repository == nil || roots == nil || scans == nil || ids == nil || clock == nil {
+	if repository == nil || roots == nil || scans == nil || indexedMedia == nil || ids == nil || clock == nil {
 		return nil, errors.New("媒体源服务依赖不能为空")
 	}
-	return &SourceService{repository: repository, roots: roots, scans: scans, ids: ids, clock: clock}, nil
+	return &SourceService{
+		repository: repository, roots: roots, scans: scans, indexedMedia: indexedMedia, ids: ids, clock: clock,
+	}, nil
 }
 
 // ValidateRoot 在上下文有效时校验候选媒体源根目录。
@@ -139,6 +150,13 @@ func (s *SourceService) Update(ctx context.Context, command domain.UpdateSourceC
 			}
 			if active {
 				return domain.Source{}, fmt.Errorf("%w: 扫描进行中不能修改根目录", domain.ErrScanAlreadyRunning)
+			}
+			hasMedia, err := s.indexedMedia.HasIndexedMedia(ctx, source.ID)
+			if err != nil {
+				return domain.Source{}, err
+			}
+			if hasMedia {
+				return domain.Source{}, fmt.Errorf("%w: 媒体源已有索引，不能直接修改根目录", domain.ErrSourceConflict)
 			}
 			source.RootPath = root
 		}

@@ -1,2 +1,11 @@
-
 include: package:flutter_lints/flutter.yaml
+
+analyzer:
+  exclude:
+    - build/**
+
+linter:
+  rules:
+    avoid_print: true
+    no_adjacent_strings_in_list: true
+    valid_regexps: true

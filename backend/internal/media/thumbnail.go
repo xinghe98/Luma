@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/xinghe98/Luma/backend/internal/domain"
 )
@@ -52,7 +53,7 @@ func newFFmpegThumbnailer(executable, root string, width int, runner commandRunn
 	return &ffmpegThumbnailer{executable: executable, root: filepath.Clean(root), width: width, runner: runner}, nil
 }
 
-// Generate 先写同目录临时文件，成功后再原子替换默认封面。
+// Generate 先写同目录临时文件，再按内容哈希发布默认封面；卡片变体失败不影响默认结果。
 func (t *ffmpegThumbnailer) Generate(ctx context.Context, input domain.MediaInput, durationMS int64) (domain.ThumbnailResult, error) {
 	result, err := t.generate(ctx, input, durationMS, false)
 	if err != nil {
@@ -67,16 +68,17 @@ func (t *ffmpegThumbnailer) Generate(ctx context.Context, input domain.MediaInpu
 	return result, nil
 }
 
-// GenerateCard 生成 16:10 居中 cover 裁剪的卡片缩略图。
+// GenerateCard 生成 16:10 居中 cover 裁剪，并发布到内容寻址的独立文件。
 func (t *ffmpegThumbnailer) GenerateCard(ctx context.Context, input domain.MediaInput, durationMS int64) (domain.ThumbnailResult, error) {
 	return t.generate(ctx, input, durationMS, true)
 }
 
 func (t *ffmpegThumbnailer) generate(ctx context.Context, input domain.MediaInput, durationMS int64, card bool) (domain.ThumbnailResult, error) {
-	source, err := resolveInputPath(input)
+	secured, err := openInputPath(input)
 	if err != nil {
 		return domain.ThumbnailResult{}, err
 	}
+	defer secured.Close()
 	if input.ID == "" || filepath.Base(input.ID) != input.ID || input.ID == "." || input.ID == ".." {
 		return domain.ThumbnailResult{}, fmt.Errorf("媒体 ID 不适合作为存储键")
 	}
@@ -93,14 +95,25 @@ func (t *ffmpegThumbnailer) generate(ctx context.Context, input domain.MediaInpu
 		}
 		temporaryPath := temporary.Name()
 		_ = temporary.Close()
-		args := thumbnailArgsAt(input.MediaType, source, temporaryPath, t.width, seek)
+		if err := secured.verify(); err != nil {
+			_ = os.Remove(temporaryPath)
+			return domain.ThumbnailResult{}, err
+		}
+		args := thumbnailArgsAt(input.MediaType, secured.path, temporaryPath, t.width, seek)
 		if card {
-			args = cardThumbnailArgsAt(input.MediaType, source, temporaryPath, t.width, height, seek)
+			args = cardThumbnailArgsAt(input.MediaType, secured.path, temporaryPath, t.width, height, seek)
 		}
 		if _, err := t.runner.Run(ctx, t.executable, args...); err != nil {
 			_ = os.Remove(temporaryPath)
+			if identityErr := secured.verify(); identityErr != nil {
+				return domain.ThumbnailResult{}, identityErr
+			}
 			lastErr = err
 			continue
+		}
+		if err := secured.verify(); err != nil {
+			_ = os.Remove(temporaryPath)
+			return domain.ThumbnailResult{}, err
 		}
 		file, err := os.Open(temporaryPath)
 		if err != nil {
@@ -116,19 +129,20 @@ func (t *ffmpegThumbnailer) generate(ctx context.Context, input domain.MediaInpu
 			continue
 		}
 		name := ThumbnailFileName(t.width)
-		storageKey := ThumbnailStorageKey(input.ID, t.width)
 		if card {
 			name = CardThumbnailFileName(t.width, height)
-			storageKey = CardThumbnailStorageKey(input.ID, t.width, height)
 		}
+		sum, err := fileSHA256(temporaryPath)
+		if err != nil {
+			_ = os.Remove(temporaryPath)
+			return domain.ThumbnailResult{}, err
+		}
+		name = immutableThumbnailName(name, sum)
+		storageKey := filepath.ToSlash(filepath.Join("thumbnails", input.ID, name))
 		finalPath := filepath.Join(directory, name)
 		if err := atomicReplace(temporaryPath, finalPath); err != nil {
 			_ = os.Remove(temporaryPath)
-			return domain.ThumbnailResult{}, fmt.Errorf("替换缩略图: %w", err)
-		}
-		sum, err := fileSHA256(finalPath)
-		if err != nil {
-			return domain.ThumbnailResult{}, err
+			return domain.ThumbnailResult{}, fmt.Errorf("发布缩略图: %w", err)
 		}
 		return domain.ThumbnailResult{
 			StorageKey:    storageKey,
@@ -142,6 +156,12 @@ func (t *ffmpegThumbnailer) generate(ctx context.Context, input domain.MediaInpu
 		lastErr = fmt.Errorf("缩略图生成失败")
 	}
 	return domain.ThumbnailResult{}, lastErr
+}
+
+// immutableThumbnailName 将内容哈希写入文件名，使不同任务发布到互不覆盖的存储键。
+func immutableThumbnailName(baseName, contentSHA256 string) string {
+	extension := filepath.Ext(baseName)
+	return strings.TrimSuffix(baseName, extension) + "-" + contentSHA256 + extension
 }
 
 func cardThumbnailHeight(width int) int {

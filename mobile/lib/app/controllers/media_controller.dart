@@ -121,8 +121,12 @@ class MediaController extends ChangeNotifier {
   Future<List<MediaItem>> search(MediaFilter filter) =>
       _repository.search(filter);
 
-  Future<MediaListPage> searchPage(MediaFilter filter, {String? cursor}) =>
-      _repository.searchPage(filter, cursor: cursor);
+  /// 请求一页媒体摘要，并把调用方指定的页大小原样交给仓库。
+  Future<MediaListPage> searchPage(
+    MediaFilter filter, {
+    String? cursor,
+    int? limit,
+  }) => _repository.searchPage(filter, cursor: cursor, limit: limit);
 
   Future<void> refreshCatalogCount() async {
     final pending = _catalogCountRequest;
@@ -293,8 +297,7 @@ class MediaController extends ChangeNotifier {
 
   bool _cacheAndReplaceHome(MediaItem updated) {
     final index = _items.indexWhere((item) => item.id == updated.id);
-    final changedHomeItem =
-        index >= 0 && !identical(_items[index], updated);
+    final changedHomeItem = index >= 0 && !identical(_items[index], updated);
     if (changedHomeItem) {
       _items = [..._items]..[index] = updated;
     }

@@ -101,7 +101,10 @@ class MasonryMediaTile extends StatelessWidget {
     if (heroTag == null) return image;
     return Hero(
       tag: heroTag!,
-      child: Material(type: MaterialType.transparency, child: image),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(LumaRadii.small),
+        child: Material(type: MaterialType.transparency, child: image),
+      ),
     );
   }
 }

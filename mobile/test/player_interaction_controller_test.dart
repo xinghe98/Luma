@@ -131,6 +131,42 @@ void main() {
       expect(harness.devices.brightness, 0.5);
     },
   );
+
+  test(
+    'unavailable device controls do not show vertical gesture HUDs',
+    () async {
+      final media = MediaController(MockMediaRepository());
+      await media.load();
+      final item = media.items.firstWhere(
+        (item) => item.type == MediaType.video,
+      );
+      final player = PlayerController(item: item, media: media);
+      final devices = _FakeDeviceControls()
+        ..volumeAvailable = false
+        ..brightnessAvailable = false;
+      final interaction = PlayerInteractionController(
+        player: player,
+        deviceControls: devices,
+      );
+      await interaction.initialize();
+      addTearDown(() {
+        interaction.dispose();
+        player.dispose();
+        media.dispose();
+      });
+
+      interaction.beginPan(const Offset(100, 250), const Size(500, 500));
+      interaction.updatePan(const Offset(0, -100));
+      expect(interaction.mode, PlayerGestureMode.ignored);
+      expect(interaction.hudKind, PlayerHudKind.hidden);
+
+      interaction.endPan();
+      interaction.beginPan(const Offset(400, 250), const Size(500, 500));
+      interaction.updatePan(const Offset(0, -100));
+      expect(interaction.mode, PlayerGestureMode.ignored);
+      expect(interaction.hudKind, PlayerHudKind.hidden);
+    },
+  );
 }
 
 class _Harness {
@@ -151,13 +187,15 @@ class _Harness {
 class _FakeDeviceControls implements PlayerDeviceControls {
   double volume = 0.5;
   double brightness = 0.5;
+  bool volumeAvailable = true;
+  bool brightnessAvailable = true;
 
   @override
   Future<PlayerDeviceState> readState() async => PlayerDeviceState(
     volume: volume,
     brightness: brightness,
-    volumeAvailable: true,
-    brightnessAvailable: true,
+    volumeAvailable: volumeAvailable,
+    brightnessAvailable: brightnessAvailable,
   );
 
   @override

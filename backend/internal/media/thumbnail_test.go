@@ -1,11 +1,42 @@
 package media
 
 import (
+	"bytes"
+	"context"
+	"image"
+	"image/color"
+	"image/jpeg"
+	"os"
+	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/xinghe98/Luma/backend/internal/domain"
 )
+
+type thumbnailCommandRunner struct{ call uint8 }
+
+// Run 生成颜色随调用变化的有效 JPEG，模拟外部缩略图工具。
+func (r *thumbnailCommandRunner) Run(_ context.Context, _ string, args ...string) ([]byte, error) {
+	r.call++
+	file, err := os.Create(args[len(args)-1])
+	if err != nil {
+		return nil, err
+	}
+	generated := image.NewRGBA(image.Rect(0, 0, 2, 2))
+	for y := 0; y < 2; y++ {
+		for x := 0; x < 2; x++ {
+			generated.Set(x, y, color.RGBA{R: r.call, A: 255})
+		}
+	}
+	encodeErr := jpeg.Encode(file, generated, nil)
+	closeErr := file.Close()
+	if encodeErr != nil {
+		return nil, encodeErr
+	}
+	return nil, closeErr
+}
 
 func TestThumbnailArgsVideo(t *testing.T) {
 	got := thumbnailArgs(domain.MediaTypeVideo, "input.mp4", "cover.jpg", 640, 100000)
@@ -58,6 +89,43 @@ func TestThumbnailStorageKey(t *testing.T) {
 func TestCardThumbnailStorageKey(t *testing.T) {
 	if got := CardThumbnailStorageKey("media-1", 640, 400); got != "thumbnails/media-1/cover-card-640x400-v1.jpg" {
 		t.Fatalf("CardThumbnailStorageKey = %q", got)
+	}
+}
+
+// TestThumbnailGenerationPublishesImmutableStorageKeys 验证后续任务不会覆盖先前发布的缩略图文件。
+func TestThumbnailGenerationPublishesImmutableStorageKeys(t *testing.T) {
+	mediaRoot := t.TempDir()
+	if err := os.WriteFile(filepath.Join(mediaRoot, "image.jpg"), []byte("source"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	thumbnailRoot := t.TempDir()
+	thumbnailer, err := newFFmpegThumbnailer("ffmpeg", thumbnailRoot, 16, &thumbnailCommandRunner{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	input := domain.MediaInput{ID: "media-1", RootPath: mediaRoot, RelativePath: "image.jpg", MediaType: domain.MediaTypeImage}
+	first, err := thumbnailer.Generate(context.Background(), input, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstPath := filepath.Join(thumbnailRoot, filepath.FromSlash(strings.TrimPrefix(first.StorageKey, "thumbnails/")))
+	firstData, err := os.ReadFile(firstPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := thumbnailer.Generate(context.Background(), input, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.StorageKey == second.StorageKey {
+		t.Fatalf("storage keys should differ: %q", first.StorageKey)
+	}
+	currentFirstData, err := os.ReadFile(firstPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(currentFirstData, firstData) {
+		t.Fatal("later generation overwrote the previously published thumbnail")
 	}
 }
 

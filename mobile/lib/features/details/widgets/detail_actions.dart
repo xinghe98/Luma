@@ -46,7 +46,7 @@ class DetailActions extends StatelessWidget {
             onPressed: () => _toggleFavorite(context, item),
             isSelected: item.isFavorite,
             icon: AnimatedSwitcher(
-              duration: LumaMotion.fast,
+              duration: LumaMotion.forContext(context, LumaMotion.fast),
               switchInCurve: LumaMotion.standard,
               switchOutCurve: LumaMotion.standard,
               transitionBuilder: (child, animation) =>
@@ -69,7 +69,7 @@ class DetailActions extends StatelessWidget {
       showImagePreviewDialog(context, item);
       return;
     }
-    context.openPlayer(item.id);
+    context.openPlayer(item.id, initialItem: item);
   }
 
   Future<void> _toggleFavorite(BuildContext context, MediaItem item) async {

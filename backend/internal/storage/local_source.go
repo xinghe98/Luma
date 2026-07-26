@@ -7,7 +7,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"sync"
 
 	"github.com/xinghe98/Luma/backend/internal/domain"
 	"github.com/xinghe98/Luma/backend/internal/platform"
@@ -19,16 +18,29 @@ type LocalFactory struct {
 	identifiers FileIdentifier
 	// clock 是注入的 UTC 时钟。
 	clock Clock
-	// resolvedRoots 缓存原始 root 到规范根路径的映射，避免每次流请求重复 EvalSymlinks。
-	resolvedRoots sync.Map
+	// roots 在每次解析根目录时重新应用当前白名单策略。
+	roots SourceRootValidator
 }
 
-// NewLocalFactory 使用文件身份和时钟依赖创建本地媒体源工厂。
-func NewLocalFactory(identifiers FileIdentifier, clock Clock) (*LocalFactory, error) {
+// SourceRootValidator 定义本地存储重新解析来源根目录时使用的白名单检查。
+type SourceRootValidator interface {
+	// ValidateSourceRoot 返回当前白名单内的最终目录；目录重绑定或越界时返回错误。
+	ValidateSourceRoot(string) (string, error)
+}
+
+// NewLocalFactory 使用文件身份、时钟和可选路径策略创建工厂；生产调用必须注入路径策略。
+func NewLocalFactory(identifiers FileIdentifier, clock Clock, roots ...SourceRootValidator) (*LocalFactory, error) {
 	if identifiers == nil || clock == nil {
 		return nil, fmt.Errorf("文件身份读取器和时钟不能为空")
 	}
-	return &LocalFactory{identifiers: identifiers, clock: clock}, nil
+	if len(roots) > 1 || (len(roots) == 1 && roots[0] == nil) {
+		return nil, fmt.Errorf("媒体源路径策略无效")
+	}
+	factory := &LocalFactory{identifiers: identifiers, clock: clock}
+	if len(roots) == 1 {
+		factory.roots = roots[0]
+	}
+	return factory, nil
 }
 
 // Local 创建并校验一个只读本地媒体源。
@@ -41,13 +53,12 @@ func (f *LocalFactory) Local(root string) (MediaSource, error) {
 }
 
 func (f *LocalFactory) resolveRoot(root string) (string, error) {
-	if cached, ok := f.resolvedRoots.Load(root); ok {
-		resolved := cached.(string)
-		info, err := os.Stat(resolved)
-		if err == nil && info.IsDir() {
-			return resolved, nil
+	if f.roots != nil {
+		resolved, err := f.roots.ValidateSourceRoot(root)
+		if err != nil {
+			return "", fmt.Errorf("重新校验媒体源根目录: %w", err)
 		}
-		f.resolvedRoots.Delete(root)
+		return resolved, nil
 	}
 	resolved, err := filepath.EvalSymlinks(root)
 	if err != nil {
@@ -61,13 +72,7 @@ func (f *LocalFactory) resolveRoot(root string) (string, error) {
 		return "", fmt.Errorf("媒体源根路径不是目录")
 	}
 	resolved = filepath.Clean(resolved)
-	f.resolvedRoots.Store(root, resolved)
 	return resolved, nil
-}
-
-// invalidateRoot 在根目录打开失败时丢弃缓存，强制下次重新解析。
-func (f *LocalFactory) invalidateRoot(root string) {
-	f.resolvedRoots.Delete(root)
 }
 
 // LocalSource 以只读方式遍历和打开操作系统本地目录。
@@ -141,7 +146,6 @@ func (f *LocalFactory) OpenContent(ctx context.Context, root, relativePath strin
 	}
 	resolved, err := f.resolveRoot(root)
 	if err != nil {
-		f.invalidateRoot(root)
 		return domain.OpenedContent{}, fmt.Errorf("%w: source root is unavailable", domain.ErrSourceOffline)
 	}
 	file, info, err := openLocalFile(ctx, resolved, relativePath)
@@ -165,6 +169,9 @@ func openLocalFile(ctx context.Context, root, relativePath string) (*os.File, os
 		return nil, nil, fmt.Errorf("%w: invalid relative path", ErrContentNotFound)
 	}
 	candidate := filepath.Join(root, filepath.FromSlash(normalized))
+	if err := platform.ValidateNoLinkPath(root, candidate); err != nil {
+		return nil, nil, fmt.Errorf("%w: path contains a link-like component", ErrContentNotFound)
+	}
 	resolved, err := platform.ValidateDescendant(root, candidate)
 	if err != nil {
 		return nil, nil, fmt.Errorf("%w: path validation failed", ErrContentNotFound)

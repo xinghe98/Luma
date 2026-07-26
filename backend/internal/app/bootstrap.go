@@ -115,7 +115,9 @@ func (b *bootstrap) build(ctx context.Context) (*App, error) {
 	if err != nil {
 		return nil, fmt.Errorf("创建作品库服务: %w", err)
 	}
-	accessService, err := service.NewAccessService(accessRepository, ids, clock, activeUsers)
+	accessService, err := service.NewAccessService(
+		accessRepository, ids, clock, b.config.Security.SessionDuration, activeUsers,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("创建访问控制服务: %w", err)
 	}
@@ -138,7 +140,7 @@ func (b *bootstrap) build(ctx context.Context) (*App, error) {
 	if created && initialized {
 		b.logger.Info("管理员初始密码文件已创建", "path", adminPasswordFile)
 	}
-	localFactory, err := storage.NewLocalFactory(platform.OSFileIdentifier{}, clock)
+	localFactory, err := storage.NewLocalFactory(platform.OSFileIdentifier{}, clock, pathPolicy)
 	if err != nil {
 		return nil, fmt.Errorf("创建本地媒体源工厂: %w", err)
 	}
@@ -148,12 +150,16 @@ func (b *bootstrap) build(ctx context.Context) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
-	metadataWorkers, metadataRegistry, err := buildMetadataWorkers(
+	metadataWorkers, metadataRegistry, metadataTransport, err := buildMetadataWorkers(
 		b.config.Metadata, catalogRepository, sourceRepository, localFactory, ids, clock, b.logger, metadataSignal,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("创建影视刮削组件: %w", err)
 	}
+	b.cleanups.Push("metadata transport", func() error {
+		metadataTransport.CloseIdleConnections()
+		return nil
+	})
 	if err := workerGroup.Add(metadataWorkers...); err != nil {
 		return nil, fmt.Errorf("注册影视刮削 Worker: %w", err)
 	}
@@ -167,7 +173,9 @@ func (b *bootstrap) build(ctx context.Context) (*App, error) {
 	); err != nil {
 		return nil, fmt.Errorf("启用影视刮削服务: %w", err)
 	}
-	sourceService, err := service.NewSourceService(sourceRepository, pathPolicy, scanRepository, ids, clock)
+	sourceService, err := service.NewSourceService(
+		sourceRepository, pathPolicy, scanRepository, sourceIndexedMediaChecker{database}, ids, clock,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("create source service: %w", err)
 	}
@@ -275,6 +283,7 @@ func (b *bootstrap) build(ctx context.Context) (*App, error) {
 	server := &http.Server{
 		Addr: b.config.Server.Address(), Handler: router,
 		ReadHeaderTimeout: b.config.Server.ReadHeaderTimeout,
+		ReadTimeout:       b.config.Server.ReadTimeout,
 		IdleTimeout:       b.config.Server.IdleTimeout,
 	}
 	return &App{

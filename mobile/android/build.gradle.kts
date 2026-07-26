@@ -1,5 +1,15 @@
+val useChinaMavenMirrors =
+    providers.gradleProperty("luma.useChinaMirrors").orNull?.toBooleanStrictOrNull()
+        ?: System.getenv("LUMA_USE_CHINA_MIRRORS")?.toBooleanStrictOrNull()
+        ?: false
+
 allprojects {
     repositories {
+        if (useChinaMavenMirrors) {
+            maven(url = "https://maven.aliyun.com/repository/google")
+            maven(url = "https://maven.aliyun.com/repository/central")
+            maven(url = "https://maven.aliyun.com/repository/public")
+        }
         google()
         mavenCentral()
     }

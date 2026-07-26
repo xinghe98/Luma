@@ -62,6 +62,48 @@ class _MiniPlayerCardState extends State<_MiniPlayerCard> {
   Offset _dragOffset = Offset.zero;
   double _scale = 1;
   double _scaleAtStart = 1;
+  Offset? _doubleTapPosition;
+  String? _feedback;
+  Timer? _feedbackTimer;
+
+  @override
+  void dispose() {
+    _feedbackTimer?.cancel();
+    super.dispose();
+  }
+
+  /// 按小窗宽度把双击分成快退、播放暂停和快进三个区域。
+  void _handleDoubleTap(double width) {
+    final x = _doubleTapPosition?.dx ?? width / 2;
+    if (x < width / 3) {
+      _seekBy(-10);
+    } else if (x > width * 2 / 3) {
+      _seekBy(10);
+    } else {
+      _togglePlay();
+    }
+  }
+
+  /// 调整当前播放位置，并显示不会遮挡画面太久的操作反馈。
+  void _seekBy(int seconds) {
+    widget.controller.seekBy(seconds, revealControls: false);
+    _showFeedback(seconds < 0 ? '快退 10 秒' : '快进 10 秒');
+  }
+
+  /// 切换播放状态，并用当前动作而非结果图标说明反馈。
+  void _togglePlay() {
+    final wasPlaying = widget.controller.playing;
+    widget.controller.togglePlay();
+    _showFeedback(wasPlaying ? '已暂停' : '继续播放');
+  }
+
+  void _showFeedback(String message) {
+    _feedbackTimer?.cancel();
+    setState(() => _feedback = message);
+    _feedbackTimer = Timer(const Duration(milliseconds: 600), () {
+      if (mounted) setState(() => _feedback = null);
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -96,6 +138,7 @@ class _MiniPlayerCardState extends State<_MiniPlayerCard> {
       child: Semantics(
         container: true,
         label: '正在小窗播放：${widget.controller.item.title}',
+        hint: '单击还原全屏，双击左侧快退、中间播放暂停、右侧快进',
         child: Material(
           color: colors.surfaceContainerHighest,
           elevation: 8,
@@ -131,51 +174,103 @@ class _MiniPlayerCardState extends State<_MiniPlayerCard> {
                     ),
                   ),
                 ),
+                Positioned.fill(
+                  child: Semantics(
+                    button: true,
+                    label: '还原全屏播放器',
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: widget.onExpand,
+                      onDoubleTapDown: (details) =>
+                          _doubleTapPosition = details.localPosition,
+                      onDoubleTap: () => _handleDoubleTap(width),
+                    ),
+                  ),
+                ),
+                Center(
+                  child: IgnorePointer(
+                    child: AnimatedSwitcher(
+                      duration: LumaMotion.forContext(context, LumaMotion.fast),
+                      child: _feedback == null
+                          ? const SizedBox.shrink(
+                              key: ValueKey('mini-player-feedback-empty'),
+                            )
+                          : Semantics(
+                              key: ValueKey(_feedback),
+                              liveRegion: true,
+                              label: _feedback,
+                              child: DecoratedBox(
+                                decoration: BoxDecoration(
+                                  color: colors.surface.withValues(alpha: 0.9),
+                                  borderRadius: BorderRadius.circular(
+                                    LumaRadii.small,
+                                  ),
+                                ),
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: LumaSpacing.sm,
+                                    vertical: LumaSpacing.xs,
+                                  ),
+                                  child: Text(
+                                    _feedback!,
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .labelMedium
+                                        ?.copyWith(color: colors.onSurface),
+                                  ),
+                                ),
+                              ),
+                            ),
+                    ),
+                  ),
+                ),
+                Positioned(
+                  top: LumaSpacing.xxs,
+                  left: LumaSpacing.xxs,
+                  child: _MiniPlayerIconButton(
+                    label: '还原全屏播放器',
+                    icon: Icons.fullscreen_rounded,
+                    onPressed: widget.onExpand,
+                  ),
+                ),
                 Positioned(
                   top: LumaSpacing.xxs,
                   right: LumaSpacing.xxs,
-                  child: IconButton(
-                    color: Colors.white,
+                  child: _MiniPlayerIconButton(
+                    label: '关闭小窗播放器',
+                    icon: Icons.close_rounded,
                     onPressed: widget.onClose,
-                    icon: const Icon(Icons.close_rounded),
                   ),
                 ),
                 Positioned(
                   left: LumaSpacing.xxs,
+                  right: LumaSpacing.xxs,
                   bottom: LumaSpacing.xxs,
                   child: ListenableBuilder(
                     listenable: widget.controller,
-                    builder: (context, _) => IconButton.filledTonal(
-                      onPressed: widget.controller.togglePlay,
-                      style: IconButton.styleFrom(
-                        minimumSize: const Size.square(40),
-                        backgroundColor: colors.surface.withValues(alpha: 0.9),
-                        foregroundColor: colors.onSurface,
-                      ),
-                      icon: AnimatedSwitcher(
-                        duration: duration,
-                        child: Icon(
-                          widget.controller.playing
+                    builder: (context, _) => Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        _MiniPlayerIconButton(
+                          label: '快退 10 秒',
+                          icon: Icons.replay_10_rounded,
+                          onPressed: () => _seekBy(-10),
+                        ),
+                        _MiniPlayerIconButton(
+                          label: widget.controller.playing ? '暂停' : '播放',
+                          icon: widget.controller.playing
                               ? Icons.pause_rounded
                               : Icons.play_arrow_rounded,
-                          key: ValueKey(widget.controller.playing),
+                          onPressed: _togglePlay,
+                          selected: true,
+                          animationDuration: duration,
                         ),
-                      ),
-                    ),
-                  ),
-                ),
-                Positioned.fill(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: LumaSpacing.xxl,
-                    ),
-                    child: Semantics(
-                      button: true,
-                      label: '还原全屏播放器',
-                      child: GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        onTap: widget.onExpand,
-                      ),
+                        _MiniPlayerIconButton(
+                          label: '快进 10 秒',
+                          icon: Icons.forward_10_rounded,
+                          onPressed: () => _seekBy(10),
+                        ),
+                      ],
                     ),
                   ),
                 ),
@@ -197,5 +292,47 @@ class _MiniPlayerCardState extends State<_MiniPlayerCard> {
         .clamp(minY, double.infinity)
         .toDouble();
     return Offset(position.dx.clamp(minX, maxX), position.dy.clamp(minY, maxY));
+  }
+}
+
+class _MiniPlayerIconButton extends StatelessWidget {
+  const _MiniPlayerIconButton({
+    required this.label,
+    required this.icon,
+    required this.onPressed,
+    this.selected = false,
+    this.animationDuration = Duration.zero,
+  });
+
+  final String label;
+  final IconData icon;
+  final VoidCallback onPressed;
+  final bool selected;
+  final Duration animationDuration;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Semantics(
+      button: true,
+      label: label,
+      onTap: onPressed,
+      child: ExcludeSemantics(
+        child: IconButton(
+          onPressed: onPressed,
+          style: IconButton.styleFrom(
+            minimumSize: const Size.square(LumaLayout.minTapTarget),
+            backgroundColor: colors.surface.withValues(
+              alpha: selected ? 0.94 : 0.82,
+            ),
+            foregroundColor: colors.onSurface,
+          ),
+          icon: AnimatedSwitcher(
+            duration: animationDuration,
+            child: Icon(icon, key: ValueKey(icon)),
+          ),
+        ),
+      ),
+    );
   }
 }

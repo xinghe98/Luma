@@ -88,7 +88,7 @@ func (fakeAccessUseCase) RevokeSource(context.Context, string, string) error { r
 
 type fakeAuthenticationUseCase struct{}
 
-func (fakeAuthenticationUseCase) Login(context.Context, string, string, string) (domain.IssuedSession, error) {
+func (fakeAuthenticationUseCase) Login(context.Context, string, string, string, string) (domain.IssuedSession, error) {
 	return domain.IssuedSession{}, nil
 }
 func (fakeAuthenticationUseCase) Logout(context.Context, string) error { return nil }

@@ -53,6 +53,17 @@ type fakeActiveScanChecker struct {
 	err error
 }
 
+// fakeIndexedMediaChecker 为根目录变更测试返回可控的索引状态。
+type fakeIndexedMediaChecker struct {
+	hasMedia bool
+	err      error
+}
+
+// HasIndexedMedia 返回预设的来源索引状态。
+func (c fakeIndexedMediaChecker) HasIndexedMedia(context.Context, string) (bool, error) {
+	return c.hasMedia, c.err
+}
+
 // HasActiveJob 返回预设的活跃扫描检查结果。
 func (c fakeActiveScanChecker) HasActiveJob(context.Context, string) (bool, error) {
 	return c.active, c.err
@@ -73,12 +84,72 @@ func (fakeClock) Now() time.Time { return time.Unix(0, 0).UTC() }
 // newTestSourceService 创建注入全部测试替身的媒体源服务。
 func newTestSourceService(t *testing.T, validator SourceRootValidator) *SourceService {
 	t.Helper()
-	service, err := NewSourceService(fakeSourceRepository{}, validator, fakeActiveScanChecker{}, fakeIDGenerator{}, fakeClock{})
+	service, err := NewSourceService(
+		fakeSourceRepository{}, validator, fakeActiveScanChecker{}, fakeIndexedMediaChecker{}, fakeIDGenerator{}, fakeClock{},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
 	return service
 }
+
+// TestSourceServiceRejectsRootChangeWithIndexedMedia 验证旧媒体 ID 不会因来源换根而指向新目录。
+func TestSourceServiceRejectsRootChangeWithIndexedMedia(t *testing.T) {
+	repository := &updatableSourceRepository{source: domain.Source{ID: "source_test", RootPath: "/old"}}
+	service, err := NewSourceService(
+		repository,
+		fakeRootValidator{result: "/new"},
+		fakeActiveScanChecker{},
+		fakeIndexedMediaChecker{hasMedia: true},
+		fakeIDGenerator{},
+		fakeClock{},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := "/new"
+	_, err = service.Update(context.Background(), domain.UpdateSourceCommand{ID: "source_test", RootPath: &root})
+	if !errors.Is(err, domain.ErrSourceConflict) {
+		t.Fatalf("error = %v, want source conflict", err)
+	}
+	if repository.updated {
+		t.Fatal("已有媒体索引时不应保存新根目录")
+	}
+}
+
+// updatableSourceRepository 保存单个来源并记录是否执行更新。
+type updatableSourceRepository struct {
+	source  domain.Source
+	updated bool
+}
+
+// List 返回测试来源。
+func (r *updatableSourceRepository) List(context.Context) ([]domain.Source, error) {
+	return []domain.Source{r.source}, nil
+}
+
+// Get 返回测试来源。
+func (r *updatableSourceRepository) Get(context.Context, string) (domain.Source, error) {
+	return r.source, nil
+}
+
+// Create 模拟创建成功。
+func (r *updatableSourceRepository) Create(context.Context, domain.Source) error { return nil }
+
+// Update 记录测试更新。
+func (r *updatableSourceRepository) Update(_ context.Context, source domain.Source) error {
+	r.source = source
+	r.updated = true
+	return nil
+}
+
+// SetStatus 模拟状态更新成功。
+func (r *updatableSourceRepository) SetStatus(context.Context, string, string, time.Time) error {
+	return nil
+}
+
+// SoftDelete 模拟软删除成功。
+func (r *updatableSourceRepository) SoftDelete(context.Context, string, time.Time) error { return nil }
 
 // TestSourceServiceUsesInjectedRootValidator 验证媒体源服务使用注入的路径校验器。
 func TestSourceServiceUsesInjectedRootValidator(t *testing.T) {

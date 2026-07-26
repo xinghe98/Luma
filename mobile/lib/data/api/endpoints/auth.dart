@@ -6,6 +6,7 @@ mixin _AuthEndpoints on _ApiTransport {
     String username,
     String password, {
     required String deviceName,
+    String? deviceKey,
   }) => _json(
     'POST',
     _api('/auth/login'),
@@ -13,6 +14,7 @@ mixin _AuthEndpoints on _ApiTransport {
       'username': username,
       'password': password,
       'device_name': deviceName,
+      'device_key': ?deviceKey,
     },
   );
 

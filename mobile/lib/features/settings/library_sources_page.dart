@@ -31,6 +31,7 @@ class LibrarySourcesPage extends StatefulWidget {
 class _LibrarySourcesPageState extends State<LibrarySourcesPage> {
   List<Source>? _sources;
   Object? _error;
+  bool _loading = false;
   final Set<String> _saving = {};
 
   @override
@@ -40,12 +41,17 @@ class _LibrarySourcesPageState extends State<LibrarySourcesPage> {
   }
 
   Future<void> _load() async {
-    setState(() => _error = null);
+    setState(() {
+      _error = null;
+      _loading = true;
+    });
     try {
       final sources = await widget.repository.list(refresh: true);
       if (mounted) setState(() => _sources = sources);
     } on Object catch (error) {
       if (mounted) setState(() => _error = error);
+    } finally {
+      if (mounted) setState(() => _loading = false);
     }
   }
 
@@ -86,13 +92,29 @@ class _LibrarySourcesPageState extends State<LibrarySourcesPage> {
             icon: const Icon(Icons.create_new_folder_outlined),
             onPressed: _createSource,
           ),
+        IconButton(
+          tooltip: '刷新媒体源',
+          icon: const Icon(Icons.refresh_rounded),
+          onPressed: _loading ? null : _load,
+        ),
       ],
     ),
-    body: _error != null
-        ? ErrorState(onRetry: _load)
-        : _sources == null
-        ? const SettingsListSkeleton(items: 3)
-        : _sources!.isEmpty
+    body: _buildBody(),
+  );
+
+  Widget _buildBody() {
+    final sources = _sources;
+    if (sources == null) {
+      if (_error != null) {
+        return ErrorState(
+          title: '无法读取媒体源',
+          message: '请检查服务器连接后重试。',
+          onRetry: _load,
+        );
+      }
+      return const SettingsListSkeleton(items: 3);
+    }
+    final content = sources.isEmpty
         ? EmptyState(
             icon: Icons.video_library_outlined,
             title: '还没有媒体源',
@@ -113,7 +135,7 @@ class _LibrarySourcesPageState extends State<LibrarySourcesPage> {
                 ),
               ),
               const SizedBox(height: LumaSpacing.lg),
-              for (final source in _sources!)
+              for (final source in sources)
                 Padding(
                   padding: const EdgeInsets.only(bottom: LumaSpacing.sm),
                   child: ListTile(
@@ -147,8 +169,22 @@ class _LibrarySourcesPageState extends State<LibrarySourcesPage> {
                   ),
                 ),
             ],
+          );
+    return Column(
+      children: [
+        if (_loading) const LinearProgressIndicator(minHeight: 2),
+        if (_error != null)
+          ErrorState(
+            compact: true,
+            title: '媒体源刷新失败',
+            message: '当前仍显示上次成功加载的内容。',
+            retryLabel: '重试刷新',
+            onRetry: _load,
           ),
-  );
+        Expanded(child: content),
+      ],
+    );
+  }
 
   Future<void> _createSource() async {
     final created = await Navigator.of(context).push<ManagedSourceCreation>(

@@ -1,9 +1,12 @@
 # 构建阶段：使用纯 Go 方式生成不依赖 CGO 的服务端二进制。
-FROM golang:1.24-alpine AS build
+FROM golang:1.25-alpine AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
-COPY . .
+COPY cmd/server/ cmd/server/
+COPY internal/ internal/
+COPY migrations/ migrations/
+COPY pkg/ pkg/
 ARG VERSION=dev
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.version=${VERSION}" -o /out/luma-server ./cmd/server
 

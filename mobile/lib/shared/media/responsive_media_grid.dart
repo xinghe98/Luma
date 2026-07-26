@@ -46,7 +46,8 @@ class ResponsiveMediaGrid extends StatelessWidget {
           itemCount: items.length,
           itemBuilder: (context, index) {
             final item = items[index];
-            final heroTag = heroTagPrefix == null || item.type == MediaType.video
+            final heroTag =
+                heroTagPrefix == null || item.type == MediaType.video
                 ? null
                 : '$heroTagPrefix-${item.id}';
             return MediaCard(

@@ -12,11 +12,20 @@ class MediaArtwork extends StatelessWidget {
     required this.item,
     this.borderRadius = LumaRadii.medium,
     this.useCardThumbnail = false,
+    this.cacheWidth,
+    this.cacheHeight,
   });
 
   final MediaItem item;
   final double borderRadius;
   final bool useCardThumbnail;
+
+  /// Hero 两端使用同一解码尺寸，避免飞行结束后因更换 provider 露出占位。
+  final int? cacheWidth;
+  final int? cacheHeight;
+
+  static const heroThumbnailCacheWidth = 640;
+  static const heroThumbnailCacheHeight = 400;
 
   static Widget preserveSourceHeroFlight(
     BuildContext flightContext,
@@ -34,10 +43,8 @@ class MediaArtwork extends StatelessWidget {
     final imagePath = useCardThumbnail && item.cardThumbnailUrl.isNotEmpty
         ? item.cardThumbnailUrl
         : item.thumbnailUrl;
-    final palette =
-        LumaArtworkColors.palettes[
-            item.artSeed % LumaArtworkColors.palettes.length
-          ];
+    final palette = LumaArtworkColors
+        .palettes[item.artSeed % LumaArtworkColors.palettes.length];
     final placeholder = _PlaceholderArtwork(item: item, palette: palette);
     return ClipRRect(
       borderRadius: BorderRadius.circular(borderRadius),
@@ -52,21 +59,24 @@ class MediaArtwork extends StatelessWidget {
                 final logicalWidth = constraints.maxWidth;
                 final logicalHeight = constraints.maxHeight;
                 // 卡片同时约束物理宽高，避免竖图解码最终会被 cover 裁掉的像素。
-                final cacheWidth = logicalWidth.isFinite && logicalWidth > 0
-                    ? (logicalWidth * dpr).round().clamp(1, 640)
-                    : null;
-                final cacheHeight =
-                    useCardThumbnail &&
-                        logicalHeight.isFinite &&
-                        logicalHeight > 0
-                    ? (logicalHeight * dpr).round().clamp(1, 400)
-                    : null;
+                final resolvedCacheWidth =
+                    cacheWidth ??
+                    (logicalWidth.isFinite && logicalWidth > 0
+                        ? (logicalWidth * dpr).round().clamp(1, 640)
+                        : null);
+                final resolvedCacheHeight =
+                    cacheHeight ??
+                    (useCardThumbnail &&
+                            logicalHeight.isFinite &&
+                            logicalHeight > 0
+                        ? (logicalHeight * dpr).round().clamp(1, 400)
+                        : null);
                 return AuthenticatedMediaImage(
                   path: imagePath,
                   fit: BoxFit.cover,
                   fallback: placeholder,
-                  cacheWidth: cacheWidth,
-                  cacheHeight: cacheHeight,
+                  cacheWidth: resolvedCacheWidth,
+                  cacheHeight: resolvedCacheHeight,
                 );
               },
             )

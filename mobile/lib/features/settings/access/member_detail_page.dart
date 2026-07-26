@@ -10,6 +10,7 @@ import '../../../data/repositories/source_repository.dart';
 import '../../../shared/layout/constrained_page_list.dart';
 import '../../../shared/layout/section_header.dart';
 import '../../../shared/states/empty_state.dart';
+import '../../../shared/states/error_state.dart';
 import '../../../shared/states/skeleton.dart';
 import '../dialogs/confirmation_dialog.dart';
 import 'access_widgets.dart';
@@ -77,6 +78,14 @@ class _MemberDetailPageState extends State<MemberDetailPage> {
     return ConstrainedPageList(
       padding: LumaLayout.pagePadding(top: LumaSpacing.sm),
       children: [
+        if (_error != null)
+          ErrorState(
+            compact: true,
+            title: '成员资料刷新失败',
+            message: '当前仍显示上次成功加载的资料。',
+            retryLabel: '重试刷新',
+            onRetry: _load,
+          ),
         ListTile(
           contentPadding: EdgeInsets.zero,
           leading: Icon(
@@ -134,8 +143,9 @@ class _MemberDetailPageState extends State<MemberDetailPage> {
     );
   }
 
-  Future<void> _load() async {
-    if (_busy) return;
+  /// 拉取成员资料。force 用于撤销等 mutation 之后，忽略本地 busy 锁。
+  Future<void> _load({bool force = false}) async {
+    if (_busy && !force) return;
     setState(() => _error = null);
     try {
       final values = await Future.wait<Object>([
@@ -148,7 +158,9 @@ class _MemberDetailPageState extends State<MemberDetailPage> {
       if (mounted) {
         setState(() {
           _sources = values[0] as List<Source>;
-          _sessions = values[1] as List<LoginSession>;
+          _sessions = (values[1] as List<LoginSession>)
+              .where((session) => !session.isRevoked)
+              .toList(growable: false);
           _grants = Set<String>.from(values[2] as List<String>);
         });
       }
@@ -201,11 +213,21 @@ class _MemberDetailPageState extends State<MemberDetailPage> {
     setState(() => _saving.add(session.id));
     try {
       await widget.access.revokeSession(session.id);
-      await _load();
+      if (!mounted) return;
+      // 先本地移除，避免 _load 被 busy 挡住导致列表不刷新。
+      setState(() {
+        _sessions = [
+          for (final item in _sessions ?? const <LoginSession>[])
+            if (item.id != session.id) item,
+        ];
+        _saving.remove(session.id);
+      });
+      await _load(force: true);
     } on Object catch (error) {
-      if (mounted) context.showLumaSnack('撤销失败：$error');
-    } finally {
-      if (mounted) setState(() => _saving.remove(session.id));
+      if (mounted) {
+        setState(() => _saving.remove(session.id));
+        context.showLumaSnack('撤销失败：$error');
+      }
     }
   }
 
@@ -220,11 +242,18 @@ class _MemberDetailPageState extends State<MemberDetailPage> {
     setState(() => _savingUser = true);
     try {
       await widget.access.resetPassword(_user.id, next);
-      if (mounted) context.showLumaSnack('密码已重置，成员设备已退出登录');
+      if (!mounted) return;
+      setState(() {
+        _sessions = const [];
+        _savingUser = false;
+      });
+      context.showLumaSnack('密码已重置，成员设备已退出登录');
+      await _load(force: true);
     } on Object catch (error) {
-      if (mounted) context.showLumaSnack('重置失败：$error');
-    } finally {
-      if (mounted) setState(() => _savingUser = false);
+      if (mounted) {
+        setState(() => _savingUser = false);
+        context.showLumaSnack('重置失败：$error');
+      }
     }
   }
 }
@@ -263,8 +292,9 @@ class _ResetPasswordDialogState extends State<_ResetPasswordDialog> {
       context.showLumaSnack('两次输入的密码不一致');
       return;
     }
-    if (password.length < 3) {
-      context.showLumaSnack('密码至少 3 个字符');
+    final passwordLength = password.runes.length;
+    if (passwordLength < 10 || passwordLength > 128) {
+      context.showLumaSnack('密码须为 10 至 128 个字符');
       return;
     }
     Navigator.pop(context, password);
@@ -272,19 +302,21 @@ class _ResetPasswordDialogState extends State<_ResetPasswordDialog> {
 
   @override
   Widget build(BuildContext context) => AlertDialog(
+    scrollable: true,
     title: const Text('重置密码'),
     content: Column(
       mainAxisSize: MainAxisSize.min,
       children: [
         TextField(
           controller: _password,
+          maxLength: 128,
           obscureText: true,
           autofocus: true,
           autocorrect: false,
           enableSuggestions: false,
           decoration: const InputDecoration(
             labelText: '新密码',
-            helperText: '至少 3 个字符',
+            helperText: '10 至 128 个字符',
           ),
         ),
         const SizedBox(height: LumaSpacing.sm),

@@ -21,6 +21,10 @@ class SearchResults extends StatelessWidget {
     required this.onFavorite,
     required this.onClear,
     required this.onSearchRetry,
+    this.hasMore = false,
+    this.isLoadingMore = false,
+    this.hasLoadMoreError = false,
+    this.onLoadMoreRetry,
   });
 
   final List<MediaItem> items;
@@ -30,6 +34,10 @@ class SearchResults extends StatelessWidget {
   final ValueChanged<MediaItem> onFavorite;
   final VoidCallback onClear;
   final VoidCallback onSearchRetry;
+  final bool hasMore;
+  final bool isLoadingMore;
+  final bool hasLoadMoreError;
+  final VoidCallback? onLoadMoreRetry;
 
   @override
   Widget build(BuildContext context) {
@@ -71,7 +79,11 @@ class SearchResults extends StatelessWidget {
         child: SectionHeader(
           title: '搜索结果',
           subtitle: searchState == LoadState.loading
-              ? '搜索中…'
+              ? items.isEmpty
+                    ? '搜索中…'
+                    : '正在更新，显示 ${items.length} 个项目'
+              : hasMore
+              ? '已显示 ${items.length} 个项目，继续滚动加载'
               : '${items.length} 个项目',
         ),
       ),
@@ -81,6 +93,54 @@ class SearchResults extends StatelessWidget {
   }
 
   List<Widget> _bodySlivers() {
+    if (items.isNotEmpty) {
+      return [
+        if (searchState == LoadState.loading)
+          const SliverToBoxAdapter(
+            child: LinearProgressIndicator(minHeight: 2),
+          ),
+        if (searchState == LoadState.error)
+          SliverToBoxAdapter(
+            child: ErrorState(
+              compact: true,
+              title: '搜索更新失败',
+              message: '当前仍显示上次成功加载的结果。',
+              retryLabel: '重新搜索',
+              onRetry: onSearchRetry,
+            ),
+          ),
+        ResponsiveMediaSliverGrid(
+          items: items,
+          heroTagPrefix: 'search',
+          onTap: onOpenMedia,
+          onFavorite: onFavorite,
+        ),
+        if (hasLoadMoreError)
+          SliverToBoxAdapter(
+            child: ErrorState(
+              compact: true,
+              title: '更多结果加载失败',
+              message: '已加载的搜索结果不会丢失。',
+              retryLabel: '重试下一页',
+              onRetry: onLoadMoreRetry ?? onSearchRetry,
+            ),
+          )
+        else if (isLoadingMore)
+          const SliverToBoxAdapter(
+            child: Padding(
+              padding: EdgeInsets.all(LumaSpacing.lg),
+              child: Center(
+                child: SizedBox.square(
+                  dimension: 28,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              ),
+            ),
+          )
+        else
+          const SliverToBoxAdapter(child: SizedBox(height: LumaSpacing.lg)),
+      ];
+    }
     switch (searchState) {
       case LoadState.loading:
         return [const SliverToBoxAdapter(child: MediaGridSkeleton(items: 6))];

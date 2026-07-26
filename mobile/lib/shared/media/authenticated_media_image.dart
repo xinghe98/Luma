@@ -48,10 +48,8 @@ class AuthenticatedMediaImage extends StatelessWidget {
       // 未指定时按常见列表卡片宽度限制解码；上限对齐服务端 thumbnail_width(640)。
       resolvedWidth = cacheWidth ?? (180 * dpr).round().clamp(1, 640);
     }
-    final network = NetworkImage(
-      session.resolve(path),
-      headers: session.authorizationHeaders,
-    );
+    final access = session.resolveResource(path);
+    final network = NetworkImage(access.url, headers: access.headers);
     final ImageProvider<Object> provider;
     if (resolvedWidth == null && cacheHeight == null) {
       provider = network;

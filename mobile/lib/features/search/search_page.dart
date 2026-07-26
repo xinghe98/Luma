@@ -30,9 +30,17 @@ class _SearchPageState extends State<SearchPage>
   bool get wantKeepAlive => true;
 
   @override
+  void initState() {
+    super.initState();
+    _scroll.addListener(_onScroll);
+  }
+
+  @override
   void dispose() {
     _text.dispose();
-    _scroll.dispose();
+    _scroll
+      ..removeListener(_onScroll)
+      ..dispose();
     _controller?.dispose();
     super.dispose();
   }
@@ -54,6 +62,10 @@ class _SearchPageState extends State<SearchPage>
           onFavorite: (item) => context.toggleFavoriteWithFeedback(media, item),
           onClear: _clearAll,
           onSearchRetry: controller.retry,
+          hasMore: controller.hasMore,
+          isLoadingMore: controller.isLoadingMore,
+          hasLoadMoreError: controller.hasLoadMoreError,
+          onLoadMoreRetry: controller.loadMore,
         );
         return Scaffold(
           appBar: AppBar(
@@ -135,5 +147,19 @@ class _SearchPageState extends State<SearchPage>
   void _clearAll() {
     _text.clear();
     _controller!.clearCriteria();
+  }
+
+  void _onScroll() {
+    final controller = _controller;
+    if (controller == null ||
+        !controller.hasMore ||
+        controller.isLoadingMore ||
+        controller.hasLoadMoreError ||
+        !_scroll.hasClients) {
+      return;
+    }
+    if (_scroll.position.pixels >= _scroll.position.maxScrollExtent - 720) {
+      controller.loadMore();
+    }
   }
 }

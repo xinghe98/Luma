@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+/// 打开服务器别名编辑框；取消返回 null，恢复默认返回空字符串。
 Future<String?> showServerAliasDialog(
   BuildContext context,
   String currentName,
@@ -36,6 +37,7 @@ class _ServerAliasDialogState extends State<_ServerAliasDialog> {
 
   @override
   Widget build(BuildContext context) => AlertDialog(
+    scrollable: true,
     title: const Text('服务器别名'),
     content: TextField(
       controller: _controller,
@@ -43,40 +45,35 @@ class _ServerAliasDialogState extends State<_ServerAliasDialog> {
       maxLength: 80,
       decoration: const InputDecoration(labelText: '仅保存在此设备'),
     ),
-    actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+    actionsAlignment: MainAxisAlignment.end,
+    actionsOverflowAlignment: OverflowBarAlignment.end,
+    actionsOverflowButtonSpacing: 8,
+    actionsPadding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+    buttonPadding: EdgeInsets.zero,
     actions: [
-      SizedBox(
-        width: double.infinity,
-        child: Row(
-          children: [
-            TextButton(
-              style: TextButton.styleFrom(
-                minimumSize: const Size(48, 48),
-                padding: const EdgeInsets.symmetric(horizontal: 8),
-              ),
-              onPressed: () => Navigator.pop(context, ''),
-              child: const Text('恢复默认'),
-            ),
-            const Spacer(),
-            TextButton(
-              style: TextButton.styleFrom(
-                minimumSize: const Size(48, 48),
-                padding: const EdgeInsets.symmetric(horizontal: 8),
-              ),
-              onPressed: () => Navigator.pop(context),
-              child: const Text('取消'),
-            ),
-            const SizedBox(width: 8),
-            FilledButton(
-              style: FilledButton.styleFrom(
-                minimumSize: const Size(48, 48),
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-              ),
-              onPressed: () => Navigator.pop(context, _controller.text),
-              child: const Text('保存'),
-            ),
-          ],
+      TextButton(
+        style: TextButton.styleFrom(
+          minimumSize: const Size(48, 48),
+          padding: const EdgeInsets.symmetric(horizontal: 4),
         ),
+        onPressed: () => Navigator.pop(context, ''),
+        child: const Text('恢复默认'),
+      ),
+      TextButton(
+        style: TextButton.styleFrom(
+          minimumSize: const Size(48, 48),
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+        ),
+        onPressed: () => Navigator.pop(context),
+        child: const Text('取消'),
+      ),
+      FilledButton(
+        style: FilledButton.styleFrom(
+          minimumSize: const Size(48, 48),
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+        ),
+        onPressed: () => Navigator.pop(context, _controller.text),
+        child: const Text('保存'),
       ),
     ],
   );

@@ -18,9 +18,7 @@ class LoginSessionTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final expiresAt = session.expiresAt;
-    final status = session.isRevoked
-        ? '已撤销'
-        : expiresAt == null
+    final status = expiresAt == null
         ? '长期有效'
         : !expiresAt.isAfter(DateTime.now())
         ? '已过期'
@@ -30,9 +28,7 @@ class LoginSessionTile extends StatelessWidget {
       leading: const Icon(Icons.devices_outlined),
       title: Text(session.name),
       subtitle: Text(status),
-      trailing: session.isRevoked
-          ? const Text('已撤销')
-          : revoking
+      trailing: revoking
           ? const SizedBox.square(
               dimension: 20,
               child: CircularProgressIndicator(strokeWidth: 2),

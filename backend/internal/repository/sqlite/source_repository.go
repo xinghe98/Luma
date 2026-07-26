@@ -124,7 +124,7 @@ func (r *SourceRepository) SetStatus(ctx context.Context, id, status string, now
 	return requireAffected(result, domain.ErrSourceNotFound)
 }
 
-// SoftDelete 软删除媒体源，释放根路径唯一约束并保留关联索引数据。
+// SoftDelete 删除媒体源；无扫描和媒体记录时硬删除以清理授权，否则软删除并保留关联索引。
 func (r *SourceRepository) SoftDelete(ctx context.Context, id string, now time.Time) error {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -161,6 +161,16 @@ func (r *SourceRepository) SoftDelete(ctx context.Context, id string, now time.T
 		AND entity_id IN (SELECT id FROM media_items WHERE source_id = ?)`, nowMS, nowMS, id)
 	if err != nil {
 		return fmt.Errorf("取消媒体处理任务: %w", err)
+	}
+	var initialized int
+	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM media_items WHERE source_id = ?)
+		OR EXISTS(SELECT 1 FROM scan_jobs WHERE source_id = ?)`, id, id).Scan(&initialized); err != nil {
+		return fmt.Errorf("检查媒体源初始化状态: %w", err)
+	}
+	if initialized == 0 {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM sources WHERE id = ?`, id); err != nil {
+			return fmt.Errorf("清理未初始化媒体源: %w", err)
+		}
 	}
 	return tx.Commit()
 }

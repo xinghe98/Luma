@@ -23,11 +23,7 @@ class ScrollToTopAppBarTitle extends StatelessWidget {
     }
     final scrollController = controller!;
     if (!scrollController.hasClients || scrollController.offset <= 0) return;
-    scrollController.animateTo(
-      0,
-      duration: const Duration(milliseconds: 200),
-      curve: Curves.easeOutCubic,
-    );
+    scrollController.jumpTo(0);
   }
 
   @override

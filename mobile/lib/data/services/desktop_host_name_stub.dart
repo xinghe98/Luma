@@ -2,3 +2,6 @@
 
 /// localDesktopHostName 在不支持读取主机名的平台返回空字符串。
 String localDesktopHostName() => '';
+
+/// localDesktopUserName 在不支持读取系统用户的平台返回空字符串。
+String localDesktopUserName() => '';

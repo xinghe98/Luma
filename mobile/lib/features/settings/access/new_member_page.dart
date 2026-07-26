@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/extensions.dart';
 import '../../../core/theme.dart';
+import '../../../data/models/api_access.dart';
 import '../../../data/models/api_source.dart';
 import '../../../data/repositories/access_repository.dart';
 import '../../../data/repositories/source_repository.dart';
@@ -26,7 +27,10 @@ class _NewMemberPageState extends State<NewMemberPage> {
   final _password = TextEditingController();
   final _confirmation = TextEditingController();
   final _selected = <String>{};
+  final String _requestId = newAccessRequestId();
   List<Source>? _sources;
+  AccessUser? _createdUser;
+  Set<String>? _pendingSourceIds;
   Object? _error;
   bool _submitting = false;
   @override
@@ -51,6 +55,7 @@ class _NewMemberPageState extends State<NewMemberPage> {
   );
   Widget _body() {
     final sources = _sources;
+    final accountCreated = _createdUser != null;
     if (sources == null) {
       if (_error != null) {
         return EmptyState(
@@ -71,7 +76,7 @@ class _NewMemberPageState extends State<NewMemberPage> {
       children: [
         TextField(
           controller: _name,
-          enabled: !_submitting,
+          enabled: !_submitting && !accountCreated,
           maxLength: 80,
           decoration: const InputDecoration(
             labelText: '成员名称',
@@ -81,7 +86,7 @@ class _NewMemberPageState extends State<NewMemberPage> {
         const SizedBox(height: LumaSpacing.sm),
         TextField(
           controller: _username,
-          enabled: !_submitting,
+          enabled: !_submitting && !accountCreated,
           maxLength: 32,
           autocorrect: false,
           enableSuggestions: false,
@@ -94,20 +99,21 @@ class _NewMemberPageState extends State<NewMemberPage> {
         const SizedBox(height: LumaSpacing.sm),
         TextField(
           controller: _password,
-          enabled: !_submitting,
+          enabled: !_submitting && !accountCreated,
+          maxLength: 128,
           obscureText: true,
           autocorrect: false,
           enableSuggestions: false,
           decoration: const InputDecoration(
             labelText: '初始密码',
-            helperText: '至少 3 个字符',
+            helperText: '10 至 128 个字符',
             prefixIcon: Icon(Icons.lock_outline_rounded),
           ),
         ),
         const SizedBox(height: LumaSpacing.sm),
         TextField(
           controller: _confirmation,
-          enabled: !_submitting,
+          enabled: !_submitting && !accountCreated,
           obscureText: true,
           autocorrect: false,
           enableSuggestions: false,
@@ -123,7 +129,7 @@ class _NewMemberPageState extends State<NewMemberPage> {
             contentPadding: EdgeInsets.zero,
             controlAffinity: ListTileControlAffinity.leading,
             value: _selected.contains(source.id),
-            onChanged: _submitting
+            onChanged: _submitting || accountCreated
                 ? null
                 : (value) => setState(
                     () => value == true
@@ -142,7 +148,15 @@ class _NewMemberPageState extends State<NewMemberPage> {
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
               : const Icon(Icons.person_add_alt_1_outlined),
-          label: Text(_submitting ? '正在创建' : '创建成员'),
+          label: Text(
+            _submitting
+                ? accountCreated
+                      ? '正在重试授权'
+                      : '正在创建'
+                : accountCreated
+                ? '继续授权'
+                : '创建成员',
+          ),
         ),
       ],
     );
@@ -158,35 +172,61 @@ class _NewMemberPageState extends State<NewMemberPage> {
     }
   }
 
-  /// 创建账号后按选择逐个授权；失败时保留成员而不重复创建。
+  /// 创建账号后逐个授权；部分失败时保留成员、request ID 和待授权集合供重试。
   Future<void> _submit() async {
     if (_submitting) return;
-    if (_name.text.trim().isEmpty ||
-        _username.text.trim().isEmpty ||
-        _password.text.isEmpty) {
+    if (_createdUser == null &&
+        (_name.text.trim().isEmpty ||
+            _username.text.trim().isEmpty ||
+            _password.text.isEmpty)) {
       context.showLumaSnack('请完整填写账号信息');
       return;
     }
-    if (_password.text != _confirmation.text) {
+    if (_createdUser == null && _password.text != _confirmation.text) {
       context.showLumaSnack('两次输入的密码不一致');
+      return;
+    }
+    final passwordLength = _password.text.runes.length;
+    if (_createdUser == null && (passwordLength < 10 || passwordLength > 128)) {
+      context.showLumaSnack('密码须为 10 至 128 个字符');
       return;
     }
     setState(() => _submitting = true);
     try {
-      final user = await widget.access.createUser(
-        _name.text.trim(),
-        username: _username.text.trim(),
-        password: _password.text,
-        requestId: newAccessRequestId(),
-      );
-      for (final sourceID in _selected) {
-        await widget.access.grantSource(user.id, sourceID);
+      var user = _createdUser;
+      if (user == null) {
+        user = await widget.access.createUser(
+          _name.text.trim(),
+          username: _username.text.trim(),
+          password: _password.text,
+          requestId: _requestId,
+        );
+        if (!mounted) return;
+        _createdUser = user;
+        _pendingSourceIds = Set.of(_selected);
+        _password.clear();
+        _confirmation.clear();
+      }
+      final pending = _pendingSourceIds!;
+      for (final sourceID in pending.toList(growable: false)) {
+        try {
+          await widget.access.grantSource(user.id, sourceID);
+          pending.remove(sourceID);
+        } on Object {
+          // 继续尝试其余来源，确保一次提交可完成尽可能多的授权。
+        }
       }
       if (!mounted) return;
+      if (pending.isNotEmpty) {
+        context.showLumaSnack(
+          '成员已创建，但仍有 ${pending.length} 个媒体源未授权；请点击“继续授权”重试。',
+        );
+        return;
+      }
       context.showLumaSnack('成员已创建');
       Navigator.of(context).pop(true);
     } on Object catch (error) {
-      if (mounted) context.showLumaSnack('创建失败：$error');
+      if (mounted) context.showLumaSnack('成员创建失败：$error');
     } finally {
       if (mounted) setState(() => _submitting = false);
     }

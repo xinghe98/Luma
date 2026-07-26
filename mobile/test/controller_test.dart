@@ -8,6 +8,8 @@ import 'package:luma/app/controllers/settings_controller.dart';
 import 'package:luma/app/app_dependencies.dart';
 import 'package:luma/data/mock/mock_connection_service.dart';
 import 'package:luma/data/mock/mock_media_repository.dart';
+import 'package:luma/data/fixtures/media_fixtures.dart';
+import 'package:luma/data/models/media_filter.dart';
 import 'package:luma/data/models/media_types.dart';
 import 'package:luma/data/models/media_item.dart';
 import 'package:luma/data/models/server_profile.dart';
@@ -124,6 +126,40 @@ void main() {
     expect(dependencies.restoring.value, isFalse);
   });
 
+  test('saved-session restore contains credential read failures', () async {
+    final credentials = _PendingCredentialStore();
+    final dependencies = AppDependencies(
+      mediaRepository: MockMediaRepository(),
+      connectionService: _ImmediateConnectionService(),
+      credentialStore: credentials,
+    );
+    addTearDown(dependencies.dispose);
+
+    final restore = dependencies.restoreSession();
+    await credentials.readStarted.future;
+    credentials.completeError(StateError('storage unavailable'));
+
+    expect(await restore, isFalse);
+    expect(dependencies.restoring.value, isFalse);
+  });
+
+  test('disposed dependencies ignore a late session restore', () async {
+    final credentials = _PendingCredentialStore();
+    final dependencies = AppDependencies(
+      mediaRepository: MockMediaRepository(),
+      connectionService: _ImmediateConnectionService(),
+      credentialStore: credentials,
+    );
+
+    final restore = dependencies.restoreSession();
+    await credentials.readStarted.future;
+    dependencies.dispose();
+    credentials.complete(null);
+
+    expect(await restore, isFalse);
+    expect(await dependencies.restoreSession(), isFalse);
+  });
+
   test('library controller combines and clears filters', () async {
     final media = MediaController(MockMediaRepository());
     await media.load();
@@ -160,6 +196,22 @@ void main() {
     },
   );
 
+  test('library controller bounds explicit route seed items', () {
+    final items = buildMediaFixtures()
+        .where((item) => item.type == MediaType.video)
+        .toList(growable: false);
+    final controller = LibraryController(
+      fixedType: MediaType.video,
+      initialItems: [...items, ...items],
+      pageSize: 18,
+    );
+    addTearDown(controller.dispose);
+    final gate = Completer<void>();
+    unawaited(controller.ensureLoadedAfter(gate.future));
+
+    expect(controller.visibleItems(), hasLength(12));
+  });
+
   test('search controller records terms and clears criteria', () {
     final media = MediaController(MockMediaRepository());
     final controller = feature.SearchController(media)
@@ -170,6 +222,122 @@ void main() {
     expect(controller.hasCriteria, isTrue);
     controller.clearCriteria();
     expect(controller.hasCriteria, isFalse);
+  });
+
+  test('search keeps old results when replacement request fails', () async {
+    final repository = _ResilientPagingMediaRepository();
+    final media = MediaController(repository);
+    final controller = feature.SearchController(media)..setQuery('old');
+    await Future<void>.delayed(const Duration(milliseconds: 350));
+
+    expect(controller.results.single.id, 'old-result');
+    controller.setQuery('fail');
+    expect(controller.loadState, LoadState.loading);
+    expect(controller.results.single.id, 'old-result');
+    await Future<void>.delayed(const Duration(milliseconds: 350));
+
+    expect(controller.loadState, LoadState.error);
+    expect(controller.results.single.id, 'old-result');
+    controller.dispose();
+    media.dispose();
+  });
+
+  test(
+    'search exposes cursor pagination errors without dropping results',
+    () async {
+      final repository = _ResilientPagingMediaRepository();
+      final media = MediaController(repository);
+      final controller = feature.SearchController(media)..setQuery('paged');
+      await Future<void>.delayed(const Duration(milliseconds: 350));
+
+      expect(controller.hasMore, isTrue);
+      await controller.loadMore();
+
+      expect(controller.hasLoadMoreError, isTrue);
+      expect(controller.results.single.id, 'paged-result');
+      controller.dispose();
+      media.dispose();
+    },
+  );
+
+  test(
+    'library exposes next-page failure while retaining its first page',
+    () async {
+      final repository = _ResilientPagingMediaRepository();
+      final media = MediaController(repository);
+      final controller = LibraryController(media: media, pageSize: 18);
+      await controller.ensureLoaded();
+
+      expect(controller.visibleItems().single.id, 'library-result');
+      expect(controller.hasMore, isTrue);
+      expect(repository.limits, [18]);
+      await controller.loadMore();
+
+      expect(controller.hasLoadMoreError, isTrue);
+      expect(controller.visibleItems().single.id, 'library-result');
+      expect(repository.limits, [18, 18]);
+      controller.dispose();
+      media.dispose();
+    },
+  );
+
+  test(
+    'library keeps same-filter refresh data but clears replaced filters',
+    () async {
+      final repository = _ReplaceableLibraryMediaRepository();
+      final media = MediaController(repository);
+      final controller = LibraryController(media: media);
+      await controller.ensureLoaded();
+      expect(controller.visibleItems().single.id, 'library-result');
+
+      repository.fail = true;
+      await controller.refresh();
+      expect(controller.loadState, LoadState.error);
+      expect(controller.visibleItems().single.id, 'library-result');
+
+      controller.applyFilters(const LibraryFilters(favoritesOnly: true));
+      await Future<void>.delayed(Duration.zero);
+      expect(controller.loadState, LoadState.error);
+      expect(controller.visibleItems(), isEmpty);
+      controller.dispose();
+      media.dispose();
+    },
+  );
+
+  test('library reapplies favorites after media user data changes', () async {
+    final repository = MockMediaRepository();
+    final media = MediaController(repository);
+    await media.load();
+    final controller = LibraryController(media: media);
+    controller.applyFilters(const LibraryFilters(favoritesOnly: true));
+    await controller.ensureLoaded();
+    final favorite = controller.visibleItems().first;
+
+    await media.toggleFavorite(favorite.id);
+
+    expect(
+      controller.visibleItems().any((item) => item.id == favorite.id),
+      isFalse,
+    );
+    controller.dispose();
+    media.dispose();
+  });
+
+  test('search merges media objects without resetting pagination', () async {
+    final repository = _ResilientPagingMediaRepository();
+    final media = MediaController(repository);
+    final controller = feature.SearchController(media)..setQuery('paged');
+    await Future<void>.delayed(const Duration(milliseconds: 350));
+    final original = controller.results.single;
+    expect(controller.hasMore, isTrue);
+
+    media.rememberAll([original.copyWith(isFavorite: true)]);
+
+    expect(controller.results.single.isFavorite, isTrue);
+    expect(controller.hasMore, isTrue);
+    expect(controller.isLoadingMore, isFalse);
+    controller.dispose();
+    media.dispose();
   });
 
   test('home greeting follows the device local hour', () {
@@ -645,6 +813,8 @@ class _PendingCredentialStore implements CredentialStore {
 
   void complete(StoredCredentials? value) => _result.complete(value);
 
+  void completeError(Object error) => _result.completeError(error);
+
   @override
   Future<StoredCredentials?> read() {
     if (!readStarted.isCompleted) readStarted.complete();
@@ -654,6 +824,60 @@ class _PendingCredentialStore implements CredentialStore {
   @override
   Future<void> write(StoredCredentials credentials) async {}
 }
+
+class _ResilientPagingMediaRepository extends MockMediaRepository {
+  final limits = <int?>[];
+
+  @override
+  Future<MediaListPage> searchPage(
+    MediaFilter filter, {
+    String? cursor,
+    int? limit,
+  }) async {
+    limits.add(limit);
+    if (cursor != null || filter.text == 'fail') {
+      throw StateError('network unavailable');
+    }
+    final prefix = filter.text.isEmpty ? 'library' : filter.text;
+    return MediaListPage(
+      items: [_pagingItem('$prefix-result')],
+      nextCursor: prefix == 'old' ? null : 'next',
+    );
+  }
+}
+
+class _ReplaceableLibraryMediaRepository extends MockMediaRepository {
+  bool fail = false;
+
+  @override
+  Future<MediaListPage> searchPage(
+    MediaFilter filter, {
+    String? cursor,
+    int? limit,
+  }) async {
+    if (fail) throw StateError('network unavailable');
+    return MediaListPage(
+      items: [_pagingItem('library-result')],
+      nextCursor: null,
+    );
+  }
+}
+
+MediaItem _pagingItem(String id) => MediaItem(
+  id: id,
+  title: id,
+  type: MediaType.video,
+  duration: const Duration(minutes: 1),
+  resolution: '1920×1080',
+  format: 'MP4',
+  fileSize: '1 MB',
+  directory: '',
+  tags: const [],
+  addedAt: DateTime.utc(2026),
+  artSeed: 1,
+  thumbnailUrl: '/thumbnail',
+  cardThumbnailUrl: '/thumbnail?variant=card',
+);
 
 class _ImmediateConnectionService implements ConnectionService {
   @override

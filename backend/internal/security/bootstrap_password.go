@@ -8,18 +8,19 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 )
 
 // LoadOrCreateBootstrapPassword 读取初始密码，缺失时安全生成并写入指定文件。
 func LoadOrCreateBootstrapPassword(path string) (string, bool, error) {
-	content, err := os.ReadFile(path)
+	_, err := os.Stat(path)
 	if err == nil {
-		if info, statErr := os.Stat(path); statErr != nil {
-			return "", false, fmt.Errorf("读取管理员密码文件状态: %w", statErr)
-		} else if runtime.GOOS != "windows" && info.Mode().Perm()&0o077 != 0 {
-			return "", false, errors.New("管理员密码文件不能向组或其他用户开放")
+		if err := secureBootstrapPasswordFile(path); err != nil {
+			return "", false, err
+		}
+		content, err := os.ReadFile(path)
+		if err != nil {
+			return "", false, fmt.Errorf("读取管理员密码文件: %w", err)
 		}
 		password := strings.TrimSpace(string(content))
 		if err := ValidatePassword(password); err != nil {
@@ -28,7 +29,7 @@ func LoadOrCreateBootstrapPassword(path string) (string, bool, error) {
 		return password, false, nil
 	}
 	if !errors.Is(err, os.ErrNotExist) {
-		return "", false, fmt.Errorf("读取管理员密码文件: %w", err)
+		return "", false, fmt.Errorf("读取管理员密码文件状态: %w", err)
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return "", false, fmt.Errorf("创建管理员密码目录: %w", err)
@@ -51,6 +52,9 @@ func LoadOrCreateBootstrapPassword(path string) (string, bool, error) {
 	}
 	if err := file.Close(); err != nil {
 		return "", false, fmt.Errorf("关闭管理员密码文件: %w", err)
+	}
+	if err := secureBootstrapPasswordFile(path); err != nil {
+		return "", false, err
 	}
 	return password, true, nil
 }

@@ -22,11 +22,16 @@ final class ApiMediaRepository
   final MediaUserDataDecoder _userDataDecoder = const MediaUserDataDecoder();
   final TagDecoder _tagDecoder = const TagDecoder();
   final Map<String, MediaItem> _items = {};
+  int? _cacheEpoch;
 
   static const _maxCachedItems = 512;
 
+  /// 清除所有媒体缓存及其所属 epoch。
   @override
-  void clearSessionCache() => _items.clear();
+  void clearSessionCache() {
+    _items.clear();
+    _cacheEpoch = null;
+  }
 
   @override
   Future<List<MediaItem>> loadMedia() =>
@@ -36,21 +41,30 @@ final class ApiMediaRepository
   Future<List<MediaItem>> refresh() =>
       _loadPages(maxPages: _homeMaxPages, replaceCache: true);
 
+  /// 在单一会话 epoch 内拉完筛选结果，并缓存每页摘要。
   @override
   Future<List<MediaItem>> search(MediaFilter filter) async {
     // 兼容旧调用：连续拉完当前筛选（库页应改用 searchPage）。
+    final epoch = _captureSessionEpoch();
     final items = <MediaItem>[];
     String? cursor;
     do {
       final page = await searchPage(filter, cursor: cursor);
+      _client.ensureSessionEpoch(epoch);
       items.addAll(page.items);
       cursor = page.nextCursor;
     } while (cursor != null);
     return items;
   }
 
+  /// 拉取一页筛选结果；会话切换后拒绝将旧响应写入缓存。
   @override
-  Future<MediaListPage> searchPage(MediaFilter filter, {String? cursor}) async {
+  Future<MediaListPage> searchPage(
+    MediaFilter filter, {
+    String? cursor,
+    int? limit,
+  }) async {
+    final epoch = _captureSessionEpoch();
     final page = _mediaDecoder.decodePage(
       await _client.getMedia(
         query: filter.text.trim().isEmpty ? null : filter.text.trim(),
@@ -66,9 +80,10 @@ final class ApiMediaRepository
         },
         order: filter.sort == MediaSort.title ? 'asc' : 'desc',
         cursor: cursor,
-        limit: _pageSize,
+        limit: limit ?? _pageSize,
       ),
     );
+    _client.ensureSessionEpoch(epoch);
     final items = page.items.map(_rememberSummary).toList(growable: false);
     return MediaListPage(items: items, nextCursor: page.nextCursor);
   }
@@ -82,12 +97,15 @@ final class ApiMediaRepository
     throw const FormatException('媒体总数响应无效');
   }
 
+  /// 加载继续观看摘要，并只缓存当前会话返回的条目。
   @override
   Future<List<MediaItem>> loadContinueWatching() async {
     // 首页只需少量继续观看项，单页足够。
+    final epoch = _captureSessionEpoch();
     final page = _mediaDecoder.decodePage(
       await _client.getContinueWatching(limit: _pageSize),
     );
+    _client.ensureSessionEpoch(epoch);
     return page.items.map(_rememberSummary).toList(growable: false);
   }
 
@@ -95,11 +113,18 @@ final class ApiMediaRepository
   Future<List<Tag>> loadTags() async =>
       _tagDecoder.decodeList(await _client.getTags());
 
+  /// 并行加载媒体详情和用户数据，再解析来源并写入当前会话缓存。
   @override
   Future<MediaItem> loadDetail(String id) async {
-    final detail = _mediaDecoder.decodeDetail(await _client.getMediaDetail(id));
-    final userData = _userDataDecoder.decode(await _client.getUserData(id));
+    final epoch = _captureSessionEpoch();
+    final responses = await Future.wait([
+      _client.getMediaDetail(id),
+      _client.getUserData(id),
+    ]);
+    final detail = _mediaDecoder.decodeDetail(responses[0]);
+    final userData = _userDataDecoder.decode(responses[1]);
     final source = await _sources.find(detail.sourceId);
+    _client.ensureSessionEpoch(epoch);
     return _remember(
       _fromDetail(detail, userData, source?.name ?? detail.sourceId),
     );
@@ -113,8 +138,10 @@ final class ApiMediaRepository
   Future<MediaItem> saveNote(String id, String note) =>
       _updateUserData(id, {'notes': note.isEmpty ? null : note});
 
+  /// 上报绝对播放位置；冲突时仅在原会话内重取 revision 并重试一次。
   @override
   Future<MediaItem> updateProgress(String id, int positionMs) async {
+    final epoch = _captureSessionEpoch();
     final item = _requiredItem(id);
     final safePosition = positionMs < 0 ? 0 : positionMs;
     Future<MediaUserData> send(int revision) async => _userDataDecoder.decode(
@@ -124,7 +151,13 @@ final class ApiMediaRepository
         baseRevision: revision,
       ),
     );
-    final data = await _withRevisionRetry(id, item.userDataRevision, send);
+    final data = await _withRevisionRetry(
+      id,
+      item.userDataRevision,
+      epoch,
+      send,
+    );
+    _client.ensureSessionEpoch(epoch);
     return _remember(_mergeUserData(item, data));
   }
 
@@ -139,6 +172,7 @@ final class ApiMediaRepository
     bool replaceCache = true,
     int maxPages = _homeMaxPages,
   }) async {
+    final epoch = _captureSessionEpoch();
     final summaries = <MediaSummary>[];
     String? cursor;
     var pages = 0;
@@ -152,6 +186,7 @@ final class ApiMediaRepository
         ),
       );
       summaries.addAll(page.items);
+      _client.ensureSessionEpoch(epoch);
       cursor = page.nextCursor;
       pages++;
     } while (cursor != null && pages < maxPages);
@@ -160,7 +195,10 @@ final class ApiMediaRepository
     if (replaceCache) {
       final next = <String, MediaItem>{};
       for (final summary in summaries) {
-        final item = _fromSummary(summary, _items[summary.id]);
+        final item = _mergeCachedUserData(
+          _fromSummary(summary, _items[summary.id]),
+          _items[summary.id],
+        );
         next[item.id] = item;
         result.add(item);
       }
@@ -184,24 +222,34 @@ final class ApiMediaRepository
     String id,
     Map<String, dynamic> changes,
   ) async {
+    final epoch = _captureSessionEpoch();
     final item = _requiredItem(id);
     Future<MediaUserData> send(int revision) async => _userDataDecoder.decode(
       await _client.updateUserData(id, {'base_revision': revision, ...changes}),
     );
-    final data = await _withRevisionRetry(id, item.userDataRevision, send);
+    final data = await _withRevisionRetry(
+      id,
+      item.userDataRevision,
+      epoch,
+      send,
+    );
+    _client.ensureSessionEpoch(epoch);
     return _remember(_mergeUserData(item, data));
   }
 
   Future<MediaUserData> _withRevisionRetry(
     String id,
     int revision,
+    int epoch,
     Future<MediaUserData> Function(int revision) request,
   ) async {
     try {
       return await request(revision);
     } on ApiException catch (error) {
       if (error.code != 'REVISION_CONFLICT') rethrow;
+      _client.ensureSessionEpoch(epoch);
       final latest = _userDataDecoder.decode(await _client.getUserData(id));
+      _client.ensureSessionEpoch(epoch);
       return request(latest.revision);
     }
   }
@@ -294,10 +342,30 @@ final class ApiMediaRepository
   }
 
   MediaItem _remember(MediaItem item) {
+    item = _mergeCachedUserData(item, _items[item.id]);
     _items.remove(item.id);
     _items[item.id] = item;
     _trimCache();
     return item;
+  }
+
+  /// 较旧响应可以更新媒体元数据，但不能覆盖缓存中 revision 更高的用户字段。
+  MediaItem _mergeCachedUserData(MediaItem incoming, MediaItem? cached) {
+    if (cached == null ||
+        incoming.userDataRevision >= cached.userDataRevision) {
+      return incoming;
+    }
+    return incoming.copyWith(
+      tags: cached.tags,
+      isFavorite: cached.isFavorite,
+      progress: cached.progress,
+      note: cached.note,
+      userDataRevision: cached.userDataRevision,
+      completed: cached.completed,
+      lastPlayedAt: cached.lastPlayedAt,
+      clearLastPlayedAt:
+          cached.lastPlayedAt == null && incoming.lastPlayedAt != null,
+    );
   }
 
   void _trimCache() {
@@ -307,6 +375,7 @@ final class ApiMediaRepository
   }
 
   MediaItem _requiredItem(String id) {
+    _captureSessionEpoch();
     final item = _items[id];
     if (item == null) throw StateError('Unknown media: $id');
     return item;
@@ -333,5 +402,12 @@ final class ApiMediaRepository
     }
     if (bytes >= 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
     return '$bytes B';
+  }
+
+  int _captureSessionEpoch() {
+    final epoch = _client.captureSessionEpoch();
+    if (_cacheEpoch != null && _cacheEpoch != epoch) _items.clear();
+    _cacheEpoch = epoch;
+    return epoch;
   }
 }

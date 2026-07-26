@@ -48,8 +48,7 @@ class HorizontalMediaSection extends StatelessWidget {
               ),
               scrollDirection: Axis.horizontal,
               itemCount: items.length,
-              separatorBuilder: (_, _) =>
-                  const SizedBox(width: LumaSpacing.md),
+              separatorBuilder: (_, _) => const SizedBox(width: LumaSpacing.md),
               itemBuilder: (context, index) {
                 final item = items[index];
                 final heroTag = item.type == MediaType.video

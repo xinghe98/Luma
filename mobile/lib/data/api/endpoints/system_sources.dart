@@ -55,5 +55,4 @@ mixin _SystemSourceEndpoints on _ApiTransport {
 
   Future<Map<String, dynamic>> getScanJob(String id) =>
       _json('GET', _api('/scan-jobs/${_segment(id)}'));
-
 }

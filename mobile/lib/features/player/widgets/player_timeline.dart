@@ -37,9 +37,8 @@ class PlayerTimeline extends StatelessWidget {
               value: durationMs <= 0 ? 0 : positionMs.toDouble(),
               max: durationMs <= 0 ? 1 : durationMs,
               onChangeStart: (_) => controller.beginScrub(),
-              onChanged: (value) => controller.updateScrub(
-                Duration(milliseconds: value.round()),
-              ),
+              onChanged: (value) =>
+                  controller.updateScrub(Duration(milliseconds: value.round())),
               onChangeEnd: (_) => controller.commitScrub(),
             ),
           ),

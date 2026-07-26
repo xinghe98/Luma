@@ -5,7 +5,11 @@ import 'base.dart';
 import 'media.dart';
 
 class SettingsListSkeleton extends StatelessWidget {
-  const SettingsListSkeleton({super.key, this.items = 4, this.showAction = false});
+  const SettingsListSkeleton({
+    super.key,
+    this.items = 4,
+    this.showAction = false,
+  });
 
   final int items;
   final bool showAction;
@@ -37,7 +41,10 @@ class SettingsListSkeleton extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      FractionallySizedBox(widthFactor: 0.46, child: SkeletonBox()),
+                      FractionallySizedBox(
+                        widthFactor: 0.46,
+                        child: SkeletonBox(),
+                      ),
                       SizedBox(height: LumaSpacing.xs),
                       FractionallySizedBox(
                         widthFactor: 0.72,
@@ -57,10 +64,7 @@ class SettingsListSkeleton extends StatelessWidget {
 }
 
 class DetailPageSkeleton extends StatelessWidget {
-  const DetailPageSkeleton({
-    super.key,
-    this.artworkAspectRatio = 16 / 10,
-  });
+  const DetailPageSkeleton({super.key, this.artworkAspectRatio = 16 / 10});
 
   final double artworkAspectRatio;
 
@@ -70,7 +74,9 @@ class DetailPageSkeleton extends StatelessWidget {
       padding: LumaLayout.pagePadding(top: LumaSpacing.sm),
       child: Center(
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: LumaLayout.detailMaxWidth),
+          constraints: const BoxConstraints(
+            maxWidth: LumaLayout.detailMaxWidth,
+          ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -153,4 +159,3 @@ class _HorizontalCardSkeleton extends StatelessWidget {
     );
   }
 }
-

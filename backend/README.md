@@ -4,7 +4,7 @@
 
 ## 快速开始
 
-要求 Go 1.24；执行 `-check-config` 时还要求本机已安装 `ffmpeg` 与 `ffprobe`。本地开发使用 Air `v1.62.0` 热重载 API 服务，该版本与项目的 Go 1.24 基线兼容。
+要求 Go 1.25；执行 `-check-config` 时还要求本机已安装 `ffmpeg` 与 `ffprobe`。本地开发使用 Air `v1.62.0` 热重载 API 服务。
 
 ```bash
 cd backend
@@ -27,7 +27,7 @@ Copy-Item configs/config.example.yaml configs/config.yaml
 
 ### 多用户、登录会话与媒体源授权
 
-内置 `user_local` 是管理员账号。管理员用 `security.admin_username` 和初始密码登录后，可在 App 中创建成员、设置用户名和密码、分配媒体源并管理其登录设备。成员无授权时默认看不到任何来源，越权访问媒体 ID、缩略图或流地址也统一按不存在处理。
+内置 `user_local` 是管理员账号。管理员用 `security.admin_username`（默认 `admin`）和初始密码登录后，可在 App 中创建成员、设置用户名和密码、分配媒体源并管理其登录设备。用户名为 3 至 32 个 ASCII 字母、数字、点、下划线或连字符，密码为 10 至 128 个 Unicode 字符且最多 512 个 UTF-8 字节。成员无授权时默认看不到任何来源，越权访问媒体 ID、缩略图或流地址也统一按不存在处理。
 
 ```bash
 go build -o dist/luma-admin ./cmd/admin
@@ -41,9 +41,9 @@ dist/luma-admin -username admin -password-file data/secrets/admin_password sessi
 dist/luma-admin -username admin -password-file data/secrets/admin_password users reset-password -id USER_ID -password-file ./new-password.txt
 ```
 
-也可通过 `LUMA_ADMIN_USERNAME` 和 `LUMA_ADMIN_PASSWORD_FILE` 提供管理员凭据。所有全局参数必须写在命令之前。管理员 API 位于 `/api/v1/admin/*`，完整请求体和响应见 `api/openapi.yaml`。
+也可通过 `LUMA_ADMIN_USERNAME` 和 `LUMA_ADMIN_PASSWORD_FILE` 提供管理员凭据。CLI 首次运行会在用户配置目录生成安装级随机 `device_key`，也可用 `LUMA_ADMIN_DEVICE_KEY_FILE` 或 `-device-key-file` 指定文件；每条命令结束时都会尽力撤销本次会话。所有全局参数必须写在命令之前。管理员 API 位于 `/api/v1/admin/*`，完整请求体和响应见 `api/openapi.yaml`。
 
-远程管理必须使用 HTTPS。CLI 会拒绝对非回环主机使用明文 HTTP，除非显式传入 `-allow-insecure`。登录设备会话默认永久有效；撤销会话、重置密码或禁用用户都会使对应设备立即失效。`allowed_roots` 支持 YAML 列表中的多个本地盘符或 UNC 根目录，但它只负责路径白名单，成员可见性以 `source_grants` 为准。
+远程管理必须使用 HTTPS。CLI 会拒绝对非回环主机使用明文 HTTP，除非显式传入 `-allow-insecure`。设备会话默认有效 30 天，可通过 `security.session_duration` 调整；客户端必须遵守登录响应中的 `expires_at`。数据库升级也会把升级前遗留的永久会话限制为 30 天。客户端可提交最长 64 个字符的安装级随机 `device_key`，同一账号在同一安装中重登会顶替旧会话。撤销会话、重置密码或禁用用户都会使对应设备立即失效。`device_key` 不对外返回，也不能使用硬件唯一标识。`allowed_roots` 支持 YAML 列表中的多个本地盘符或 UNC 根目录，但它只负责路径白名单，成员可见性以 `source_grants` 为准。
 
 ### 自动扫描
 
@@ -124,6 +124,8 @@ type Provider interface {
 
 以下请求均需携带管理员登录后取得的会话。创建媒体源时 `root_path` 必须位于 `security.allowed_roots` 中；普通媒体源响应不会返回真实路径，管理员可通过 `GET /api/v1/admin/media-roots` 读取可选目录以供客户端选择。
 
+管理界面使用 `POST /api/v1/admin/media-sources` 串联来源创建、初始授权和首次扫描。该入口不宣称跨服务数据库事务：授权或扫描失败时会撤销目标用户的授权、硬删除尚无扫描与媒体记录的来源并级联清除授权；若补偿本身失败，响应会保留原始错误并附带清理错误，便于运维继续处理。已有扫描或媒体索引的正常来源仍使用软删除并保留历史数据。
+
 服务重启采用扫描恢复策略 A：启动时先将上次遗留的 `running` 扫描一次性标记为 `interrupted`，不提交该次扫描的 `missing`，也不自动重试；`pending` 扫描会继续由 Worker 领取。用户可在服务就绪后手动重新发起被中断来源的扫描。扫描与媒体处理恢复全部成功后 HTTP 才开始对外服务，因此就绪探测不会早于持久化状态恢复。
 
 ```bash
@@ -144,6 +146,7 @@ curl http://127.0.0.1:8080/api/v1/scan-jobs/{scan_id} \
 ```text
 GET   /api/v1/catalog?kind=movie|series
 GET   /api/v1/catalog/{id}
+PATCH /api/v1/catalog/{id}/user-data
 GET   /api/v1/catalog/issues
 PATCH /api/v1/catalog/media/{media_id}
 GET   /api/v1/catalog/artwork/{artwork_id}

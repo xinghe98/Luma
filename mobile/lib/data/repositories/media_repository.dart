@@ -8,8 +8,12 @@ abstract interface class MediaRepository {
   Future<List<MediaItem>> refresh();
   Future<List<MediaItem>> search(MediaFilter filter);
 
-  /// 单页搜索，供库页无限滚动使用。
-  Future<MediaListPage> searchPage(MediaFilter filter, {String? cursor});
+  /// 单页搜索，供库页无限滚动使用；[limit] 必须位于服务端允许的 1–100 范围。
+  Future<MediaListPage> searchPage(
+    MediaFilter filter, {
+    String? cursor,
+    int? limit,
+  });
 
   /// 统计符合筛选的媒体总数（分页累加，不入 UI 缓存）。
   Future<int> countMedia({MediaType? type});

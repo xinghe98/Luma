@@ -121,5 +121,4 @@ mixin _MediaEndpoints on _ApiTransport {
     originalPath(id),
     headers: {'If-None-Match': ?etag, 'If-Modified-Since': ?modifiedSince},
   );
-
 }

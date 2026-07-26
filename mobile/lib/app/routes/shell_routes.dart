@@ -11,8 +11,7 @@ import '../../features/shell/app_shell.dart';
 import '../app_navigation.dart';
 import '../app_route.dart';
 
-StatefulShellRoute buildShellRoutes() =>
-StatefulShellRoute.indexedStack(
+StatefulShellRoute buildShellRoutes() => StatefulShellRoute.indexedStack(
   builder: (_, _, navigationShell) =>
       AppShell(navigationShell: navigationShell),
   branches: [
@@ -24,8 +23,7 @@ StatefulShellRoute.indexedStack(
           builder: (context, _) => HomePage(
             onOpenMedia: (item, {heroTag}) =>
                 context.openMediaDetails(item, heroTag: heroTag),
-            onOpenSearch: () =>
-                context.goToDestination(AppDestination.search),
+            onOpenSearch: () => context.goToDestination(AppDestination.search),
           ),
         ),
       ],
@@ -41,8 +39,7 @@ StatefulShellRoute.indexedStack(
                 context.openImagePreview(item, heroTag: heroTag),
             onLongPressMedia: (item, {heroTag}) =>
                 context.openMediaDetails(item, heroTag: heroTag),
-            onOpenSearch: () =>
-                context.goToDestination(AppDestination.search),
+            onOpenSearch: () => context.goToDestination(AppDestination.search),
           ),
         ),
       ],
@@ -53,23 +50,17 @@ StatefulShellRoute.indexedStack(
           name: AppDestination.videos.routeName,
           path: AppDestination.videos.path,
           builder: (context, _) => CatalogPage(
-            onOpenCatalog: context.openCatalogDetails,
+            onOpenCatalog: (item, {heroTag}) =>
+                context.openCatalogDetails(item, heroTag: heroTag),
             onOpenPersonalMedia: (item, {heroTag}) =>
                 context.openMediaDetails(item, heroTag: heroTag),
-            onOpenSearch: () =>
-                context.goToDestination(AppDestination.search),
-            onOpenMovies: (items) => context.pushNamed(
-              AppRoute.movieCollection,
-              extra: items,
-            ),
-            onOpenSeries: (items) => context.pushNamed(
-              AppRoute.seriesCollection,
-              extra: items,
-            ),
-            onOpenPersonalVideos: (items) => context.pushNamed(
-              AppRoute.personalVideos,
-              extra: items,
-            ),
+            onOpenSearch: () => context.goToDestination(AppDestination.search),
+            onOpenMovies: (items) =>
+                context.pushNamed(AppRoute.movieCollection, extra: items),
+            onOpenSeries: (items) =>
+                context.pushNamed(AppRoute.seriesCollection, extra: items),
+            onOpenPersonalVideos: (items) =>
+                context.pushNamed(AppRoute.personalVideos, extra: items),
           ),
         ),
       ],

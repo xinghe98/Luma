@@ -3,8 +3,16 @@ openapi: 3.1.0
 info:
   title: Luma Local Media API
   version: 0.1.0
+  description: 远程部署必须通过 TLS 提供 API；仅同机回环开发可使用明文 HTTP。
 servers:
-  - url: /
+  - url: https://{host}
+    description: 远程或局域网部署的 TLS 入口
+    variables:
+      host:
+        default: luma.example.com
+        description: 部署方配置的服务端主机名与可选端口
+  - url: http://127.0.0.1:8080
+    description: 仅供同机回环开发使用
 paths:
   /health:
     get:
@@ -19,6 +27,7 @@ paths:
   /api/v1/auth/login:
     post:
       summary: 使用用户名和密码创建设备会话
+      description: 客户端必须遵守 expires_at；null 仅表示当前签发未声明期限，不保证永久有效，服务端仍可随时撤销会话。
       requestBody:
         required: true
         content:
@@ -34,6 +43,7 @@ paths:
   /api/v1/auth/logout:
     post:
       summary: 撤销当前设备会话
+      description: 客户端结束会话时应尽力调用；无论响应是否可达，都必须清除本地会话密钥。
       security: [{ bearerAuth: [] }]
       responses:
         "204": { description: 已退出登录 }
@@ -104,6 +114,26 @@ paths:
                     items: { type: string }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
+  /api/v1/admin/media-sources:
+    post:
+      summary: 创建媒体源、成员授权并启动首次扫描
+      description: 仅管理员可调用。该入口按顺序创建来源、授权并启动扫描；后续步骤失败时服务端撤销已授予权限、硬删除未初始化来源并取消待执行扫描。普通 POST /sources 不包含授权和首次扫描。
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateManagedSource" }
+      responses:
+        "201":
+          description: 媒体源已创建、授权已保存且首次扫描已排队
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ManagedSourceCreation" }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
   /api/v1/sources/{id}:
     parameters:
       - $ref: "#/components/parameters/SourceID"
@@ -820,9 +850,15 @@ paths:
             schema:
               type: object
               additionalProperties: false
-              required: [name]
+              required: [name, username, password]
               properties:
                 name: { type: string, minLength: 1, maxLength: 80 }
+                username:
+                  type: string
+                  minLength: 3
+                  maxLength: 32
+                  pattern: "^[A-Za-z0-9._-]+$"
+                password: { type: string, minLength: 10, maxLength: 128 }
                 request_id:
                   type: string
                   maxLength: 128
@@ -872,7 +908,7 @@ paths:
               additionalProperties: false
               required: [password]
               properties:
-                password: { type: string, minLength: 3 }
+                password: { type: string, minLength: 10, maxLength: 128 }
       responses:
         "204": { description: 密码已更新，既有设备会话已撤销 }
         "403": { $ref: "#/components/responses/Forbidden" }
@@ -980,6 +1016,7 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/CatalogItem" }
         "404": { $ref: "#/components/responses/NotFound" }
+  /api/v1/catalog/{id}/user-data:
     patch:
       summary: 更新当前用户的作品级收藏
       description: 收藏绑定作品，不随 4K、1080p 等本地媒体版本切换而丢失。
@@ -1003,6 +1040,7 @@ components:
     bearerAuth:
       type: http
       scheme: bearer
+      description: 除同机回环开发外，Bearer 会话密钥只能通过 TLS 传输；客户端不得记录或通过 URL 传递密钥。
   schemas:
     Health:
       type: object
@@ -1059,8 +1097,12 @@ components:
       additionalProperties: false
       properties:
         username: { type: string, minLength: 3, maxLength: 32 }
-        password: { type: string, minLength: 3 }
+        password: { type: string, minLength: 10, maxLength: 128 }
         device_name: { type: string, minLength: 1, maxLength: 80 }
+        device_key:
+          type: string
+          maxLength: 64
+          description: 可选的安装级稳定随机标识；同一账号和标识再次登录时会顶替旧有效会话，不应使用硬件唯一标识。
     LoginResponse:
       type: object
       required: [session_token, token_type, expires_at, user]
@@ -1070,7 +1112,7 @@ components:
         expires_at:
           type: [string, "null"]
           format: date-time
-          description: 当前会话永久有效，固定返回 null。
+          description: 非空时是客户端必须遵守的会话截止时间；null 是渐进采用期限期间的兼容值，不构成永久有效承诺。
         user: { $ref: "#/components/schemas/AccessUser" }
     Error:
       type: object
@@ -1091,6 +1133,25 @@ components:
         name: { type: string, minLength: 1, maxLength: 200 }
         root_path: { type: string, minLength: 1 }
         library_kind: { type: string, enum: [personal, movies, tv], default: personal }
+    CreateManagedSource:
+      type: object
+      additionalProperties: false
+      required: [name, root_path, library_kind, user_ids]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 200 }
+        root_path: { type: string, minLength: 1 }
+        library_kind: { type: string, enum: [personal, movies, tv] }
+        user_ids:
+          type: array
+          uniqueItems: true
+          items: { type: string, minLength: 1 }
+    ManagedSourceCreation:
+      type: object
+      additionalProperties: false
+      required: [source, scan_job]
+      properties:
+        source: { $ref: "#/components/schemas/Source" }
+        scan_job: { $ref: "#/components/schemas/ScanJob" }
     UpdateSource:
       type: object
       additionalProperties: false

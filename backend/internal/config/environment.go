@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 )
 
 // CheckEnvironment 检查数据目录可写性以及媒体工具是否可执行。
@@ -43,6 +44,9 @@ func CheckEnvironment(ctx context.Context, cfg Config) error {
 
 // PrepareDataDirectories 创建服务端运行所需的全部可写数据目录。
 func PrepareDataDirectories(cfg Config) error {
+	if problems := validateDataPathIsolation(cfg); len(problems) > 0 {
+		return fmt.Errorf("validate data paths before creation: %s", strings.Join(problems, "; "))
+	}
 	dirs := []string{
 		filepath.Dir(cfg.Database.Path),
 		filepath.Dir(cfg.Security.AdminPasswordFile),

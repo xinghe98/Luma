@@ -80,6 +80,16 @@ var Sessions string
 //go:embed 018_permanent_sessions.sql
 var PermanentSessions string
 
+// SessionDeviceKey 为登录会话增加安装级 device_key，用于同机重登顶替。
+//
+//go:embed 019_session_device_key.sql
+var SessionDeviceKey string
+
+// ExpirePermanentSessions 为升级前遗留的永久会话设置有限期限。
+//
+//go:embed 020_expire_permanent_sessions.sql
+var ExpirePermanentSessions string
+
 // CatalogMetadata 保存可扩展 Provider 刮削、候选与丰富作品资料结构。
 //
 //go:embed 013_catalog_metadata.sql

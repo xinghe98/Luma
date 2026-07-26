@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+/// 显示确认操作弹窗；取消、返回键和点击遮罩都返回 false。
 Future<bool> showConfirmationDialog(
   BuildContext context, {
   required String title,
@@ -10,6 +11,7 @@ Future<bool> showConfirmationDialog(
         context: context,
         animationStyle: AnimationStyle.noAnimation,
         builder: (context) => AlertDialog(
+          scrollable: true,
           title: Text(title),
           content: Text(message),
           actions: [

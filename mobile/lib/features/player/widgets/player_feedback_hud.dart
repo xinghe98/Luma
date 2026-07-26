@@ -55,11 +55,7 @@ class _PlayerFeedbackHudState extends State<PlayerFeedbackHud> {
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(
-                          shown.icon,
-                          color: extras.onPlayerInk,
-                          size: 28,
-                        ),
+                        Icon(shown.icon, color: extras.onPlayerInk, size: 28),
                         const SizedBox(height: LumaSpacing.xs),
                         Text(
                           shown.title,

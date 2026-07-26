@@ -47,12 +47,20 @@ class PlayerInteractionController extends ChangeNotifier {
   Timer? _deviceTimer;
   double? _pendingDeviceValue;
   bool _disposed = false;
+  bool _volumeAvailable = false;
+  bool _brightnessAvailable = false;
 
   PlayerGestureMode get mode => _mode;
   PlayerHudKind get hudKind => _hudKind;
   bool get hudVisible => _hudKind != PlayerHudKind.hidden;
   double get volume => _volume;
   double get brightness => _brightness;
+
+  /// 当前宿主是否允许播放器手势修改系统音量。
+  bool get volumeAvailable => _volumeAvailable;
+
+  /// 当前宿主是否允许播放器手势修改窗口亮度。
+  bool get brightnessAvailable => _brightnessAvailable;
   Duration get seekTarget => _seekTarget;
   Duration get seekDelta => _seekTarget - _seekOrigin;
   double get seekProgress {
@@ -65,6 +73,8 @@ class PlayerInteractionController extends ChangeNotifier {
     if (_disposed) return;
     _volume = state.volume;
     _brightness = state.brightness;
+    _volumeAvailable = state.volumeAvailable;
+    _brightnessAvailable = state.brightnessAvailable;
   }
 
   void handleTap() {
@@ -148,9 +158,17 @@ class PlayerInteractionController extends ChangeNotifier {
       return;
     }
     if (_startX <= _surfaceSize.width * 0.4) {
+      if (!_brightnessAvailable) {
+        _mode = PlayerGestureMode.ignored;
+        return;
+      }
       _mode = PlayerGestureMode.brightness;
       _showHud(PlayerHudKind.brightness, persistent: true);
     } else if (_startX >= _surfaceSize.width * 0.6) {
+      if (!_volumeAvailable) {
+        _mode = PlayerGestureMode.ignored;
+        return;
+      }
       _mode = PlayerGestureMode.volume;
       _showHud(PlayerHudKind.volume, persistent: true);
     } else {

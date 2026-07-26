@@ -109,7 +109,7 @@ class ConnectionForm extends StatelessWidget {
           label: Text(controller.isLoading ? '正在连接' : '立即连接'),
         ),
         AnimatedSwitcher(
-          duration: LumaMotion.normal,
+          duration: LumaMotion.forContext(context, LumaMotion.normal),
           switchInCurve: LumaMotion.standard,
           switchOutCurve: LumaMotion.standard,
           child: controller.message == null
