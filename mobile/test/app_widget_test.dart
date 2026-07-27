@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:luma/app/app_dependencies.dart';
 import 'package:luma/app/app_scope.dart';
 import 'package:luma/app/controllers/media_controller.dart';
+import 'package:luma/core/theme.dart';
 import 'package:luma/data/mock/mock_connection_service.dart';
 import 'package:luma/data/mock/mock_media_repository.dart';
 import 'package:luma/data/models/media_types.dart';
@@ -16,6 +17,7 @@ import 'package:luma/data/storage/server_alias_store.dart';
 import 'package:luma/features/catalog/catalog_page.dart';
 import 'package:luma/features/catalog/widgets/catalog_card.dart';
 import 'package:luma/features/connection/connection_page.dart';
+import 'package:luma/features/home/widgets/home_header.dart';
 import 'package:luma/features/search/widgets/search_results.dart';
 import 'package:luma/features/settings/settings_page.dart';
 import 'package:luma/main.dart';
@@ -64,17 +66,17 @@ void main() {
     expect(find.text('连接你的轻影服务器'), findsOneWidget);
     expect(
       tester.widget<Text>(find.text('连接你的轻影服务器')).textAlign,
-      TextAlign.center,
+      TextAlign.left,
     );
     expect(
       tester
           .widget<BrandMark>(
             find.byWidgetPredicate(
-              (widget) => widget is BrandMark && widget.height == 72,
+              (widget) => widget is BrandMark && widget.height == 42,
             ),
           )
           .height,
-      72,
+      42,
     );
     expect(find.text('连接家庭服务器后，你的影像仍然只属于自己的网络。'), findsNothing);
 
@@ -170,6 +172,13 @@ void main() {
     );
     expect(homeFeedback.customBorder, isA<CircleBorder>());
     expect(homeFeedback.containedInkWell, isTrue);
+    final selectedHomeIcon = tester.widget<Icon>(
+      find.descendant(
+        of: find.byKey(const ValueKey('bottom-nav-home')),
+        matching: find.byType(Icon),
+      ),
+    );
+    expect(selectedHomeIcon.color, LumaColors.lightPrimary);
 
     await tester.tap(find.byKey(const ValueKey('bottom-nav-photos')));
     await tester.pump();
@@ -214,6 +223,41 @@ void main() {
     await tester.pump();
     expect(find.textContaining('windows amd64'), findsOneWidget);
     expect(find.textContaining('Database: ok'), findsOneWidget);
+  });
+
+  testWidgets('home brand header keeps search usable on a narrow phone', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    var searchOpened = false;
+    final dependencies = createDependencies();
+    addTearDown(dependencies.dispose);
+
+    await tester.pumpWidget(
+      AppScope(
+        dependencies: dependencies,
+        child: MaterialApp(
+          theme: LumaTheme.light(),
+          home: Scaffold(
+            body: SafeArea(
+              child: HomeHeader(
+                onOpenSearch: () => searchOpened = true,
+                onScrollToTop: () {},
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('搜索你的媒体'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.tap(find.text('搜索你的媒体'));
+    await tester.pump();
+    expect(searchOpened, isTrue);
   });
 
   testWidgets('search idle state prompts for criteria', (tester) async {

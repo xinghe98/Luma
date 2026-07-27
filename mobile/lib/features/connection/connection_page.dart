@@ -3,10 +3,10 @@ import 'package:flutter/material.dart';
 import '../../app/app_scope.dart';
 import '../../core/extensions.dart';
 import '../../core/theme.dart';
-import '../../shared/branding/brand_mark.dart';
+import '../../data/services/connection_service.dart';
+import 'widgets/connection_brand_header.dart';
 import 'widgets/connection_form.dart';
 import 'widgets/recent_servers.dart';
-import '../../data/services/connection_service.dart';
 
 class ConnectionPage extends StatefulWidget {
   const ConnectionPage({super.key});
@@ -46,9 +46,8 @@ class _ConnectionPageState extends State<ConnectionPage> {
     final controller = dependencies.connection;
     return Scaffold(
       body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(LumaSpacing.lg),
+        child: SingleChildScrollView(
+          child: Center(
             child: ConstrainedBox(
               constraints: const BoxConstraints(
                 maxWidth: LumaLayout.formMaxWidth,
@@ -63,43 +62,46 @@ class _ConnectionPageState extends State<ConnectionPage> {
                   return Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      const Align(
-                        alignment: Alignment.center,
-                        child: _ConnectionBrandMark(),
-                      ),
-                      const SizedBox(height: LumaSpacing.xxl),
-                      Text(
-                        '连接你的轻影服务器',
-                        textAlign: TextAlign.center,
-                        style: Theme.of(context).textTheme.headlineMedium,
-                      ),
-                      const SizedBox(height: LumaSpacing.xl),
-                      ConnectionForm(
-                        controller: controller,
-                        hostController: _host,
-                        portController: _port,
-                        usernameController: _username,
-                        passwordController: _password,
-                        enabled: !restoring,
-                        onConnect: () {
-                          FocusScope.of(context).unfocus();
-                          controller.connect(
-                            _serverAddress,
-                            LoginCredentials(
-                              username: _username.text,
-                              password: _password.text,
+                      const ConnectionBrandHeader(),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(
+                          LumaSpacing.lg,
+                          LumaSpacing.xl,
+                          LumaSpacing.lg,
+                          LumaSpacing.lg,
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            ConnectionForm(
+                              controller: controller,
+                              hostController: _host,
+                              portController: _port,
+                              usernameController: _username,
+                              passwordController: _password,
+                              enabled: !restoring,
+                              onConnect: () {
+                                FocusScope.of(context).unfocus();
+                                controller.connect(
+                                  _serverAddress,
+                                  LoginCredentials(
+                                    username: _username.text,
+                                    password: _password.text,
+                                  ),
+                                );
+                              },
                             ),
-                          );
-                        },
-                      ),
-                      if (restoring) ...[
-                        const SizedBox(height: LumaSpacing.sm),
-                        const Text('正在恢复已保存的服务器连接…'),
-                      ],
-                      const SizedBox(height: LumaSpacing.lg),
-                      RecentServers(
-                        enabled: !restoring && !controller.isLoading,
-                        onSelect: _selectServer,
+                            if (restoring) ...[
+                              const SizedBox(height: LumaSpacing.sm),
+                              const Text('正在恢复已保存的服务器连接…'),
+                            ],
+                            const SizedBox(height: LumaSpacing.lg),
+                            RecentServers(
+                              enabled: !restoring && !controller.isLoading,
+                              onSelect: _selectServer,
+                            ),
+                          ],
+                        ),
                       ),
                     ],
                   );
@@ -139,24 +141,4 @@ class _ConnectionPageState extends State<ConnectionPage> {
     }
     return (host: bare, port: '8080');
   }
-}
-
-class _ConnectionBrandMark extends StatelessWidget {
-  const _ConnectionBrandMark();
-
-  @override
-  Widget build(BuildContext context) => SizedBox(
-    width: 240,
-    height: 72,
-    child: ClipRect(
-      child: Transform.scale(
-        alignment: Alignment.centerLeft,
-        scale: 2.5,
-        child: const Align(
-          alignment: Alignment.centerLeft,
-          child: BrandMark(variant: BrandMarkVariant.horizontal, height: 72),
-        ),
-      ),
-    ),
-  );
 }

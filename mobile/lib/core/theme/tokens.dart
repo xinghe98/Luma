@@ -1,45 +1,49 @@
 import 'package:flutter/material.dart';
 
 abstract final class LumaColors {
-  static const ink = Color(0xFF2C3433);
-  static const deepBlue = Color(0xFF2E322F);
-  static const surface = Color(0xFF3A3D38);
-  static const elevated = Color(0xFF484A44);
-  static const gold = Color(0xFFB48A4B);
-  static const paper = Color(0xFFEEE6DA);
+  static const ink = Color(0xFF24302F);
+  static const deepBlue = Color(0xFF172321);
+  static const surface = Color(0xFF243735);
+  static const elevated = Color(0xFF304543);
+  static const gold = Color(0xFFC59447);
+  static const paper = Color(0xFFF5EFE6);
   static const success = Color(0xFF8EAD92);
-  static const warning = Color(0xFFC1A064);
+  static const warning = Color(0xFFD8B36B);
   static const lightSuccess = Color(0xFF356746);
   static const lightWarning = Color(0xFF765617);
-  static const lightPrimary = Color(0xFF535853);
-  static const darkPrimary = Color(0xFFC5C6BD);
-  static const lightSecondary = Color(0xFF756035);
-  static const lightSurfaceContainer = Color(0xFFE1D9CD);
-  static const lightSurfaceContainerHigh = Color(0xFFD4CCC0);
-  static const onInk = Color(0xFFF7F0E6);
-  static const onInkMuted = Color(0xB3F7F0E6);
-  static const lightPrimaryContainer = Color(0xFFDAD8CD);
-  static const lightSecondaryContainer = Color(0xFFE7D8BE);
+  static const lightPrimary = Color(0xFF3F6662);
+  static const darkPrimary = Color(0xFFAFCBC6);
+  static const lightSecondary = Color(0xFF7A5A25);
+  static const lightSurfaceContainer = Color(0xFFF9F4EC);
+  static const lightSurfaceContainerHigh = Color(0xFFE7DED2);
+  static const onInk = Color(0xFFF1ECE3);
+  static const onInkMuted = Color(0xB3F1ECE3);
+  static const lightPrimaryContainer = Color(0xFFD5E3DF);
+  static const lightSecondaryContainer = Color(0xFFEFE1C7);
   static const lightTertiary = Color(0xFF705E55);
   static const lightTertiaryContainer = Color(0xFFE5D6CC);
-  static const lightOutline = Color(0xFF79776E);
-  static const lightOutlineVariant = Color(0xFFC8C1B7);
-  static const darkPrimaryContainer = Color(0xFF52554F);
-  static const darkSecondaryContainer = Color(0xFF5D502F);
+  static const lightOutline = Color(0xFF777A73);
+  static const lightOutlineVariant = Color(0xFFC8C1B5);
+  static const darkPrimaryContainer = Color(0xFF304543);
+  static const darkSecondaryContainer = Color(0xFF5C4A28);
   static const darkTertiary = Color(0xFFD5BFB3);
   static const darkTertiaryContainer = Color(0xFF594940);
-  static const darkOutline = Color(0xFF97938A);
-  static const darkOutlineVariant = Color(0xFF4B4A44);
-  static const lightSurfaceDim = Color(0xFFD9D1C5);
-  static const darkSurfaceBright = Color(0xFF464842);
+  static const darkOutline = Color(0xFF929B97);
+  static const darkOutlineVariant = Color(0xFF455653);
+  static const lightSurfaceDim = Color(0xFFE6DDD1);
+  static const darkSurfaceBright = Color(0xFF3A504D);
+  static const lightBrandSurface = Color(0xFF3F6662);
+  static const lightBrandSurfaceVariant = Color(0xFF4B736E);
+  static const darkBrandSurface = Color(0xFF243735);
+  static const darkBrandSurfaceVariant = Color(0xFF304543);
   static const error = Color(0xFFB3261E);
   static const onError = Color(0xFFFFF8F6);
   static const lightErrorContainer = Color(0xFFFFDAD5);
   static const lightOnErrorContainer = Color(0xFF410002);
   static const darkErrorContainer = Color(0xFF8C1D18);
   static const darkOnErrorContainer = Color(0xFFFFDAD5);
-  static const lightBadgeScrim = Color(0x9A2C3433);
-  static const darkBadgeScrim = Color(0xB32C3433);
+  static const lightBadgeScrim = Color(0x9A24302F);
+  static const darkBadgeScrim = Color(0xB324302F);
 }
 
 abstract final class LumaArtworkColors {
@@ -208,6 +212,7 @@ abstract final class LumaRadii {
   static const small = 8.0;
   static const medium = 12.0;
   static const large = 18.0;
+  static const extraLarge = 32.0;
   static const badge = 8.0;
 }
 

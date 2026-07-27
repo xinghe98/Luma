@@ -75,7 +75,7 @@ class _LumaBottomNavigation extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final activeColor = isDark ? LumaColors.onInk : colors.onSurface;
+    final activeColor = colors.primary;
     final inactiveColor = isDark
         ? LumaColors.onInkMuted
         : colors.onSurfaceVariant;

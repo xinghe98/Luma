@@ -23,6 +23,10 @@ class ScanStatusCard extends StatelessWidget {
         final count = media.items.length;
         final isProblem = settings.hasScanProblem;
         return SurfaceCard(
+          padding: const EdgeInsets.symmetric(
+            horizontal: LumaSpacing.md,
+            vertical: LumaSpacing.sm,
+          ),
           onTap: () => context.showLumaSnack(
             scanning
                 ? '${settings.scanStatusLabel}：$percent%'

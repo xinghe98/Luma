@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'tokens.dart';
 
+/// 补充 Material 色板未覆盖的轻影视觉语义，不承载业务状态。
 @immutable
 class LumaExtras extends ThemeExtension<LumaExtras> {
   const LumaExtras({
@@ -12,6 +13,10 @@ class LumaExtras extends ThemeExtension<LumaExtras> {
     required this.onPlayerInkMuted,
     required this.badgeScrim,
     required this.coverRadius,
+    required this.brandSurface,
+    required this.brandSurfaceVariant,
+    required this.onBrandSurface,
+    required this.onBrandSurfaceMuted,
   });
 
   final Color success;
@@ -21,6 +26,10 @@ class LumaExtras extends ThemeExtension<LumaExtras> {
   final Color onPlayerInkMuted;
   final Color badgeScrim;
   final double coverRadius;
+  final Color brandSurface;
+  final Color brandSurfaceVariant;
+  final Color onBrandSurface;
+  final Color onBrandSurfaceMuted;
 
   static const light = LumaExtras(
     success: LumaColors.lightSuccess,
@@ -30,6 +39,10 @@ class LumaExtras extends ThemeExtension<LumaExtras> {
     onPlayerInkMuted: LumaColors.onInkMuted,
     badgeScrim: LumaColors.lightBadgeScrim,
     coverRadius: LumaRadii.large,
+    brandSurface: LumaColors.lightBrandSurface,
+    brandSurfaceVariant: LumaColors.lightBrandSurfaceVariant,
+    onBrandSurface: LumaColors.onInk,
+    onBrandSurfaceMuted: LumaColors.onInkMuted,
   );
 
   static const dark = LumaExtras(
@@ -40,6 +53,10 @@ class LumaExtras extends ThemeExtension<LumaExtras> {
     onPlayerInkMuted: LumaColors.onInkMuted,
     badgeScrim: LumaColors.darkBadgeScrim,
     coverRadius: LumaRadii.large,
+    brandSurface: LumaColors.darkBrandSurface,
+    brandSurfaceVariant: LumaColors.darkBrandSurfaceVariant,
+    onBrandSurface: LumaColors.onInk,
+    onBrandSurfaceMuted: LumaColors.onInkMuted,
   );
 
   @override
@@ -51,6 +68,10 @@ class LumaExtras extends ThemeExtension<LumaExtras> {
     Color? onPlayerInkMuted,
     Color? badgeScrim,
     double? coverRadius,
+    Color? brandSurface,
+    Color? brandSurfaceVariant,
+    Color? onBrandSurface,
+    Color? onBrandSurfaceMuted,
   }) {
     return LumaExtras(
       success: success ?? this.success,
@@ -60,6 +81,10 @@ class LumaExtras extends ThemeExtension<LumaExtras> {
       onPlayerInkMuted: onPlayerInkMuted ?? this.onPlayerInkMuted,
       badgeScrim: badgeScrim ?? this.badgeScrim,
       coverRadius: coverRadius ?? this.coverRadius,
+      brandSurface: brandSurface ?? this.brandSurface,
+      brandSurfaceVariant: brandSurfaceVariant ?? this.brandSurfaceVariant,
+      onBrandSurface: onBrandSurface ?? this.onBrandSurface,
+      onBrandSurfaceMuted: onBrandSurfaceMuted ?? this.onBrandSurfaceMuted,
     );
   }
 
@@ -76,6 +101,16 @@ class LumaExtras extends ThemeExtension<LumaExtras> {
           onPlayerInkMuted,
       badgeScrim: Color.lerp(badgeScrim, other.badgeScrim, t) ?? badgeScrim,
       coverRadius: t < 0.5 ? coverRadius : other.coverRadius,
+      brandSurface:
+          Color.lerp(brandSurface, other.brandSurface, t) ?? brandSurface,
+      brandSurfaceVariant:
+          Color.lerp(brandSurfaceVariant, other.brandSurfaceVariant, t) ??
+          brandSurfaceVariant,
+      onBrandSurface:
+          Color.lerp(onBrandSurface, other.onBrandSurface, t) ?? onBrandSurface,
+      onBrandSurfaceMuted:
+          Color.lerp(onBrandSurfaceMuted, other.onBrandSurfaceMuted, t) ??
+          onBrandSurfaceMuted,
     );
   }
 }
