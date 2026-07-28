@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:go_router/go_router.dart';
+import 'package:media_kit/media_kit.dart';
 
 import 'app/app_dependencies.dart';
 import 'app/app_router.dart';
@@ -13,6 +14,7 @@ import 'shared/branding/brand_mark.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  MediaKit.ensureInitialized();
   final imageCache = PaintingBinding.instance.imageCache;
   final view = WidgetsBinding.instance.platformDispatcher.views.first;
   final logicalShortestSide =

@@ -3,7 +3,8 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
-import 'package:video_player/video_player.dart';
+import 'package:media_kit/media_kit.dart';
+import 'package:media_kit_video/media_kit_video.dart';
 
 import '../../app/controllers/media_controller.dart';
 import '../../data/api/api_session.dart';
@@ -35,13 +36,16 @@ class PlayerController extends ChangeNotifier {
   Timer? _saveTimer;
   Timer? _syncThrottle;
   Timer? _lockHintTimer;
-  VideoPlayerController? _videoController;
+  Player? _player;
+  VideoController? _videoController;
+  final List<StreamSubscription<dynamic>> _playerSubscriptions = [];
   String? _error;
   bool _disposed = false;
+  bool _initialized = false;
+  bool _buffering = false;
   bool _playing = false;
   bool _controlsVisible = true;
   bool _locked = false;
-  bool _completedSaved = false;
   bool _initializationFailed = false;
   bool _scrubbing = false;
   bool _resumeAfterScrub = false;
@@ -54,13 +58,17 @@ class PlayerController extends ChangeNotifier {
   bool get controlsVisible => _controlsVisible;
   bool get locked => _locked;
   double get speed => _speed;
-  bool get initialized => _videoController?.value.isInitialized ?? false;
-  bool get buffering => _videoController?.value.isBuffering ?? false;
+  bool get initialized => _initialized;
+  bool get buffering => _buffering;
   bool get scrubbing => _scrubbing;
   String? get error => _error;
-  VideoPlayerController? get videoController => _videoController;
-  Duration get duration =>
-      initialized ? _videoController!.value.duration : item.duration;
+  VideoController? get videoController => _videoController;
+
+  /// 返回可用于展示和进度计算的总时长；播放器尚未取得流元数据时回退到扫描结果。
+  Duration get duration {
+    final nativeDuration = _player?.state.duration ?? Duration.zero;
+    return nativeDuration > Duration.zero ? nativeDuration : item.duration;
+  }
 
   /// 启动播放与定时保存；可播放地址缺失时保留错误供用户重试。
   void start() {
@@ -88,42 +96,36 @@ class PlayerController extends ChangeNotifier {
 
   Future<void> _initializeVideo(ApiSession session, String streamUrl) async {
     final generation = ++_initializationGeneration;
-    var effectiveUrl = streamUrl;
-    final codec = item.audioCodec.toLowerCase().trim();
-    if (const {'dts', 'dca', 'ac3', 'eac3', 'truehd', 'mlp'}.contains(codec) &&
-        !effectiveUrl.contains('transcode=')) {
-      effectiveUrl += effectiveUrl.contains('?') ? '&transcode=audio' : '?transcode=audio';
-    }
-    final access = session.resolveResource(effectiveUrl);
-    final controller = VideoPlayerController.networkUrl(
-      Uri.parse(access.url),
-      httpHeaders: access.headers,
-    );
-    final previous = _videoController;
-    if (previous != null) {
-      previous.removeListener(_syncVideoState);
-      await previous.dispose();
-      if (_disposed || generation != _initializationGeneration) {
-        await controller.dispose();
-        return;
-      }
-    }
-    _videoController = controller;
-    controller.addListener(_syncVideoState);
+    final access = session.resolveResource(streamUrl);
+    final previous = _player;
+    _player = null;
+    _videoController = null;
+    _initialized = false;
+    await _cancelPlayerSubscriptions();
+    if (previous != null) await previous.dispose();
+    if (_disposed || generation != _initializationGeneration) return;
+
+    final player = Player();
+    _player = player;
+    _videoController = VideoController(player);
+    _listenToPlayer(player, generation);
     try {
-      await controller.initialize();
-      if (_disposed || generation != _initializationGeneration) {
-        controller.removeListener(_syncVideoState);
-        await controller.dispose();
-        return;
-      }
       final initial = _startAtZero
           ? Duration.zero
-          : controller.value.duration * item.progress;
-      if (initial > Duration.zero) await controller.seekTo(initial);
-      await controller.play();
+          : item.duration * item.progress;
+      await player.open(
+        Media(access.url, httpHeaders: access.headers),
+        play: false,
+      );
+      if (_disposed || generation != _initializationGeneration) {
+        await player.dispose();
+        return;
+      }
+      if (initial > Duration.zero) await player.seek(initial);
+      await player.play();
       if (_disposed || generation != _initializationGeneration) return;
       _startAtZero = false;
+      _initialized = true;
       _initializationFailed = false;
       _error = null;
       _playing = true;
@@ -134,6 +136,74 @@ class PlayerController extends ChangeNotifier {
       _error = error.toString();
       _playing = false;
       notifyListeners();
+    }
+  }
+
+  /// 订阅底层播放器状态，并用 generation 忽略已释放会话的异步事件。
+  void _listenToPlayer(Player player, int generation) {
+    _playerSubscriptions.addAll([
+      player.stream.position.listen((value) {
+        if (_disposed ||
+            generation != _initializationGeneration ||
+            _scrubbing) {
+          return;
+        }
+        _position = value;
+        _notifyPlaybackState();
+      }),
+      player.stream.duration.listen((_) {
+        if (_disposed || generation != _initializationGeneration) return;
+        _notifyPlaybackState();
+      }),
+      player.stream.playing.listen((value) {
+        if (_disposed || generation != _initializationGeneration) return;
+        _playing = value;
+        _notifyPlaybackState(immediate: true);
+      }),
+      player.stream.buffering.listen((value) {
+        if (_disposed || generation != _initializationGeneration) return;
+        _buffering = value;
+        _notifyPlaybackState();
+      }),
+      player.stream.completed.listen((completed) {
+        if (_disposed ||
+            generation != _initializationGeneration ||
+            !completed) {
+          return;
+        }
+        _position = duration;
+        unawaited(_saveProgress(forceEnd: true));
+        _notifyPlaybackState(immediate: true);
+      }),
+      player.stream.error.listen((message) {
+        if (_disposed || generation != _initializationGeneration) return;
+        _error = message;
+        _playing = false;
+        _notifyPlaybackState(immediate: true);
+      }),
+    ]);
+  }
+
+  void _notifyPlaybackState({bool immediate = false}) {
+    if (immediate) {
+      _syncThrottle?.cancel();
+      _syncThrottle = null;
+      notifyListeners();
+      return;
+    }
+    _syncThrottle ??= Timer(const Duration(milliseconds: 200), () {
+      _syncThrottle = null;
+      if (!_disposed) notifyListeners();
+    });
+  }
+
+  Future<void> _cancelPlayerSubscriptions() async {
+    final subscriptions = List<StreamSubscription<dynamic>>.from(
+      _playerSubscriptions,
+    );
+    _playerSubscriptions.clear();
+    for (final subscription in subscriptions) {
+      await subscription.cancel();
     }
   }
 
@@ -163,18 +233,17 @@ class PlayerController extends ChangeNotifier {
   Future<void> restartFromBeginning() async {
     if (_disposed) return;
     _startAtZero = true;
-    _completedSaved = false;
     _position = Duration.zero;
-    final video = _videoController;
-    if (video == null || !video.value.isInitialized) {
+    final player = _player;
+    if (player == null || !initialized) {
       notifyListeners();
       if (_initializationFailed) await retry();
       return;
     }
     try {
-      await video.seekTo(Duration.zero);
+      await player.seek(Duration.zero);
       if (_disposed) return;
-      await video.play();
+      await player.play();
       if (_disposed) return;
       _startAtZero = false;
       _playing = true;
@@ -184,41 +253,6 @@ class PlayerController extends ChangeNotifier {
       if (_disposed) return;
       _error = error.toString();
       notifyListeners();
-    }
-  }
-
-  void _syncVideoState() {
-    if (_disposed) return;
-    final value = _videoController?.value;
-    if (value == null) return;
-    final wasPlaying = _playing;
-    final previousError = _error;
-    // 初始化失败时插件会回调一个 position=0 的 value，不能覆盖续播位置。
-    if (!_scrubbing && value.isInitialized) _position = value.position;
-    _playing = value.isPlaying;
-    if (value.hasError) _error = value.errorDescription;
-    final important = wasPlaying != _playing || previousError != _error;
-    if (important) {
-      _syncThrottle?.cancel();
-      _syncThrottle = null;
-      notifyListeners();
-    } else {
-      _syncThrottle ??= Timer(const Duration(milliseconds: 200), () {
-        _syncThrottle = null;
-        if (!_disposed) notifyListeners();
-      });
-    }
-    _maybeSaveCompletion(value);
-  }
-
-  void _maybeSaveCompletion(VideoPlayerValue value) {
-    if (!value.isInitialized || _completedSaved) return;
-    final total = value.duration.inMilliseconds;
-    if (total <= 0) return;
-    final remaining = total - value.position.inMilliseconds;
-    if (remaining <= 500 || (!value.isPlaying && remaining <= 1000)) {
-      _completedSaved = true;
-      unawaited(_saveProgress(forceEnd: true));
     }
   }
 
@@ -237,17 +271,16 @@ class PlayerController extends ChangeNotifier {
   }
 
   void togglePlay({bool revealControls = true}) {
-    final video = _videoController;
-    if (video != null && video.value.isInitialized) {
-      if (video.value.position >= video.value.duration) {
-        _completedSaved = false;
-        unawaited(video.seekTo(Duration.zero));
+    final player = _player;
+    if (player != null && initialized) {
+      if (_position >= duration) {
+        unawaited(player.seek(Duration.zero));
       }
-      if (video.value.isPlaying) {
-        unawaited(video.pause());
+      if (_playing) {
+        unawaited(player.pause());
         unawaited(_saveProgress());
       } else {
-        unawaited(video.play());
+        unawaited(player.play());
       }
       if (revealControls) {
         _controlsVisible = true;
@@ -267,7 +300,7 @@ class PlayerController extends ChangeNotifier {
     _position = Duration(
       milliseconds: target.inMilliseconds.clamp(0, duration.inMilliseconds),
     );
-    if (initialized) unawaited(_videoController!.seekTo(_position));
+    if (initialized) unawaited(_player!.seek(_position));
     if (revealControls) _controlsVisible = true;
     notifyListeners();
     if (revealControls) scheduleHide();
@@ -278,7 +311,7 @@ class PlayerController extends ChangeNotifier {
     _scrubbing = true;
     _scrubOrigin = _position;
     _resumeAfterScrub = _playing;
-    if (_resumeAfterScrub && initialized) unawaited(_videoController!.pause());
+    if (_resumeAfterScrub && initialized) unawaited(_player!.pause());
     pauseAutoHide();
   }
 
@@ -305,12 +338,12 @@ class PlayerController extends ChangeNotifier {
   }
 
   Future<void> _commitVideoScrub(Duration target, bool shouldResume) async {
-    final video = _videoController;
-    if (video == null) return;
+    final player = _player;
+    if (player == null) return;
     try {
-      await video.seekTo(target);
+      await player.seek(target);
       if (shouldResume && !_disposed) {
-        await video.play();
+        await player.play();
       } else {
         await _saveProgress();
       }
@@ -327,7 +360,7 @@ class PlayerController extends ChangeNotifier {
     final shouldResume = _resumeAfterScrub;
     _position = origin;
     _finishScrub();
-    if (initialized && shouldResume) unawaited(_videoController!.play());
+    if (initialized && shouldResume) unawaited(_player!.play());
     notifyListeners();
   }
 
@@ -340,7 +373,7 @@ class PlayerController extends ChangeNotifier {
 
   void setPlaybackSpeed(double value, {bool revealControls = true}) {
     _speed = value;
-    if (initialized) unawaited(_videoController!.setPlaybackSpeed(value));
+    if (initialized) unawaited(_player!.setRate(value));
     if (revealControls) _controlsVisible = true;
     notifyListeners();
     if (revealControls) scheduleHide();
@@ -349,7 +382,7 @@ class PlayerController extends ChangeNotifier {
   void setSpeed(double value) => setPlaybackSpeed(value);
 
   void setLocalVolume(double value) {
-    if (initialized) unawaited(_videoController!.setVolume(value.clamp(0, 1)));
+    if (initialized) unawaited(_player!.setVolume(value.clamp(0, 1) * 100));
   }
 
   void setLocked(bool value) {
@@ -431,12 +464,11 @@ class PlayerController extends ChangeNotifier {
     _saveTimer?.cancel();
     _syncThrottle?.cancel();
     _lockHintTimer?.cancel();
-    final video = _videoController;
+    final player = _player;
+    _player = null;
     _videoController = null;
-    if (video != null) {
-      video.removeListener(_syncVideoState);
-      unawaited(video.dispose());
-    }
+    unawaited(_cancelPlayerSubscriptions());
+    if (player != null) unawaited(player.dispose());
     super.dispose();
   }
 }

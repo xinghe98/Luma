@@ -1,7 +1,7 @@
-// 播放器的视频画面，供全屏场景与悬浮小窗复用同一个视频纹理。
-// 同一时刻只允许一个宿主挂载 VideoPlayer，避免平台纹理被重复绑定后失效。
+// 播放器的视频画面，供全屏场景与悬浮小窗复用同一个 libmpv 视频输出。
+// 同一时刻只允许一个宿主挂载 Video，避免平台纹理被重复绑定后失效。
 import 'package:flutter/material.dart';
-import 'package:video_player/video_player.dart';
+import 'package:media_kit_video/media_kit_video.dart';
 
 import '../../../shared/media/media_artwork.dart';
 import '../player_controller.dart';
@@ -16,7 +16,7 @@ class PlayerVideoSurface extends StatefulWidget {
 
   final PlayerController controller;
 
-  /// 是否挂载 [VideoPlayer]。全屏与小窗切换时必须互斥为 true。
+  /// 是否挂载 [Video]。全屏与小窗切换时必须互斥为 true。
   final bool attachVideo;
 
   @override
@@ -64,15 +64,15 @@ class _PlayerVideoSurfaceState extends State<PlayerVideoSurface> {
   Widget build(BuildContext context) {
     final video = widget.controller.videoController;
     if (widget.attachVideo && _initialized && video != null) {
-      final ratio = video.value.aspectRatio;
-      if (ratio > 0) {
-        return ColoredBox(
-          color: Colors.black,
-          child: Center(
-            child: AspectRatio(aspectRatio: ratio, child: VideoPlayer(video)),
-          ),
-        );
-      }
+      return ColoredBox(
+        color: Colors.black,
+        child: Video(
+          controller: video,
+          controls: null,
+          pauseUponEnteringBackgroundMode: false,
+          wakelock: false,
+        ),
+      );
     }
     if (!widget.attachVideo) {
       return const ColoredBox(color: Colors.black);

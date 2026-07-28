@@ -6,7 +6,7 @@ services:
       args:
         VERSION: ${LUMA_VERSION:-dev}
     ports:
-      - "127.0.0.1:${LUMA_PORT:-8080}:8080"
+      - "0.0.0.0:${LUMA_PORT:-8080}:8080"
     volumes:
       - luma-data:/data
     restart: unless-stopped
