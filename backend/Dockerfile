@@ -12,16 +12,15 @@ RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.version=${VERSION}"
 
 # 运行阶段：安装媒体工具并使用非特权用户运行服务。
 FROM alpine:3.22
-RUN apk add --no-cache ca-certificates ffmpeg \
+RUN apk add --no-cache ca-certificates ffmpeg su-exec \
     && addgroup -S luma \
     && adduser -S -G luma luma \
-    && mkdir -p /data /media \
+    && mkdir -p /data /media /run/luma \
     && chown -R luma:luma /data
 COPY --from=build /out/luma-server /usr/local/bin/luma-server
-COPY configs/config.docker.yaml /etc/luma/config.yaml
-USER luma
+COPY --chmod=0755 scripts/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 EXPOSE 8080
 VOLUME ["/data"]
 STOPSIGNAL SIGTERM
-ENTRYPOINT ["luma-server"]
-CMD ["-config", "/etc/luma/config.yaml"]
+ENTRYPOINT ["docker-entrypoint.sh"]
+CMD ["luma-server", "-config", "/run/luma/config.yaml"]

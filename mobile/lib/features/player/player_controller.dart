@@ -88,7 +88,13 @@ class PlayerController extends ChangeNotifier {
 
   Future<void> _initializeVideo(ApiSession session, String streamUrl) async {
     final generation = ++_initializationGeneration;
-    final access = session.resolveResource(streamUrl);
+    var effectiveUrl = streamUrl;
+    final codec = item.audioCodec.toLowerCase().trim();
+    if (const {'dts', 'dca', 'ac3', 'eac3', 'truehd', 'mlp'}.contains(codec) &&
+        !effectiveUrl.contains('transcode=')) {
+      effectiveUrl += effectiveUrl.contains('?') ? '&transcode=audio' : '?transcode=audio';
+    }
+    final access = session.resolveResource(effectiveUrl);
     final controller = VideoPlayerController.networkUrl(
       Uri.parse(access.url),
       httpHeaders: access.headers,

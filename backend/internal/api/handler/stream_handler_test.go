@@ -3,6 +3,7 @@ package handler
 import (
 	"bytes"
 	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -25,6 +26,24 @@ func (r *closeTrackingStream) Close() error { r.closed = true; return nil }
 type closeTrackingStreamUseCase struct {
 	// reader 是业务用例返回的测试流。
 	reader *closeTrackingStream
+	// location 是测试定位信息。
+	location domain.StreamLocation
+	// transcodeErr 是转码测试错误。
+	transcodeErr error
+}
+
+func (u closeTrackingStreamUseCase) GetLocation(context.Context, string, string) (domain.StreamLocation, error) {
+	if u.location.ID != "" {
+		return u.location, nil
+	}
+	return domain.StreamLocation{ID: "media", MediaType: domain.MediaTypeVideo, SourceType: domain.SourceTypeLocal, AudioCodec: "aac"}, nil
+}
+
+func (u closeTrackingStreamUseCase) OpenTranscodeStream(context.Context, string, string) (io.ReadCloser, string, error) {
+	if u.transcodeErr != nil {
+		return nil, "", u.transcodeErr
+	}
+	return io.NopCloser(bytes.NewReader([]byte("transcoded"))), "video/mp4", nil
 }
 
 func (u closeTrackingStreamUseCase) Open(context.Context, string, string) (domain.StreamContent, error) {

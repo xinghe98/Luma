@@ -230,13 +230,13 @@ func (r *MediaRepository) GetThumbnail(ctx context.Context, mediaID, variant, us
 // GetStreamLocation 返回可见原始媒体的服务端内容定位字段。
 func (r *MediaRepository) GetStreamLocation(ctx context.Context, mediaID, userID string) (domain.StreamLocation, error) {
 	var location domain.StreamLocation
-	err := r.db.QueryRowContext(ctx, `SELECT m.id, m.filename, m.media_type, COALESCE(m.mime_type, ''),
+	err := r.db.QueryRowContext(ctx, `SELECT m.id, m.filename, m.media_type, COALESCE(m.mime_type, ''), COALESCE(m.audio_codec, ''),
         s.source_type, s.root_path, m.relative_path FROM media_items m
         JOIN sources s ON s.id = m.source_id
         WHERE m.id = ? AND m.status <> 'missing' AND s.enabled = 1
 		AND s.deleted_at_ms IS NULL AND s.source_type = 'local'
 		AND EXISTS (SELECT 1 FROM source_grants g WHERE g.source_id = s.id AND g.user_id = ?)`, mediaID, userID).Scan(
-		&location.ID, &location.Filename, &location.MediaType, &location.MIMEType,
+		&location.ID, &location.Filename, &location.MediaType, &location.MIMEType, &location.AudioCodec,
 		&location.SourceType, &location.RootPath, &location.RelativePath)
 	if errors.Is(err, sql.ErrNoRows) {
 		return domain.StreamLocation{}, domain.ErrMediaNotFound

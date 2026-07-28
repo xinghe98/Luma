@@ -4,7 +4,8 @@
 .cache/
 data/
 dist/
-scripts/
+scripts/*
+!scripts/docker-entrypoint.sh
 api/
 .air.toml
 .env

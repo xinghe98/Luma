@@ -15,6 +15,8 @@ type StreamLocation struct {
 	MediaType string
 	// MIMEType 是媒体 MIME 类型。
 	MIMEType string
+	// AudioCodec 是音频编码格式名称。
+	AudioCodec string
 	// SourceType 是媒体来源类型。
 	SourceType string
 	// RootPath 是媒体来源根路径。

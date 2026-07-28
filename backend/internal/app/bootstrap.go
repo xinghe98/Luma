@@ -218,6 +218,7 @@ func (b *bootstrap) build(ctx context.Context) (*App, error) {
 	if err != nil {
 		return nil, fmt.Errorf("创建原始媒体服务: %w", err)
 	}
+	streamService.SetFFmpegPath(b.config.Media.FFmpegPath)
 	userDataService, err := service.NewUserDataService(userDataRepository, clock)
 	if err != nil {
 		return nil, fmt.Errorf("创建用户数据服务: %w", err)

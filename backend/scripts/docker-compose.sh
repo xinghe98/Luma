@@ -54,7 +54,7 @@ printf '%s\n' "$LUMA_MEDIA_DIRS" | tr ',' '\n' > "$MEDIA_ENTRIES_FILE"
     printf '%s\n' '  luma-server:'
     printf '%s\n' '    volumes:'
     printf '%s' '      - '
-    yaml_quote "$GENERATED_CONFIG:/etc/luma/config.yaml:ro"
+    yaml_quote "$GENERATED_CONFIG:/run/luma-config-source.yaml:ro"
     printf '\n'
 } > "$GENERATED_COMPOSE"
 

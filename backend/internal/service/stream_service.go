@@ -7,6 +7,7 @@ import (
 	"io"
 	"mime"
 	"net/http"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -30,6 +31,8 @@ type StreamService struct {
 	repository StreamRepository
 	// opener 安全打开来源中的媒体内容。
 	opener ContentOpener
+	// ffmpegPath 是 ffmpeg 可执行文件路径。
+	ffmpegPath string
 }
 
 // NewStreamService 创建原始媒体服务。
@@ -37,7 +40,89 @@ func NewStreamService(repository StreamRepository, opener ContentOpener) (*Strea
 	if repository == nil || opener == nil {
 		return nil, errors.New("原始媒体 Repository 和内容打开器不能为空")
 	}
-	return &StreamService{repository: repository, opener: opener}, nil
+	return &StreamService{repository: repository, opener: opener, ffmpegPath: "ffmpeg"}, nil
+}
+
+// SetFFmpegPath 设置用于音频实时转码的 FFmpeg 命令路径。
+func (s *StreamService) SetFFmpegPath(path string) {
+	if strings.TrimSpace(path) != "" {
+		s.ffmpegPath = path
+	}
+}
+
+// IsAudioTranscodeRequired 检查指定音频编码格式是否为原生播放器通常无法解码的格式。
+func IsAudioTranscodeRequired(codec string) bool {
+	switch strings.ToLower(strings.TrimSpace(codec)) {
+	case "dts", "dca", "ac3", "eac3", "truehd", "mlp":
+		return true
+	default:
+		return false
+	}
+}
+
+// GetLocation 获取可见原始媒体定位信息。
+func (s *StreamService) GetLocation(ctx context.Context, id, userID string) (domain.StreamLocation, error) {
+	return s.repository.GetStreamLocation(ctx, id, userID)
+}
+
+// OpenTranscodeStream 启动 FFmpeg 将音频实时转码为双声道 AAC 并输出 fMP4 管道流。
+func (s *StreamService) OpenTranscodeStream(ctx context.Context, id, userID string) (io.ReadCloser, string, error) {
+	if strings.TrimSpace(id) == "" || strings.TrimSpace(userID) == "" {
+		return nil, "", fmt.Errorf("%w: 媒体 ID 无效", domain.ErrInvalidRequest)
+	}
+	location, err := s.repository.GetStreamLocation(ctx, id, userID)
+	if err != nil {
+		return nil, "", err
+	}
+	if location.MediaType != domain.MediaTypeVideo || location.SourceType != domain.SourceTypeLocal {
+		return nil, "", domain.ErrMediaNotFound
+	}
+	fullPath := filepath.Join(location.RootPath, location.RelativePath)
+	ffmpegExec := s.ffmpegPath
+	if ffmpegExec == "" {
+		ffmpegExec = "ffmpeg"
+	}
+	cmd := exec.CommandContext(ctx, ffmpegExec,
+		"-v", "error",
+		"-i", fullPath,
+		"-c:v", "copy",
+		"-c:a", "aac",
+		"-ac", "2",
+		"-b:a", "192k",
+		"-f", "mp4",
+		"-movflags", "frag_keyframe+empty_moov",
+		"pipe:1",
+	)
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return nil, "", fmt.Errorf("创建 FFmpeg 转码管道失败: %w", err)
+	}
+	if err := cmd.Start(); err != nil {
+		return nil, "", fmt.Errorf("启动 FFmpeg 音频转码失败: %w", err)
+	}
+	reader := &transcodeStreamReader{
+		cmd:    cmd,
+		stdout: stdout,
+	}
+	return reader, "video/mp4", nil
+}
+
+type transcodeStreamReader struct {
+	cmd    *exec.Cmd
+	stdout io.ReadCloser
+}
+
+func (r *transcodeStreamReader) Read(p []byte) (int, error) {
+	return r.stdout.Read(p)
+}
+
+func (r *transcodeStreamReader) Close() error {
+	_ = r.stdout.Close()
+	if r.cmd != nil && r.cmd.Process != nil {
+		_ = r.cmd.Process.Kill()
+		_ = r.cmd.Wait()
+	}
+	return nil
 }
 
 // Open 返回可交给 http.ServeContent 的原始视频。

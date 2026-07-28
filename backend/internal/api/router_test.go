@@ -148,6 +148,14 @@ func (fakeStreamUseCase) Open(context.Context, string, string) (domain.StreamCon
 	}, nil
 }
 
+func (fakeStreamUseCase) GetLocation(context.Context, string, string) (domain.StreamLocation, error) {
+	return domain.StreamLocation{ID: "media_test", MediaType: domain.MediaTypeVideo, SourceType: domain.SourceTypeLocal, AudioCodec: "aac"}, nil
+}
+
+func (fakeStreamUseCase) OpenTranscodeStream(context.Context, string, string) (io.ReadCloser, string, error) {
+	return io.NopCloser(bytes.NewReader([]byte("transcoded-stream"))), "video/mp4", nil
+}
+
 func (fakeStreamUseCase) OpenOriginal(context.Context, string, string) (domain.StreamContent, error) {
 	return domain.StreamContent{
 		Name: "photo.jpg", MIMEType: "image/jpeg", ETag: `W/"a-3b9aca00"`, Size: 10,
