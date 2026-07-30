@@ -67,25 +67,10 @@ final class CatalogDecoder {
     thumbnailUrl: requiredValue(json, 'thumbnail_url'),
   );
 
-  CatalogIssue decodeIssue(Map<String, dynamic> json) => CatalogIssue(
-    mediaId: requiredValue(json, 'media_id'),
-    filename: requiredValue(json, 'filename'),
-    sourceId: requiredValue(json, 'source_id'),
-    libraryKind: requiredValue(json, 'library_kind'),
-    suggestedTitle: requiredValue(json, 'suggested_title'),
-    seasonNumber: optionalValue(json, 'season_number'),
-    episodeNumber: optionalValue(json, 'episode_number'),
-  );
-
   List<CatalogItem> decodeList(Map<String, dynamic> json) => listValue(
     json,
     'items',
   ).map((value) => decode(objectValue(value, 'catalog item'))).toList();
-
-  List<CatalogIssue> decodeIssues(Map<String, dynamic> json) => listValue(
-    json,
-    'items',
-  ).map((value) => decodeIssue(objectValue(value, 'catalog issue'))).toList();
 
   List<CatalogNamedValue> _decodeNamedValues(Object? value) {
     if (value == null) return const [];

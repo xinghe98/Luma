@@ -139,7 +139,9 @@ class _LibrarySourcesPageState extends State<LibrarySourcesPage> {
                 Padding(
                   padding: const EdgeInsets.only(bottom: LumaSpacing.sm),
                   child: ListTile(
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: LumaSpacing.xxs,
+                    ),
                     leading: Icon(
                       LibraryKindPresentation.icon(source.libraryKind),
                     ),

@@ -72,9 +72,6 @@ class CatalogCard extends StatelessWidget {
                     1,
                     640,
                   );
-                  final cacheHeight = (constraints.maxHeight * dpr)
-                      .round()
-                      .clamp(1, 960);
                   final artwork = ClipRRect(
                     borderRadius: BorderRadius.circular(LumaRadii.large),
                     child: Material(
@@ -82,7 +79,6 @@ class CatalogCard extends StatelessWidget {
                       child: AuthenticatedMediaImage(
                         path: item.posterUrl,
                         cacheWidth: cacheWidth,
-                        cacheHeight: cacheHeight,
                         fallback: ColoredBox(
                           color: scheme.surfaceContainerHigh,
                           child: Icon(

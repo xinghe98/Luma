@@ -167,42 +167,6 @@ func TestCatalogRepositoryGroupsMoviesAndEpisodes(t *testing.T) {
 	}
 }
 
-func TestCatalogRepositoryKeepsManualMatchLocked(t *testing.T) {
-	ctx := context.Background()
-	db, err := Open(ctx, config.DatabaseConfig{Path: filepath.Join(t.TempDir(), "manual.db"), BusyTimeoutMS: 1000})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
-	sources, _ := NewSourceRepository(db)
-	repository, _ := NewCatalogRepository(db)
-	now := time.UnixMilli(10_000).UTC()
-	if err := sources.Create(ctx, domain.Source{ID: "tv", Name: "剧集", Type: domain.SourceTypeLocal, LibraryKind: domain.LibraryKindTV, RootPath: "/tv", Enabled: true, Status: domain.SourceStatusOnline, CreatedAt: now, UpdatedAt: now}); err != nil {
-		t.Fatal(err)
-	}
-	_, err = db.Exec(`INSERT INTO media_items(id,source_id,relative_path,filename,media_type,file_size,file_modified_at_ms,status,discovered_at_ms,created_at_ms,updated_at_ms)
-		VALUES('clip','tv','剧名/片段.mkv','片段.mkv','video',100,1,'ready',?,?,?)`, now.UnixMilli(), now.UnixMilli(), now.UnixMilli())
-	if err != nil {
-		t.Fatal(err)
-	}
-	candidate, err := repository.GetCandidate(ctx, "clip")
-	if err != nil {
-		t.Fatal(err)
-	}
-	season, episode := 1, 4
-	manual := domain.CatalogMatch{MediaID: "clip", SourceID: "tv", Kind: domain.CatalogKindSeries, Title: "手动剧名", SortTitle: catalog.NormalizeTitle("手动剧名"), SeasonNumber: &season, EpisodeNumber: &episode, EpisodeTitle: "第 4 集", Status: domain.CatalogMatchMatched, Confidence: 100, Locked: true, MediaUpdatedAt: candidate.MediaUpdatedAt}
-	if err := repository.SaveMatch(ctx, manual, now); err != nil {
-		t.Fatal(err)
-	}
-	candidates, err := repository.ListCandidates(ctx, 10)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(candidates) != 0 {
-		t.Fatalf("locked mapping returned as dirty: %#v", candidates)
-	}
-}
-
 func TestCatalogRepositoryRuleUpgradeClearsNeedsReview(t *testing.T) {
 	ctx := context.Background()
 	db, err := Open(ctx, config.DatabaseConfig{Path: filepath.Join(t.TempDir(), "rematch.db"), BusyTimeoutMS: 1000})
@@ -312,12 +276,5 @@ func TestCatalogRepositoryRuleUpgradeClearsNeedsReview(t *testing.T) {
 		if item, ok := found[show.title]; !ok || item.EpisodeCount != 1 {
 			t.Fatalf("catalog item %q = %#v, found=%v", show.title, item, ok)
 		}
-	}
-	issues, err := repository.ListIssues(ctx, 10)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(issues) != 0 {
-		t.Fatalf("issues = %#v", issues)
 	}
 }

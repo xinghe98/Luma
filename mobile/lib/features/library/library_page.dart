@@ -16,6 +16,7 @@ import '../../shared/states/empty_state.dart';
 import '../../shared/states/error_state.dart';
 import '../../shared/states/skeleton.dart';
 import '../../shared/layout/scroll_to_top_app_bar_title.dart';
+import '../shell/shell_entry_gate.dart';
 import 'dialogs/library_filter_sheet.dart';
 import 'library_controller.dart';
 
@@ -61,6 +62,7 @@ class _LibraryPageState extends State<LibraryPage>
     with AutomaticKeepAliveClientMixin<LibraryPage> {
   LibraryController? _controller;
   final _scroll = ScrollController();
+  bool _entrySettled = false;
 
   @override
   bool get wantKeepAlive => true;
@@ -75,16 +77,22 @@ class _LibraryPageState extends State<LibraryPage>
   void didChangeDependencies() {
     super.didChangeDependencies();
     if (_controller != null) return;
-    final media = AppScope.of(context).media;
+    final dependencies = AppScope.of(context);
+    final media = dependencies.media;
+    final initialItems = widget.initialItems.isNotEmpty
+        ? widget.initialItems
+        : dependencies.mediaBranchPrewarmer.photos;
     final controller = LibraryController(
       fixedType: widget.type,
       fixedLibraryKind: widget.fixedLibraryKind,
       media: media,
-      initialItems: widget.initialItems,
+      initialItems: initialItems,
       pageSize: widget.pageSize,
     );
     _controller = controller;
-    unawaited(controller.ensureLoadedAfter(waitForRouteTransition(context)));
+    final entryGate = _waitForEntrySettle();
+    unawaited(controller.ensureLoadedAfter(entryGate));
+    unawaited(_restoreScrollCacheAfter(entryGate));
   }
 
   @override
@@ -138,8 +146,10 @@ class _LibraryPageState extends State<LibraryPage>
                   'library-scroll-${widget.type.name}-${widget.fixedLibraryKind ?? 'all'}',
                 ),
                 controller: _scroll,
-                // 只预构建约半屏内容，控制快速滑动时的并发解码和纹理峰值。
-                cacheExtent: LumaLayout.scrollCacheExtent,
+                // 首入场只构建可视区，动效结束后再预构建约半屏内容。
+                cacheExtent: _entrySettled
+                    ? LumaLayout.scrollCacheExtent
+                    : 0,
                 physics: const AlwaysScrollableScrollPhysics(),
                 slivers: [
                   if (controller.isRefreshing)
@@ -362,5 +372,19 @@ class _LibraryPageState extends State<LibraryPage>
       showWatchStatus: widget.type == MediaType.video,
     );
     if (result != null) controller.applyFilters(result);
+  }
+
+  Future<void> _waitForEntrySettle() async {
+    await Future.wait<void>([
+      waitForRouteTransition(context),
+      waitForShellEntrySettle(context),
+    ]);
+  }
+
+  /// 导航动效结束后恢复屏外缓存，避免首入场同时解码不可见缩略图。
+  Future<void> _restoreScrollCacheAfter(Future<void> gate) async {
+    await gate;
+    if (!mounted || _entrySettled) return;
+    setState(() => _entrySettled = true);
   }
 }

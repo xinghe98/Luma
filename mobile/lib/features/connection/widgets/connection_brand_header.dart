@@ -14,13 +14,14 @@ class ConnectionBrandHeader extends StatelessWidget {
     final luma = context.luma;
     return DecoratedBox(
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [luma.brandSurface, luma.brandSurfaceVariant],
-        ),
+        color: luma.brandSurfaceVariant,
         borderRadius: const BorderRadius.vertical(
           bottom: Radius.circular(LumaRadii.extraLarge),
+        ),
+        border: Border(
+          bottom: BorderSide(
+            color: theme.colorScheme.outlineVariant.withValues(alpha: 0.45),
+          ),
         ),
       ),
       child: Padding(
@@ -34,7 +35,7 @@ class ConnectionBrandHeader extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Theme(
-              data: theme.copyWith(brightness: Brightness.dark),
+              data: theme,
               child: const BrandMark(
                 variant: BrandMarkVariant.horizontal,
                 height: 42,

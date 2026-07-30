@@ -3,12 +3,15 @@
 import 'package:flutter/material.dart';
 
 abstract final class CatalogDetailPalette {
-  static const background = Color(0xFF171815);
-  static const surface = Color(0xFF20211D);
-  static const text = Color(0xFFF2E7D3);
-  static const muted = Color(0xFFC9BFAE);
-  static const outline = Color(0xFF6C614D);
-  static const accent = Color(0xFFF0A528);
+  static const background = Color(0xFF101722);
+  static const surface = Color(0xFF182235);
+  static const surfaceHigh = Color(0xFF253149);
+  static const text = Color(0xFFF1F5FC);
+  static const muted = Color(0xFFBBC6D8);
+  static const outline = Color(0xFF62738F);
+  static const outlineVariant = Color(0xFF35435B);
+  static const accent = Color(0xFF8FB6FF);
+  static const onAccent = Color(0xFF10203A);
 }
 
 /// 为详情内容建立局部暗色主题，不修改应用其他页面的配色。
@@ -20,11 +23,11 @@ ThemeData catalogDetailTheme(BuildContext context) {
       onSurface: CatalogDetailPalette.text,
       onSurfaceVariant: CatalogDetailPalette.muted,
       surfaceContainerLow: CatalogDetailPalette.surface,
-      surfaceContainerHigh: const Color(0xFF30312B),
+      surfaceContainerHigh: CatalogDetailPalette.surfaceHigh,
       outline: CatalogDetailPalette.outline,
-      outlineVariant: const Color(0xFF403D34),
+      outlineVariant: CatalogDetailPalette.outlineVariant,
       primary: CatalogDetailPalette.accent,
-      onPrimary: CatalogDetailPalette.background,
+      onPrimary: CatalogDetailPalette.onAccent,
     ),
     textTheme: theme.textTheme.apply(
       bodyColor: CatalogDetailPalette.text,

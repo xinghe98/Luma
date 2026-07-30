@@ -498,22 +498,6 @@ class _CatalogDetailRepository implements CatalogRepository {
   }
 
   @override
-  Future<void> ignore(String mediaId) async {}
-
-  @override
-  Future<List<CatalogIssue>> issues() async => [];
-
-  @override
   Future<List<CatalogItem>> list({CatalogKind? kind, String? query}) async =>
       [];
-
-  @override
-  Future<void> updateMatch({
-    required String mediaId,
-    required CatalogKind kind,
-    required String title,
-    int? year,
-    int? seasonNumber,
-    int? episodeNumber,
-  }) async {}
 }

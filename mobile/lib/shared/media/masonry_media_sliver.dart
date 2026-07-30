@@ -15,7 +15,7 @@ class MasonryMediaSliver extends StatelessWidget {
     required this.onTap,
     this.onLongPress,
     this.onFavorite,
-    this.spacing = 6,
+    this.spacing = LumaSpacing.xs,
   });
 
   final List<MediaItem> items;

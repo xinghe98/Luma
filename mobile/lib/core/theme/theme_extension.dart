@@ -41,8 +41,8 @@ class LumaExtras extends ThemeExtension<LumaExtras> {
     coverRadius: LumaRadii.large,
     brandSurface: LumaColors.lightBrandSurface,
     brandSurfaceVariant: LumaColors.lightBrandSurfaceVariant,
-    onBrandSurface: LumaColors.onInk,
-    onBrandSurfaceMuted: LumaColors.onInkMuted,
+    onBrandSurface: LumaColors.ink,
+    onBrandSurfaceMuted: LumaColors.lightOutline,
   );
 
   static const dark = LumaExtras(

@@ -13,10 +13,16 @@ ThemeData applyLumaComponentThemes({
   return base.copyWith(
     textTheme: textTheme,
     cardTheme: CardThemeData(
-      elevation: 0,
+      elevation: 0.5,
+      shadowColor: scheme.shadow.withValues(alpha: 0.08),
       margin: EdgeInsets.zero,
       color: scheme.surfaceContainer,
-      shape: RoundedRectangleBorder(borderRadius: radiusMd),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(LumaRadii.large),
+        side: BorderSide(
+          color: scheme.outlineVariant.withValues(alpha: 0.44),
+        ),
+      ),
     ),
     appBarTheme: AppBarTheme(
       centerTitle: false,
@@ -25,7 +31,14 @@ ThemeData applyLumaComponentThemes({
       backgroundColor: scaffold,
       foregroundColor: scheme.onSurface,
       titleTextStyle: textTheme.titleLarge?.copyWith(color: scheme.onSurface),
-      iconTheme: IconThemeData(color: scheme.onSurface),
+      iconTheme: IconThemeData(
+        color: scheme.onSurface,
+        size: LumaIconSize.action,
+      ),
+      actionsIconTheme: IconThemeData(
+        color: scheme.onSurface,
+        size: LumaIconSize.action,
+      ),
     ),
     snackBarTheme: SnackBarThemeData(
       behavior: SnackBarBehavior.floating,
@@ -42,7 +55,16 @@ ThemeData applyLumaComponentThemes({
       fillColor: scheme.surfaceContainer,
       contentPadding: const EdgeInsets.symmetric(
         horizontal: LumaSpacing.md,
-        vertical: LumaSpacing.sm,
+        vertical: LumaSpacing.sm + LumaSpacing.xxs / 2,
+      ),
+      constraints: const BoxConstraints(minHeight: LumaLayout.inputHeight),
+      prefixIconConstraints: const BoxConstraints.tightFor(
+        width: LumaLayout.minTapTarget,
+        height: LumaLayout.minTapTarget,
+      ),
+      suffixIconConstraints: const BoxConstraints.tightFor(
+        width: LumaLayout.minTapTarget,
+        height: LumaLayout.minTapTarget,
       ),
       border: OutlineInputBorder(
         borderRadius: radiusMd,
@@ -54,7 +76,10 @@ ThemeData applyLumaComponentThemes({
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: radiusMd,
-        borderSide: BorderSide(color: scheme.primary, width: 1.5),
+        borderSide: BorderSide(
+          color: scheme.primary,
+          width: LumaStroke.focused,
+        ),
       ),
       errorBorder: OutlineInputBorder(
         borderRadius: radiusMd,
@@ -62,7 +87,10 @@ ThemeData applyLumaComponentThemes({
       ),
       focusedErrorBorder: OutlineInputBorder(
         borderRadius: radiusMd,
-        borderSide: BorderSide(color: scheme.error, width: 1.5),
+        borderSide: BorderSide(
+          color: scheme.error,
+          width: LumaStroke.focused,
+        ),
       ),
     ),
     filledButtonTheme: FilledButtonThemeData(
@@ -83,7 +111,7 @@ ThemeData applyLumaComponentThemes({
     ),
     textButtonTheme: TextButtonThemeData(
       style: TextButton.styleFrom(
-        minimumSize: const Size(0, 40),
+        minimumSize: const Size(0, LumaLayout.compactControlHeight),
         shape: buttonShape,
         textStyle: textTheme.labelLarge,
       ),
@@ -95,6 +123,7 @@ ThemeData applyLumaComponentThemes({
           LumaLayout.minTapTarget,
         ),
         shape: RoundedRectangleBorder(borderRadius: radiusMd),
+        iconSize: LumaIconSize.action,
       ),
     ),
     chipTheme: ChipThemeData(
@@ -103,6 +132,7 @@ ThemeData applyLumaComponentThemes({
       selectedColor: scheme.primaryContainer,
       labelStyle: textTheme.labelLarge,
       padding: const EdgeInsets.symmetric(horizontal: LumaSpacing.xs),
+      labelPadding: const EdgeInsets.symmetric(horizontal: LumaSpacing.xxs),
       showCheckmark: false,
     ),
     tabBarTheme: TabBarThemeData(
@@ -122,7 +152,9 @@ ThemeData applyLumaComponentThemes({
       elevation: const WidgetStatePropertyAll(0),
       backgroundColor: WidgetStatePropertyAll(scheme.surfaceContainer),
       shape: WidgetStatePropertyAll(
-        RoundedRectangleBorder(borderRadius: radiusMd),
+        RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(LumaRadii.large),
+        ),
       ),
       padding: const WidgetStatePropertyAll(
         EdgeInsets.symmetric(horizontal: LumaSpacing.md),
@@ -131,10 +163,11 @@ ThemeData applyLumaComponentThemes({
       hintStyle: WidgetStatePropertyAll(
         textTheme.bodyLarge?.copyWith(color: scheme.onSurfaceVariant),
       ),
+      constraints: const BoxConstraints(minHeight: LumaLayout.inputHeight),
     ),
     dialogTheme: DialogThemeData(
       backgroundColor: scheme.surface,
-      elevation: 2,
+      elevation: 1,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(LumaRadii.large),
       ),
@@ -148,7 +181,7 @@ ThemeData applyLumaComponentThemes({
       elevation: 0,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(
-          top: Radius.circular(LumaRadii.large),
+          top: Radius.circular(LumaRadii.extraLarge),
         ),
       ),
       showDragHandle: true,
@@ -193,8 +226,10 @@ ThemeData applyLumaComponentThemes({
       shape: RoundedRectangleBorder(borderRadius: radiusMd),
       contentPadding: const EdgeInsets.symmetric(
         horizontal: LumaSpacing.md,
-        vertical: LumaSpacing.xxs,
+        vertical: LumaSpacing.xs,
       ),
+      minVerticalPadding: LumaSpacing.xs,
+      iconColor: scheme.onSurfaceVariant,
       titleTextStyle: textTheme.titleMedium?.copyWith(color: scheme.onSurface),
       subtitleTextStyle: textTheme.bodySmall?.copyWith(
         color: scheme.onSurfaceVariant,

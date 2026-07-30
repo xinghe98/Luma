@@ -38,7 +38,11 @@ class EmptyState extends StatelessWidget {
                 ),
                 child: Padding(
                   padding: const EdgeInsets.all(LumaSpacing.md),
-                  child: Icon(icon, size: 36, color: scheme.primary),
+                  child: Icon(
+                    icon,
+                    size: LumaIconSize.emptyState,
+                    color: scheme.primary,
+                  ),
                 ),
               ),
               const SizedBox(height: LumaSpacing.md),

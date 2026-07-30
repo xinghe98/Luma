@@ -46,11 +46,11 @@ func TestCatalogMetadataQueueIdentityAndRichResult(t *testing.T) {
 		now.UnixMilli(), now.UnixMilli(), now.UnixMilli()); err != nil {
 		t.Fatal(err)
 	}
-	candidate, err := repository.GetCandidate(ctx, "movie")
-	if err != nil {
-		t.Fatal(err)
+	catalogCandidates, err := repository.ListCandidates(ctx, 10)
+	if err != nil || len(catalogCandidates) != 1 {
+		t.Fatalf("candidates=%#v error=%v", catalogCandidates, err)
 	}
-	match := catalog.Match(candidate)
+	match := catalog.Match(catalogCandidates[0])
 	if err := repository.SaveMatch(ctx, match, now); err != nil {
 		t.Fatal(err)
 	}

@@ -5,7 +5,7 @@ import 'package:luma/core/theme.dart';
 
 void main() {
   group('Luma colors', () {
-    test('light theme maps the mist-teal palette to Material roles', () {
+    test('light theme maps the airy blue palette to Material roles', () {
       final theme = LumaTheme.light();
       final extras = theme.extension<LumaExtras>()!;
 
@@ -19,7 +19,7 @@ void main() {
       expect(extras.brandSurfaceVariant, LumaColors.lightBrandSurfaceVariant);
     });
 
-    test('dark theme maps the quiet cinema palette to Material roles', () {
+    test('dark theme maps the blue-black palette to Material roles', () {
       final theme = LumaTheme.dark();
       final extras = theme.extension<LumaExtras>()!;
 
@@ -38,6 +38,26 @@ void main() {
         _contrastRatio(LumaColors.darkBrandSurface, LumaColors.onInk),
         greaterThanOrEqualTo(4.5),
       );
+    });
+
+    test('controls share the documented size and radius system', () {
+      final theme = LumaTheme.light();
+      final filledMinimum = theme
+          .filledButtonTheme
+          .style
+          ?.minimumSize
+          ?.resolve(<WidgetState>{});
+      final iconMinimum = theme
+          .iconButtonTheme
+          .style
+          ?.minimumSize
+          ?.resolve(<WidgetState>{});
+
+      expect(theme.inputDecorationTheme.constraints?.minHeight, 52);
+      expect(filledMinimum?.height, 52);
+      expect(iconMinimum, const Size(48, 48));
+      expect(LumaRadii.medium, 16);
+      expect(LumaIconSize.action, 24);
     });
   });
 }

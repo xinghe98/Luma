@@ -133,37 +133,6 @@ final class CatalogStore extends ChangeNotifier implements CatalogRepository {
     return saved;
   }
 
-  @override
-  Future<List<CatalogIssue>> issues() => _repository.issues();
-
-  @override
-  Future<void> ignore(String mediaId) async {
-    final generation = _generation;
-    await _repository.ignore(mediaId);
-    if (!_disposed && generation == _generation) _invalidateAllKinds();
-  }
-
-  @override
-  Future<void> updateMatch({
-    required String mediaId,
-    required CatalogKind kind,
-    required String title,
-    int? year,
-    int? seasonNumber,
-    int? episodeNumber,
-  }) async {
-    final generation = _generation;
-    await _repository.updateMatch(
-      mediaId: mediaId,
-      kind: kind,
-      title: title,
-      year: year,
-      seasonNumber: seasonNumber,
-      episodeNumber: episodeNumber,
-    );
-    if (!_disposed && generation == _generation) _invalidateAllKinds();
-  }
-
   void _rememberFavorite(CatalogItem item) {
     final saved = _favorites[item.id];
     if (saved == null || item.favoriteRevision >= saved.revision) {
@@ -172,13 +141,6 @@ final class CatalogStore extends ChangeNotifier implements CatalogRepository {
         revision: item.favoriteRevision,
       );
     }
-  }
-
-  void _invalidateAllKinds() {
-    for (final kind in CatalogKind.values) {
-      _kindInvalidations[kind] = (_kindInvalidations[kind] ?? 0) + 1;
-    }
-    notifyListeners();
   }
 
   @override

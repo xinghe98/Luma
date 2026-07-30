@@ -9,22 +9,28 @@ class ConstrainedPageList extends StatelessWidget {
     this.scrollKey,
     this.controller,
     this.physics,
-    this.padding = const EdgeInsets.fromLTRB(
-      LumaLayout.pagePaddingH,
-      LumaSpacing.xs,
-      LumaLayout.pagePaddingH,
-      LumaLayout.pagePaddingBottom,
-    ),
+    this.padding,
   });
 
   final List<Widget> children;
   final Key? scrollKey;
   final ScrollController? controller;
   final ScrollPhysics? physics;
-  final EdgeInsetsGeometry padding;
+  final EdgeInsetsGeometry? padding;
 
   @override
   Widget build(BuildContext context) {
+    final horizontal = LumaLayout.pageHorizontalPadding(
+      MediaQuery.sizeOf(context).width,
+    );
+    final resolvedPadding =
+        padding ??
+        EdgeInsets.fromLTRB(
+          horizontal,
+          LumaSpacing.xs,
+          horizontal,
+          LumaLayout.pagePaddingBottom,
+        );
     return Center(
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: LumaLayout.contentMaxWidth),
@@ -34,7 +40,7 @@ class ConstrainedPageList extends StatelessWidget {
             key: scrollKey,
             controller: controller,
             physics: physics,
-            padding: padding,
+            padding: resolvedPadding,
             children: children,
           ),
         ),

@@ -397,7 +397,7 @@ class _MiniPlayerIconButton extends StatelessWidget {
           style: IconButton.styleFrom(
             minimumSize: const Size.square(36),
             maximumSize: const Size.square(36),
-            padding: const EdgeInsets.all(6),
+            padding: const EdgeInsets.all(LumaSpacing.xs),
             tapTargetSize: MaterialTapTargetSize.shrinkWrap,
             foregroundColor: LumaColors.onInk,
           ),
@@ -406,7 +406,7 @@ class _MiniPlayerIconButton extends StatelessWidget {
             child: Icon(
               icon,
               key: ValueKey(icon),
-              size: 20,
+              size: LumaIconSize.inline,
               shadows: const [Shadow(color: Colors.black54, blurRadius: 3)],
             ),
           ),

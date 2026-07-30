@@ -95,15 +95,20 @@ class ConnectionForm extends StatelessWidget {
         const SizedBox(height: LumaSpacing.sm),
         Text(
           '当前服务器使用 HTTP，用户名和密码仅应在可信局域网内传输。',
-          style: TextStyle(color: Theme.of(context).colorScheme.error),
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+            color: Theme.of(context).colorScheme.error,
+          ),
         ),
         const SizedBox(height: LumaSpacing.md),
         FilledButton.icon(
           onPressed: !enabled || controller.isLoading ? null : onConnect,
           icon: controller.isLoading
-              ? const SizedBox.square(
+              ? SizedBox.square(
                   dimension: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2),
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Theme.of(context).colorScheme.onPrimary,
+                  ),
                 )
               : const Icon(Icons.link_rounded),
           label: Text(controller.isLoading ? '正在连接' : '立即连接'),

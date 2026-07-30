@@ -14,6 +14,7 @@ import '../../shared/media/responsive_media_grid.dart';
 import '../../shared/states/empty_state.dart';
 import '../../shared/states/skeleton.dart';
 import '../library/library_controller.dart';
+import '../shell/shell_entry_gate.dart';
 import 'catalog_controller.dart';
 import 'widgets/catalog_card.dart';
 
@@ -54,6 +55,8 @@ class _CatalogPageState extends State<CatalogPage>
   final _scroll = ScrollController();
   final _seriesSectionKey = GlobalKey();
   final _personalSectionKey = GlobalKey();
+  Future<void>? _entryGate;
+  bool _entrySettled = false;
   bool _loadCheckScheduled = false;
 
   @override
@@ -64,16 +67,28 @@ class _CatalogPageState extends State<CatalogPage>
     super.didChangeDependencies();
     if (_movies != null) return;
     final dependencies = AppScope.of(context);
-    _movies = CatalogController(dependencies.catalog, kind: CatalogKind.movie);
-    _series = CatalogController(dependencies.catalog, kind: CatalogKind.series);
+    final prewarmer = dependencies.mediaBranchPrewarmer;
+    _movies = CatalogController(
+      dependencies.catalog,
+      kind: CatalogKind.movie,
+      initialItems: prewarmer.catalogItems(CatalogKind.movie),
+    );
+    _series = CatalogController(
+      dependencies.catalog,
+      kind: CatalogKind.series,
+      initialItems: prewarmer.catalogItems(CatalogKind.series),
+    );
     _personalVideos = LibraryController(
       fixedType: MediaType.video,
       fixedLibraryKind: 'personal',
       media: dependencies.media,
       pageSize: 6,
     );
-    // 电影先发起请求；首帧布局后会按可视范围补齐邻近分区。
-    _movies!.ensureLoaded();
+    // 先提交影视库稳定首帧；动画结束后再刷新电影和邻近分区。
+    final entryGate = waitForShellEntrySettle(context);
+    _entryGate = entryGate;
+    _movies!.ensureLoadedAfter(entryGate);
+    _restoreScrollCacheAfter(entryGate);
     _scheduleUpcomingLoadCheck();
   }
 
@@ -103,12 +118,13 @@ class _CatalogPageState extends State<CatalogPage>
       if (!mounted) return;
       final series = _series!;
       final personal = _personalVideos!;
+      final entryGate = _entryGate ?? Future<void>.value();
       if (!series.hasStarted && _isNearViewport(_seriesSectionKey)) {
-        series.ensureLoaded();
+        series.ensureLoadedAfter(entryGate);
         return;
       }
       if (!personal.hasStarted && _isNearViewport(_personalSectionKey)) {
-        personal.ensureLoaded();
+        personal.ensureLoadedAfter(entryGate);
       }
     });
   }
@@ -183,7 +199,9 @@ class _CatalogPageState extends State<CatalogPage>
                 controller: _scroll,
                 key: const PageStorageKey('catalog-overview-scroll'),
                 physics: const AlwaysScrollableScrollPhysics(),
-                cacheExtent: LumaLayout.scrollCacheExtent,
+                cacheExtent: _entrySettled
+                    ? LumaLayout.scrollCacheExtent
+                    : 0,
                 slivers: [
                   if (allEmpty)
                     const SliverFillRemaining(
@@ -308,5 +326,12 @@ class _CatalogPageState extends State<CatalogPage>
         );
       },
     );
+  }
+
+  /// 导航动效结束后恢复屏外缓存，避免海报解码与胶囊位移争用帧预算。
+  Future<void> _restoreScrollCacheAfter(Future<void> gate) async {
+    await gate;
+    if (!mounted || _entrySettled) return;
+    setState(() => _entrySettled = true);
   }
 }

@@ -20,6 +20,7 @@ import 'package:luma/features/connection/connection_page.dart';
 import 'package:luma/features/home/widgets/home_header.dart';
 import 'package:luma/features/search/widgets/search_results.dart';
 import 'package:luma/features/settings/settings_page.dart';
+import 'package:luma/features/shell/widgets/adaptive_app_navigation.dart';
 import 'package:luma/main.dart';
 import 'package:luma/shared/branding/brand_mark.dart';
 import 'package:luma/shared/media/masonry_media_tile.dart';
@@ -164,26 +165,63 @@ void main() {
     ]) {
       expect(find.byKey(ValueKey('bottom-nav-$routeName')), findsOneWidget);
     }
-    final homeFeedback = tester.widget<InkResponse>(
+    expect(
+      find.byKey(const ValueKey('bottom-navigation-surface')),
+      findsOneWidget,
+    );
+    final homeFeedback = tester.widget<InkWell>(
       find.descendant(
         of: find.byKey(const ValueKey('bottom-nav-home')),
-        matching: find.byType(InkResponse),
+        matching: find.byType(InkWell),
       ),
     );
-    expect(homeFeedback.customBorder, isA<CircleBorder>());
-    expect(homeFeedback.containedInkWell, isTrue);
+    expect(homeFeedback.borderRadius, isNotNull);
     final selectedHomeIcon = tester.widget<Icon>(
       find.descendant(
         of: find.byKey(const ValueKey('bottom-nav-home')),
         matching: find.byType(Icon),
       ),
     );
-    expect(selectedHomeIcon.color, LumaColors.lightPrimary);
+    expect(selectedHomeIcon.color, LumaColors.paper);
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('bottom-nav-home')),
+        matching: find.text('首页'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('bottom-nav-photos')),
+        matching: find.text('图片库'),
+      ),
+      findsNothing,
+    );
 
+    final initialIndicatorLeft = _indicatorPaintLeft(tester);
     await tester.tap(find.byKey(const ValueKey('bottom-nav-photos')));
     await tester.pump();
+    final photoScroll = find.byKey(
+      const PageStorageKey('library-scroll-image-all'),
+    );
+    expect(
+      tester.widget<CustomScrollView>(photoScroll).cacheExtent,
+      0,
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 110));
+    final movingIndicatorLeft = _indicatorPaintLeft(tester);
+    expect(movingIndicatorLeft, greaterThan(initialIndicatorLeft));
+    await tester.pump(const Duration(milliseconds: 110));
+    final settledIndicatorLeft = _indicatorPaintLeft(tester);
+    expect(settledIndicatorLeft, greaterThan(movingIndicatorLeft));
     // 库页 ensureLoaded → mock search 有短延迟。
     await tester.pump(const Duration(milliseconds: 200));
+    await tester.pump();
+    expect(
+      tester.widget<CustomScrollView>(photoScroll).cacheExtent,
+      LumaLayout.scrollCacheExtent,
+    );
     expect(
       find.descendant(of: find.byType(AppBar), matching: find.text('图片库')),
       findsOneWidget,
@@ -200,7 +238,9 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey('bottom-nav-videos')));
     await tester.pump();
-    await tester.pump(const Duration(milliseconds: 200));
+    await tester.pump(LumaMotion.navigation);
+    await tester.pump();
+    await tester.pump();
     expect(
       find.descendant(of: find.byType(AppBar), matching: find.text('影视库')),
       findsOneWidget,
@@ -260,6 +300,49 @@ void main() {
     expect(searchOpened, isTrue);
   });
 
+  testWidgets('bottom navigation settles immediately with reduced motion', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    var selectedIndex = 0;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: LumaTheme.light(),
+        home: MediaQuery(
+          data: const MediaQueryData(disableAnimations: true),
+          child: StatefulBuilder(
+            builder: (context, setState) => AdaptiveAppNavigation(
+              selectedIndex: selectedIndex,
+              onSelect: (value) => setState(() => selectedIndex = value),
+              content: const SizedBox.expand(),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    final initialLeft = _indicatorPaintLeft(tester);
+    await tester.tap(find.byKey(const ValueKey('bottom-nav-photos')));
+    await tester.pump();
+    await tester.pump();
+    expect(_indicatorPaintLeft(tester), greaterThan(initialLeft));
+    expect(find.text('图片库'), findsOneWidget);
+    expect(
+      tester
+          .widget<TweenAnimationBuilder<double>>(
+            find.byKey(
+              const ValueKey('bottom-navigation-indicator-animation'),
+            ),
+          )
+          .duration,
+      Duration.zero,
+    );
+  });
+
   testWidgets('search idle state prompts for criteria', (tester) async {
     await tester.pumpWidget(
       MaterialApp(
@@ -308,6 +391,20 @@ void main() {
       );
       await tester.pump();
 
+      final catalogScroll = find.byKey(
+        const PageStorageKey('catalog-overview-scroll'),
+      );
+      expect(
+        tester.widget<CustomScrollView>(catalogScroll).cacheExtent,
+        0,
+      );
+      expect(catalog.calls, isEmpty);
+      await tester.pump(LumaMotion.navigation);
+      await tester.pump();
+      expect(
+        tester.widget<CustomScrollView>(catalogScroll).cacheExtent,
+        LumaLayout.scrollCacheExtent,
+      );
       expect(catalog.calls[CatalogKind.movie], 1);
       expect(catalog.calls[CatalogKind.series], 1);
       expect(dependencies.media.loadState, LoadState.idle);
@@ -339,6 +436,7 @@ void main() {
         ),
       ),
     );
+    await tester.pump(LumaMotion.navigation);
     await tester.pump();
     await tester.pump();
     expect(find.byType(CatalogCard), findsOneWidget);
@@ -405,6 +503,7 @@ void main() {
       ),
     );
     expect(find.text('server.local'), findsOneWidget);
+    expect(find.text('待整理文件'), findsNothing);
 
     await dependencies.updateServerAlias('家庭服务器');
     await tester.pump();
@@ -559,6 +658,17 @@ class _WidgetAliasStore implements ServerAliasStore {
   }
 }
 
+double _indicatorPaintLeft(WidgetTester tester) {
+  final finder = find.byKey(
+    const ValueKey('bottom-navigation-indicator'),
+  );
+  final translation = tester
+      .widget<Transform>(finder)
+      .transform
+      .getTranslation();
+  return tester.getRect(finder).left + translation.x;
+}
+
 class _RecordingConnectionService implements ConnectionService {
   @override
   ServerProfile? connectedProfile;
@@ -601,22 +711,6 @@ class _CountingCatalogRepository implements CatalogRepository {
     required String catalogId,
     required bool favorite,
     required int revision,
-  }) => throw UnimplementedError();
-
-  @override
-  Future<void> ignore(String mediaId) => throw UnimplementedError();
-
-  @override
-  Future<List<CatalogIssue>> issues() => throw UnimplementedError();
-
-  @override
-  Future<void> updateMatch({
-    required String mediaId,
-    required CatalogKind kind,
-    required String title,
-    int? year,
-    int? seasonNumber,
-    int? episodeNumber,
   }) => throw UnimplementedError();
 }
 
@@ -662,21 +756,5 @@ class _ShelfRefreshCatalogRepository implements CatalogRepository {
     required String catalogId,
     required bool favorite,
     required int revision,
-  }) => throw UnimplementedError();
-
-  @override
-  Future<void> ignore(String mediaId) => throw UnimplementedError();
-
-  @override
-  Future<List<CatalogIssue>> issues() => throw UnimplementedError();
-
-  @override
-  Future<void> updateMatch({
-    required String mediaId,
-    required CatalogKind kind,
-    required String title,
-    int? year,
-    int? seasonNumber,
-    int? episodeNumber,
   }) => throw UnimplementedError();
 }

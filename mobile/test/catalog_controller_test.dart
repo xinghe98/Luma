@@ -125,22 +125,6 @@ class _RefreshingCatalogRepository implements CatalogRepository {
     required bool favorite,
     required int revision,
   }) async => CatalogFavorite(favorite: favorite, revision: revision + 1);
-
-  @override
-  Future<void> ignore(String mediaId) async {}
-
-  @override
-  Future<List<CatalogIssue>> issues() async => [];
-
-  @override
-  Future<void> updateMatch({
-    required String mediaId,
-    required CatalogKind kind,
-    required String title,
-    int? year,
-    int? seasonNumber,
-    int? episodeNumber,
-  }) async {}
 }
 
 class _BlockingCatalogRepository implements CatalogRepository {
@@ -163,21 +147,5 @@ class _BlockingCatalogRepository implements CatalogRepository {
     required String catalogId,
     required bool favorite,
     required int revision,
-  }) => throw UnimplementedError();
-
-  @override
-  Future<void> ignore(String mediaId) => throw UnimplementedError();
-
-  @override
-  Future<List<CatalogIssue>> issues() => throw UnimplementedError();
-
-  @override
-  Future<void> updateMatch({
-    required String mediaId,
-    required CatalogKind kind,
-    required String title,
-    int? year,
-    int? seasonNumber,
-    int? episodeNumber,
   }) => throw UnimplementedError();
 }

@@ -17,7 +17,7 @@ final class LumaThemeBuilder {
           ? LumaColors.darkPrimaryContainer
           : LumaColors.lightPrimaryContainer,
       onPrimaryContainer: isDark ? LumaColors.onInk : LumaColors.ink,
-      secondary: isDark ? LumaColors.gold : LumaColors.lightSecondary,
+      secondary: isDark ? LumaColors.accentBlue : LumaColors.lightSecondary,
       onSecondary: isDark ? LumaColors.deepBlue : LumaColors.paper,
       secondaryContainer: isDark
           ? LumaColors.darkSecondaryContainer

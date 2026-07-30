@@ -18,8 +18,6 @@ import (
 type CatalogUseCase interface {
 	List(context.Context, domain.CatalogListRequest, string) ([]domain.CatalogItem, error)
 	Get(context.Context, string, string) (domain.CatalogItem, error)
-	Issues(context.Context, int) ([]domain.CatalogIssue, error)
-	UpdateMatch(context.Context, domain.UpdateCatalogMatchCommand) error
 }
 
 type catalogMetadataUseCase interface {
@@ -148,58 +146,6 @@ func (h *CatalogHandler) Get(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, presentCatalog(item, true))
-}
-
-func (h *CatalogHandler) Issues(c *gin.Context) {
-	limit, ok := parseOptionalLimit(c)
-	if !ok {
-		return
-	}
-	items, err := h.service.Issues(c.Request.Context(), limit)
-	if err != nil {
-		response.FromError(c, err)
-		return
-	}
-	result := make([]catalogIssueJSON, 0, len(items))
-	for _, item := range items {
-		result = append(result, catalogIssueJSON{MediaID: item.MediaID, Filename: item.Filename,
-			SourceID: item.SourceID, LibraryKind: item.LibraryKind, SuggestedTitle: item.SuggestedTitle,
-			SeasonNumber: item.SeasonNumber, EpisodeNumber: item.EpisodeNumber})
-	}
-	c.JSON(http.StatusOK, gin.H{"items": result})
-}
-
-type catalogIssueJSON struct {
-	MediaID        string `json:"media_id"`
-	Filename       string `json:"filename"`
-	SourceID       string `json:"source_id"`
-	LibraryKind    string `json:"library_kind"`
-	SuggestedTitle string `json:"suggested_title"`
-	SeasonNumber   *int   `json:"season_number"`
-	EpisodeNumber  *int   `json:"episode_number"`
-}
-
-type updateCatalogMatchRequest struct {
-	Kind          string `json:"kind"`
-	Title         string `json:"title"`
-	Year          *int   `json:"year"`
-	SeasonNumber  *int   `json:"season_number"`
-	EpisodeNumber *int   `json:"episode_number"`
-	Ignored       bool   `json:"ignored"`
-}
-
-func (h *CatalogHandler) UpdateMatch(c *gin.Context) {
-	var request updateCatalogMatchRequest
-	if err := apirequest.DecodeJSON(c, &request); err != nil {
-		response.Error(c, http.StatusBadRequest, "INVALID_REQUEST", err.Error(), nil)
-		return
-	}
-	err := h.service.UpdateMatch(c.Request.Context(), domain.UpdateCatalogMatchCommand{MediaID: c.Param("id"), Kind: request.Kind, Title: request.Title, Year: request.Year, SeasonNumber: request.SeasonNumber, EpisodeNumber: request.EpisodeNumber, Ignored: request.Ignored})
-	if err != nil {
-		response.FromError(c, err)
-		return
-	}
-	c.Status(http.StatusNoContent)
 }
 
 func presentCatalog(item domain.CatalogItem, includeEpisodes bool) catalogItemJSON {

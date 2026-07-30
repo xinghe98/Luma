@@ -33,7 +33,7 @@ func (r *CatalogRepository) ListCandidates(ctx context.Context, limit int) ([]do
 		)))
 		ORDER BY m.updated_at_ms, m.id LIMIT ?`, catalog.RuleVersion, limit)
 	if err != nil {
-		return nil, fmt.Errorf("查询待整理媒体: %w", err)
+		return nil, fmt.Errorf("查询待识别媒体: %w", err)
 	}
 	defer rows.Close()
 	items := make([]domain.CatalogCandidate, 0, limit)
@@ -47,23 +47,6 @@ func (r *CatalogRepository) ListCandidates(ctx context.Context, limit int) ([]do
 		items = append(items, item)
 	}
 	return items, rows.Err()
-}
-
-func (r *CatalogRepository) GetCandidate(ctx context.Context, mediaID string) (domain.CatalogCandidate, error) {
-	var item domain.CatalogCandidate
-	var updated int64
-	err := r.db.QueryRowContext(ctx, `SELECT m.id, m.source_id, s.library_kind, m.relative_path, m.filename, m.updated_at_ms
-		FROM media_items m JOIN sources s ON s.id = m.source_id
-		WHERE m.id = ? AND m.media_type = 'video' AND m.status <> 'missing' AND s.enabled = 1 AND s.deleted_at_ms IS NULL`, mediaID).
-		Scan(&item.MediaID, &item.SourceID, &item.LibraryKind, &item.RelativePath, &item.Filename, &updated)
-	if errors.Is(err, sql.ErrNoRows) {
-		return item, domain.ErrMediaNotFound
-	}
-	if err != nil {
-		return item, err
-	}
-	item.MediaUpdatedAt = time.UnixMilli(updated).UTC()
-	return item, nil
 }
 
 func (r *CatalogRepository) SaveMatch(ctx context.Context, match domain.CatalogMatch, now time.Time) error {
@@ -238,32 +221,6 @@ func (r *CatalogRepository) Prune(ctx context.Context, now time.Time) error {
 		return err
 	}
 	return tx.Commit()
-}
-
-// ListIssues 返回有效来源中需要人工复核的匹配问题。
-func (r *CatalogRepository) ListIssues(ctx context.Context, limit int) ([]domain.CatalogIssue, error) {
-	rows, err := r.db.QueryContext(ctx, `SELECT m.id, m.filename, m.source_id, s.library_kind, COALESCE(c.title, ''), se.season_number, e.episode_number
-		FROM catalog_media_links l JOIN media_items m ON m.id = l.media_id JOIN sources s ON s.id = m.source_id
-		LEFT JOIN catalog_items c ON c.id = l.catalog_item_id LEFT JOIN catalog_seasons se ON se.id = l.season_id
-		LEFT JOIN catalog_episodes e ON e.id = l.episode_id WHERE l.match_status = 'needs_review'
-		AND m.status <> 'missing' AND s.enabled = 1 AND s.deleted_at_ms IS NULL
-		ORDER BY l.updated_at_ms DESC LIMIT ?`, limit)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []domain.CatalogIssue{}
-	for rows.Next() {
-		var item domain.CatalogIssue
-		var season, episode sql.NullInt64
-		if err := rows.Scan(&item.MediaID, &item.Filename, &item.SourceID, &item.LibraryKind, &item.SuggestedTitle, &season, &episode); err != nil {
-			return nil, err
-		}
-		item.SeasonNumber = nullInt(season)
-		item.EpisodeNumber = nullInt(episode)
-		items = append(items, item)
-	}
-	return items, rows.Err()
 }
 
 func nullableInt(value *int) any {

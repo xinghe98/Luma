@@ -1,58 +1,58 @@
 import 'package:flutter/material.dart';
 
 abstract final class LumaColors {
-  static const ink = Color(0xFF24302F);
-  static const deepBlue = Color(0xFF172321);
-  static const surface = Color(0xFF243735);
-  static const elevated = Color(0xFF304543);
-  static const gold = Color(0xFFC59447);
-  static const paper = Color(0xFFF5EFE6);
-  static const success = Color(0xFF8EAD92);
-  static const warning = Color(0xFFD8B36B);
-  static const lightSuccess = Color(0xFF356746);
-  static const lightWarning = Color(0xFF765617);
-  static const lightPrimary = Color(0xFF3F6662);
-  static const darkPrimary = Color(0xFFAFCBC6);
-  static const lightSecondary = Color(0xFF7A5A25);
-  static const lightSurfaceContainer = Color(0xFFF9F4EC);
-  static const lightSurfaceContainerHigh = Color(0xFFE7DED2);
-  static const onInk = Color(0xFFF1ECE3);
-  static const onInkMuted = Color(0xB3F1ECE3);
-  static const lightPrimaryContainer = Color(0xFFD5E3DF);
-  static const lightSecondaryContainer = Color(0xFFEFE1C7);
-  static const lightTertiary = Color(0xFF705E55);
-  static const lightTertiaryContainer = Color(0xFFE5D6CC);
-  static const lightOutline = Color(0xFF777A73);
-  static const lightOutlineVariant = Color(0xFFC8C1B5);
-  static const darkPrimaryContainer = Color(0xFF304543);
-  static const darkSecondaryContainer = Color(0xFF5C4A28);
-  static const darkTertiary = Color(0xFFD5BFB3);
-  static const darkTertiaryContainer = Color(0xFF594940);
-  static const darkOutline = Color(0xFF929B97);
-  static const darkOutlineVariant = Color(0xFF455653);
-  static const lightSurfaceDim = Color(0xFFE6DDD1);
-  static const darkSurfaceBright = Color(0xFF3A504D);
-  static const lightBrandSurface = Color(0xFF3F6662);
-  static const lightBrandSurfaceVariant = Color(0xFF4B736E);
-  static const darkBrandSurface = Color(0xFF243735);
-  static const darkBrandSurfaceVariant = Color(0xFF304543);
+  static const ink = Color(0xFF182236);
+  static const deepBlue = Color(0xFF111827);
+  static const surface = Color(0xFF172033);
+  static const elevated = Color(0xFF212C3E);
+  static const accentBlue = Color(0xFF8FB6FF);
+  static const paper = Color(0xFFF3F6FC);
+  static const success = Color(0xFF87C9A0);
+  static const warning = Color(0xFFE2B86B);
+  static const lightSuccess = Color(0xFF2F7650);
+  static const lightWarning = Color(0xFF805A14);
+  static const lightPrimary = Color(0xFF426FC4);
+  static const darkPrimary = Color(0xFFA9C7FF);
+  static const lightSecondary = Color(0xFF536D9D);
+  static const lightSurfaceContainer = Color(0xFFFBFCFF);
+  static const lightSurfaceContainerHigh = Color(0xFFEAF0F9);
+  static const onInk = Color(0xFFEEF3FB);
+  static const onInkMuted = Color(0xBDB7C1D0);
+  static const lightPrimaryContainer = Color(0xFFDCE8FB);
+  static const lightSecondaryContainer = Color(0xFFE4EBF7);
+  static const lightTertiary = Color(0xFF5F6684);
+  static const lightTertiaryContainer = Color(0xFFE8E9F4);
+  static const lightOutline = Color(0xFF647084);
+  static const lightOutlineVariant = Color(0xFFD5DEEB);
+  static const darkPrimaryContainer = Color(0xFF294771);
+  static const darkSecondaryContainer = Color(0xFF293950);
+  static const darkTertiary = Color(0xFFC2C7E5);
+  static const darkTertiaryContainer = Color(0xFF373B58);
+  static const darkOutline = Color(0xFF9BA8BC);
+  static const darkOutlineVariant = Color(0xFF435169);
+  static const lightSurfaceDim = Color(0xFFE6ECF5);
+  static const darkSurfaceBright = Color(0xFF2B374B);
+  static const lightBrandSurface = Color(0xFFE8F0FC);
+  static const lightBrandSurfaceVariant = Color(0xFFF5F8FD);
+  static const darkBrandSurface = Color(0xFF1B2940);
+  static const darkBrandSurfaceVariant = Color(0xFF243650);
   static const error = Color(0xFFB3261E);
   static const onError = Color(0xFFFFF8F6);
   static const lightErrorContainer = Color(0xFFFFDAD5);
   static const lightOnErrorContainer = Color(0xFF410002);
   static const darkErrorContainer = Color(0xFF8C1D18);
   static const darkOnErrorContainer = Color(0xFFFFDAD5);
-  static const lightBadgeScrim = Color(0x9A24302F);
-  static const darkBadgeScrim = Color(0xB324302F);
+  static const lightBadgeScrim = Color(0xA6182236);
+  static const darkBadgeScrim = Color(0xC4111827);
 }
 
 abstract final class LumaArtworkColors {
   static const palettes = <List<Color>>[
-    [Color(0xFF5A5C56), Color(0xFF2C3433), LumaColors.gold],
-    [Color(0xFF665F58), Color(0xFF353632), Color(0xFFA88B72)],
-    [Color(0xFF4A504B), Color(0xFF282C29), Color(0xFFA5A093)],
-    [Color(0xFF6A5346), Color(0xFF332F2E), Color(0xFFC0A06B)],
-    [Color(0xFF555851), Color(0xFF2B2E2B), Color(0xFFA99A81)],
+    [Color(0xFF7190C6), Color(0xFF33435F), Color(0xFFA9C7FF)],
+    [Color(0xFF7D88AC), Color(0xFF394159), Color(0xFFB7C8E8)],
+    [Color(0xFF71879A), Color(0xFF34444F), Color(0xFFA8C4D9)],
+    [Color(0xFF857D9E), Color(0xFF433D54), Color(0xFFC1B9DD)],
+    [Color(0xFF6F829C), Color(0xFF354052), Color(0xFFAABCD5)],
   ];
 }
 
@@ -68,37 +68,37 @@ abstract final class LumaTypography {
     return themed.copyWith(
       displayLarge: themed.displayLarge?.copyWith(
         fontSize: 40,
-        fontWeight: FontWeight.w600,
+        fontWeight: FontWeight.w700,
         height: 1.2,
         letterSpacing: 0,
       ),
       displayMedium: themed.displayMedium?.copyWith(
         fontSize: 36,
-        fontWeight: FontWeight.w600,
+        fontWeight: FontWeight.w700,
         height: 1.2,
         letterSpacing: 0,
       ),
       displaySmall: themed.displaySmall?.copyWith(
         fontSize: 32,
-        fontWeight: FontWeight.w600,
+        fontWeight: FontWeight.w700,
         height: 1.2,
         letterSpacing: 0,
       ),
       headlineLarge: themed.headlineLarge?.copyWith(
         fontSize: 32,
-        fontWeight: FontWeight.w600,
+        fontWeight: FontWeight.w700,
         height: 1.2,
         letterSpacing: 0,
       ),
       headlineMedium: themed.headlineMedium?.copyWith(
         fontSize: 28,
-        fontWeight: FontWeight.w600,
+        fontWeight: FontWeight.w700,
         height: 1.2,
         letterSpacing: 0,
       ),
       headlineSmall: themed.headlineSmall?.copyWith(
         fontSize: 24,
-        fontWeight: FontWeight.w600,
+        fontWeight: FontWeight.w700,
         height: 1.2,
         letterSpacing: 0,
       ),
@@ -170,11 +170,16 @@ abstract final class LumaLayout {
   static const horizontalCardWidth = 232.0;
   static const horizontalCardHeight = 202.0;
   static const pagePaddingH = 20.0;
+  static const pagePaddingTabletH = 28.0;
+  static const pagePaddingWideH = 32.0;
   static const pagePaddingTop = 12.0;
   static const pagePaddingBottom = 40.0;
   static const buttonHeight = 52.0;
   static const navigationBarHeight = 68.0;
   static const minTapTarget = 48.0;
+  static const inputHeight = 52.0;
+  static const compactControlHeight = 48.0;
+  static const chipHeight = 40.0;
 
   static const scrollCacheExtent = 320.0;
 
@@ -182,6 +187,13 @@ abstract final class LumaLayout {
     double top = pagePaddingTop,
     double bottom = pagePaddingBottom,
   }) => EdgeInsets.fromLTRB(pagePaddingH, top, pagePaddingH, bottom);
+
+  /// 根据可用宽度返回统一页面边距，宽屏只增加呼吸感而不改变内容结构。
+  static double pageHorizontalPadding(double width) => width >= 840
+      ? pagePaddingWideH
+      : width >= 600
+      ? pagePaddingTabletH
+      : pagePaddingH;
 
   static int gridColumns(double width) => width >= 1200
       ? 5
@@ -209,16 +221,30 @@ abstract final class LumaSpacing {
 }
 
 abstract final class LumaRadii {
-  static const small = 8.0;
-  static const medium = 12.0;
-  static const large = 18.0;
-  static const extraLarge = 32.0;
-  static const badge = 8.0;
+  static const small = 12.0;
+  static const medium = 16.0;
+  static const large = 22.0;
+  static const extraLarge = 30.0;
+  static const badge = 999.0;
+}
+
+abstract final class LumaIconSize {
+  static const status = 18.0;
+  static const inline = 22.0;
+  static const action = 24.0;
+  static const prominent = 28.0;
+  static const emptyState = 40.0;
+}
+
+abstract final class LumaStroke {
+  static const hairline = 1.0;
+  static const focused = 1.5;
 }
 
 abstract final class LumaMotion {
   static const Duration fast = Duration(milliseconds: 150);
   static const Duration normal = Duration(milliseconds: 200);
+  static const Duration navigation = Duration(milliseconds: 220);
   static const Duration slow = Duration(milliseconds: 250);
   static const Curve standard = Curves.easeOutCubic;
 

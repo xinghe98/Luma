@@ -307,7 +307,7 @@ class _HeroInformation extends StatelessWidget {
                         vertical: LumaSpacing.xs,
                       ),
                       decoration: BoxDecoration(
-                        color: const Color(0xFF3B382C),
+                        color: CatalogDetailPalette.surfaceHigh,
                         borderRadius: BorderRadius.circular(LumaRadii.small),
                       ),
                       child: Text(
@@ -342,7 +342,7 @@ class _PrimaryPlayButton extends StatelessWidget {
         label: const Text('继续观看'),
         style: FilledButton.styleFrom(
           backgroundColor: CatalogDetailPalette.accent,
-          foregroundColor: CatalogDetailPalette.background,
+          foregroundColor: CatalogDetailPalette.onAccent,
           minimumSize: const Size.fromHeight(56),
           textStyle: Theme.of(
             context,

@@ -96,14 +96,11 @@ func (fakeAuthenticationUseCase) Logout(context.Context, string) error { return 
 func (fakeCatalogUseCase) List(context.Context, domain.CatalogListRequest, string) ([]domain.CatalogItem, error) {
 	return []domain.CatalogItem{}, nil
 }
-func (fakeCatalogUseCase) Get(context.Context, string, string) (domain.CatalogItem, error) {
+func (fakeCatalogUseCase) Get(_ context.Context, id, _ string) (domain.CatalogItem, error) {
+	if id != "catalog_test" {
+		return domain.CatalogItem{}, domain.ErrCatalogNotFound
+	}
 	return domain.CatalogItem{ID: "catalog_test", Kind: domain.CatalogKindMovie, Title: "测试电影"}, nil
-}
-func (fakeCatalogUseCase) Issues(context.Context, int) ([]domain.CatalogIssue, error) {
-	return []domain.CatalogIssue{}, nil
-}
-func (fakeCatalogUseCase) UpdateMatch(context.Context, domain.UpdateCatalogMatchCommand) error {
-	return nil
 }
 
 // fakeStreamUseCase 为 Router 测试提供可定位的原始媒体内容。
@@ -549,13 +546,20 @@ func TestCatalogRoutesRequireAuthAndExposeStableShapes(t *testing.T) {
 		t.Fatalf("unexpected catalog payload: %#v", body)
 	}
 
-	update := httptest.NewRequest(http.MethodPatch, "/api/v1/catalog/media/media_test", strings.NewReader(`{"ignored":true}`))
-	update.Header.Set("Authorization", "Bearer test-session")
-	update.Header.Set("Content-Type", "application/json")
-	updated := httptest.NewRecorder()
-	router.ServeHTTP(updated, update)
-	if updated.Code != http.StatusNoContent {
-		t.Fatalf("catalog update status=%d body=%s", updated.Code, updated.Body.String())
+	for _, removed := range []struct {
+		method string
+		path   string
+	}{
+		{method: http.MethodGet, path: "/api/v1/catalog/issues"},
+		{method: http.MethodPatch, path: "/api/v1/catalog/media/media_test"},
+	} {
+		removedRequest := httptest.NewRequest(removed.method, removed.path, nil)
+		removedRequest.Header.Set("Authorization", "Bearer test-session")
+		removedRecorder := httptest.NewRecorder()
+		router.ServeHTTP(removedRecorder, removedRequest)
+		if removedRecorder.Code != http.StatusNotFound {
+			t.Fatalf("removed catalog path=%s status=%d body=%s", removed.path, removedRecorder.Code, removedRecorder.Body.String())
+		}
 	}
 }
 

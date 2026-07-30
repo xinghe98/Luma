@@ -23,6 +23,7 @@ import '../data/storage/server_alias_store.dart';
 import '../features/connection/connection_controller.dart';
 import '../features/catalog/catalog_store.dart';
 import '../features/player/player_session_controller.dart';
+import '../features/shell/media_branch_prewarmer.dart';
 import 'controllers/media_controller.dart';
 import 'controllers/session_controller.dart';
 import 'controllers/settings_controller.dart';
@@ -52,6 +53,11 @@ class AppDependencies {
        _credentialStore = credentialStore,
        _aliasStore = aliasStore,
        _dio = dio {
+    mediaBranchPrewarmer = MediaBranchPrewarmer(
+      media: media,
+      catalog: catalog,
+      session: this.apiSession,
+    );
     playerSession = PlayerSessionController(
       media: media,
       apiSession: this.apiSession,
@@ -123,6 +129,7 @@ class AppDependencies {
   final ApiSession apiSession;
   late final PlayerSessionController playerSession;
   final CatalogStore catalog;
+  late final MediaBranchPrewarmer mediaBranchPrewarmer;
   final AccessRepository access;
   final SourceRepository? sources;
   final ConnectionService _connectionService;
@@ -174,6 +181,7 @@ class AppDependencies {
     session.disconnect();
     await playerSession.close(invalidateCatalog: false);
     if (_disposed) return;
+    mediaBranchPrewarmer.reset();
     media.clear();
     catalog.clear();
     final imageCache = PaintingBinding.instance.imageCache;
@@ -212,6 +220,7 @@ class AppDependencies {
     _restoreOperation++;
     playerSession.dispose();
     connection.dispose();
+    mediaBranchPrewarmer.dispose();
     media.dispose();
     session.dispose();
     settings.dispose();

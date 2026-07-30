@@ -56,14 +56,6 @@ func (s *catalogFavoriteHandlerService) Get(context.Context, string, string) (do
 	return domain.CatalogItem{}, nil
 }
 
-func (s *catalogFavoriteHandlerService) Issues(context.Context, int) ([]domain.CatalogIssue, error) {
-	return nil, nil
-}
-
-func (s *catalogFavoriteHandlerService) UpdateMatch(context.Context, domain.UpdateCatalogMatchCommand) error {
-	return nil
-}
-
 // UpdateFavorite 记录 Handler 传入的作品收藏请求并返回新的版本号。
 func (s *catalogFavoriteHandlerService) UpdateFavorite(_ context.Context, itemID, userID string, favorite bool, revision int64) (domain.CatalogUserData, error) {
 	s.itemID, s.userID, s.favorite, s.revision = itemID, userID, favorite, revision

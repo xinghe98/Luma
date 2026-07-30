@@ -52,7 +52,7 @@ class RecentServers extends StatelessWidget {
                           : LumaColors.warning,
                     ),
                   ),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: LumaSpacing.xs),
                   const Icon(Icons.chevron_right_rounded),
                 ],
               ),

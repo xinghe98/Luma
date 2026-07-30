@@ -39,7 +39,7 @@ var (
 	ErrMediaDurationUnavailable = errors.New("media duration unavailable")
 	// ErrMediaNotPlayable 表示目标媒体不支持播放进度。
 	ErrMediaNotPlayable = errors.New("media not playable")
-	// ErrCatalogNotFound 表示作品或待整理文件不存在。
+	// ErrCatalogNotFound 表示作品不存在或当前用户不可访问。
 	ErrCatalogNotFound = errors.New("catalog item not found")
 	// ErrUnauthorized 表示凭据无效、过期、撤销或所属用户被禁用。
 	ErrUnauthorized = errors.New("unauthorized")

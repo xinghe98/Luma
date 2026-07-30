@@ -200,57 +200,6 @@ func (s *CatalogService) UpdateFavorite(ctx context.Context, itemID, userID stri
 	return s.repository.UpdateFavorite(ctx, itemID, userID, favorite, revision, s.clock.Now())
 }
 
-func (s *CatalogService) Issues(ctx context.Context, limit int) ([]domain.CatalogIssue, error) {
-	if limit == 0 {
-		limit = 50
-	}
-	if limit < 1 || limit > 100 {
-		return nil, fmt.Errorf("%w: limit 必须在 1 到 100 之间", domain.ErrInvalidRequest)
-	}
-	return s.repository.ListIssues(ctx, limit)
-}
-
-func (s *CatalogService) UpdateMatch(ctx context.Context, command domain.UpdateCatalogMatchCommand) error {
-	candidate, err := s.repository.GetCandidate(ctx, command.MediaID)
-	if err != nil {
-		return err
-	}
-	if command.Ignored {
-		return s.repository.SaveMatch(ctx, domain.CatalogMatch{MediaID: candidate.MediaID, SourceID: candidate.SourceID, Ignored: true, Locked: true, MediaUpdatedAt: candidate.MediaUpdatedAt}, s.clock.Now())
-	}
-	title := strings.Join(strings.Fields(command.Title), " ")
-	if title == "" || len([]rune(title)) > 200 {
-		return fmt.Errorf("%w: 作品标题须为 1 到 200 个字符", domain.ErrInvalidRequest)
-	}
-	kind := command.Kind
-	if kind == "" {
-		if candidate.LibraryKind == domain.LibraryKindTV {
-			kind = domain.CatalogKindSeries
-		} else {
-			kind = domain.CatalogKindMovie
-		}
-	}
-	if kind != domain.CatalogKindMovie && kind != domain.CatalogKindSeries {
-		return fmt.Errorf("%w: kind 无效", domain.ErrInvalidRequest)
-	}
-	if command.Year != nil && (*command.Year < 1800 || *command.Year > 3000) {
-		return fmt.Errorf("%w: year 无效", domain.ErrInvalidRequest)
-	}
-	if kind == domain.CatalogKindSeries {
-		if command.SeasonNumber == nil || command.EpisodeNumber == nil || *command.SeasonNumber < 0 || *command.EpisodeNumber < 1 {
-			return fmt.Errorf("%w: 剧集必须提供有效季号和集号", domain.ErrInvalidRequest)
-		}
-	}
-	episodeTitle := ""
-	if command.EpisodeNumber != nil {
-		episodeTitle = fmt.Sprintf("第 %d 集", *command.EpisodeNumber)
-	}
-	return s.repository.SaveMatch(ctx, domain.CatalogMatch{MediaID: candidate.MediaID, SourceID: candidate.SourceID,
-		Kind: kind, Title: title, SortTitle: catalog.NormalizeTitle(title), Year: command.Year,
-		SeasonNumber: command.SeasonNumber, EpisodeNumber: command.EpisodeNumber, EpisodeTitle: episodeTitle,
-		Status: domain.CatalogMatchMatched, Confidence: 100, Locked: true, MediaUpdatedAt: candidate.MediaUpdatedAt}, s.clock.Now())
-}
-
 func (s *CatalogService) Sync(ctx context.Context) error {
 	if err := s.repository.Prune(ctx, s.clock.Now()); err != nil {
 		return err

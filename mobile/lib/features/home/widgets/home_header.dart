@@ -24,13 +24,14 @@ class HomeHeader extends StatelessWidget {
     final luma = context.luma;
     return DecoratedBox(
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [luma.brandSurface, luma.brandSurfaceVariant],
-        ),
+        color: luma.brandSurfaceVariant,
         borderRadius: const BorderRadius.vertical(
           bottom: Radius.circular(LumaRadii.extraLarge),
+        ),
+        border: Border(
+          bottom: BorderSide(
+            color: theme.colorScheme.outlineVariant.withValues(alpha: 0.45),
+          ),
         ),
       ),
       child: Center(
@@ -41,7 +42,7 @@ class HomeHeader extends StatelessWidget {
           child: Padding(
             padding: const EdgeInsets.fromLTRB(
               LumaLayout.pagePaddingH,
-              LumaSpacing.lg,
+              LumaSpacing.md,
               LumaLayout.pagePaddingH,
               LumaSpacing.xl,
             ),
@@ -57,10 +58,10 @@ class HomeHeader extends StatelessWidget {
                         child: Align(
                           alignment: Alignment.centerLeft,
                           child: Theme(
-                            data: theme.copyWith(brightness: Brightness.dark),
+                            data: theme,
                             child: const BrandMark(
                               variant: BrandMarkVariant.symbol,
-                              height: 40,
+                              height: 44,
                             ),
                           ),
                         ),
@@ -109,8 +110,15 @@ class _HomeSearchButton extends StatelessWidget {
       button: true,
       label: '搜索媒体',
       child: Material(
-        color: colors.surface,
-        borderRadius: radius,
+        color: colors.surfaceContainer,
+        elevation: 1,
+        shadowColor: colors.shadow.withValues(alpha: 0.08),
+        shape: RoundedRectangleBorder(
+          borderRadius: radius,
+          side: BorderSide(
+            color: colors.outlineVariant.withValues(alpha: 0.52),
+          ),
+        ),
         child: InkWell(
           onTap: onPressed,
           borderRadius: radius,
@@ -120,7 +128,11 @@ class _HomeSearchButton extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: LumaSpacing.md),
               child: Row(
                 children: [
-                  Icon(Icons.search_rounded, color: colors.primary),
+                  Icon(
+                    Icons.search_rounded,
+                    color: colors.primary,
+                    size: LumaIconSize.action,
+                  ),
                   const SizedBox(width: LumaSpacing.sm),
                   Text(
                     '搜索你的媒体',
@@ -129,7 +141,11 @@ class _HomeSearchButton extends StatelessWidget {
                     ),
                   ),
                   const Spacer(),
-                  Icon(Icons.tune_rounded, color: colors.onSurfaceVariant),
+                  Icon(
+                    Icons.tune_rounded,
+                    color: colors.onSurfaceVariant,
+                    size: LumaIconSize.inline,
+                  ),
                 ],
               ),
             ),

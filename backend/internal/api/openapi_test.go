@@ -50,11 +50,15 @@ func TestOpenAPIIsValidYAML(t *testing.T) {
 		}
 	}
 	for _, path := range []string{
-		"/api/v1/catalog", "/api/v1/catalog/issues", "/api/v1/catalog/media/{id}",
-		"/api/v1/catalog/{id}", "/api/v1/catalog/{id}/user-data",
+		"/api/v1/catalog", "/api/v1/catalog/{id}", "/api/v1/catalog/{id}/user-data",
 	} {
 		if paths[path] == nil {
 			t.Fatalf("作品库 OpenAPI path 缺失: %s", path)
+		}
+	}
+	for _, path := range []string{"/api/v1/catalog/issues", "/api/v1/catalog/media/{id}"} {
+		if paths[path] != nil {
+			t.Fatalf("已删除的待整理 API 仍存在: %s", path)
 		}
 	}
 	catalogUserData, ok := paths["/api/v1/catalog/{id}/user-data"].(map[string]any)
@@ -139,9 +143,14 @@ func TestOpenAPIIsValidYAML(t *testing.T) {
 			t.Fatalf("阶段 6 schema 缺失: %s", schema)
 		}
 	}
-	for _, schema := range []string{"CatalogItem", "CatalogEpisode", "CatalogIssue", "UpdateCatalogMatch", "CatalogVersion", "CatalogUserData", "UpdateCatalogUserData"} {
+	for _, schema := range []string{"CatalogItem", "CatalogEpisode", "CatalogVersion", "CatalogUserData", "UpdateCatalogUserData"} {
 		if schemas[schema] == nil {
 			t.Fatalf("作品库 schema 缺失: %s", schema)
+		}
+	}
+	for _, schema := range []string{"CatalogIssue", "UpdateCatalogMatch"} {
+		if schemas[schema] != nil {
+			t.Fatalf("已删除的待整理 schema 仍存在: %s", schema)
 		}
 	}
 	for _, schema := range []string{"MetadataCandidate", "SelectMetadataIdentity", "MetadataProviderStatus"} {

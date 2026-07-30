@@ -149,31 +149,6 @@ type CatalogListRequest struct {
 	Limit int
 }
 
-type CatalogIssue struct {
-	MediaID        string
-	Filename       string
-	SourceID       string
-	LibraryKind    string
-	SuggestedTitle string
-	SeasonNumber   *int
-	EpisodeNumber  *int
-	CatalogItemID  string
-	IssueType      string
-	Reason         string
-	Confidence     int
-	CandidateCount int
-}
-
-type UpdateCatalogMatchCommand struct {
-	MediaID       string
-	Kind          string
-	Title         string
-	Year          *int
-	SeasonNumber  *int
-	EpisodeNumber *int
-	Ignored       bool
-}
-
 // CatalogScrapeInput contains provider-neutral work hints claimed by a metadata worker.
 type CatalogScrapeInput struct {
 	ItemID   string

@@ -35,7 +35,7 @@ type RouterParams struct {
 	UserData *handler.UserDataHandler
 	// Tags 处理用户私有标签请求。
 	Tags *handler.TagHandler
-	// Catalog 处理电影、剧集和待整理文件。
+	// Catalog 处理电影、剧集及其刮削资料。
 	Catalog *handler.CatalogHandler
 	// Access 处理管理员成员、登录设备和媒体源授权接口。
 	Access *handler.AccessHandler
@@ -111,8 +111,6 @@ func NewRouter(params RouterParams) (http.Handler, error) {
 	admin.POST("/sources/:id/scan", params.Scans.Start)
 	admin.GET("/scan-jobs/latest", params.Scans.Latest)
 	admin.GET("/scan-jobs/:id", params.Scans.Get)
-	admin.GET("/catalog/issues", params.Catalog.Issues)
-	admin.PATCH("/catalog/media/:id", params.Catalog.UpdateMatch)
 	admin.GET("/admin/catalog/:id/candidates", params.Catalog.MetadataCandidates)
 	admin.POST("/admin/catalog/:id/refresh", params.Catalog.RefreshMetadata)
 	admin.POST("/admin/catalog/refresh", params.Catalog.RefreshAllMetadata)

@@ -184,23 +184,3 @@ final class CatalogItem {
       ? 0
       : (progressMs / durationMs!).clamp(0, 1);
 }
-
-final class CatalogIssue {
-  const CatalogIssue({
-    required this.mediaId,
-    required this.filename,
-    required this.sourceId,
-    required this.libraryKind,
-    required this.suggestedTitle,
-    required this.seasonNumber,
-    required this.episodeNumber,
-  });
-
-  final String mediaId;
-  final String filename;
-  final String sourceId;
-  final String libraryKind;
-  final String suggestedTitle;
-  final int? seasonNumber;
-  final int? episodeNumber;
-}

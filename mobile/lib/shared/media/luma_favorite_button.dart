@@ -29,7 +29,7 @@ class LumaFavoriteButton extends StatelessWidget {
       child: Icon(
         key: ValueKey(isFavorite),
         isFavorite ? Icons.favorite_rounded : Icons.favorite_border_rounded,
-        size: 20,
+        size: LumaIconSize.inline,
         color: overlay ? heartColor : null,
         // 不使用底板仍需与复杂封面分离，细投影只贴合图标轮廓。
         shadows: overlay

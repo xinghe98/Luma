@@ -971,35 +971,6 @@ paths:
       responses:
         "204": { description: 已移除 }
         "403": { $ref: "#/components/responses/Forbidden" }
-  /api/v1/catalog/issues:
-    get:
-      summary: 查询待人工整理的影视文件
-      security: [{ bearerAuth: [] }]
-      responses:
-        "200":
-          description: 未能可靠识别的文件
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [items]
-                properties:
-                  items: { type: array, items: { $ref: "#/components/schemas/CatalogIssue" } }
-  /api/v1/catalog/media/{id}:
-    patch:
-      summary: 人工修正或忽略文件的作品归属
-      security: [{ bearerAuth: [] }]
-      parameters:
-        - $ref: "#/components/parameters/MediaID"
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: "#/components/schemas/UpdateCatalogMatch" }
-      responses:
-        "204": { description: 整理结果已锁定保存 }
-        "400": { $ref: "#/components/responses/InvalidRequest" }
-        "404": { $ref: "#/components/responses/MediaNotFound" }
   /api/v1/catalog/{id}:
     get:
       summary: 查询作品详情及剧集选集列表
@@ -1430,27 +1401,6 @@ components:
         capabilities: { type: array, items: { type: string } }
         available: { type: boolean }
         message: { type: string }
-    CatalogIssue:
-      type: object
-      required: [media_id, filename, source_id, library_kind, suggested_title, season_number, episode_number]
-      properties:
-        media_id: { type: string }
-        filename: { type: string }
-        source_id: { type: string }
-        library_kind: { type: string, enum: [movies, tv] }
-        suggested_title: { type: string }
-        season_number: { type: [integer, "null"], minimum: 0 }
-        episode_number: { type: [integer, "null"], minimum: 1 }
-    UpdateCatalogMatch:
-      type: object
-      additionalProperties: false
-      properties:
-        kind: { type: string, enum: [movie, series] }
-        title: { type: string, minLength: 1, maxLength: 200 }
-        year: { type: [integer, "null"], minimum: 1800, maximum: 3000 }
-        season_number: { type: [integer, "null"], minimum: 0 }
-        episode_number: { type: [integer, "null"], minimum: 1 }
-        ignored: { type: boolean }
     Tag:
       type: object
       additionalProperties: false

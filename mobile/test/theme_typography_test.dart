@@ -22,6 +22,7 @@ void main() {
 
       expect(textTheme.displayLarge?.fontSize, 40);
       expect(textTheme.headlineLarge?.fontSize, 32);
+      expect(textTheme.headlineLarge?.fontWeight, FontWeight.w700);
       expect(textTheme.titleLarge?.fontSize, 20);
       expect(textTheme.titleMedium?.fontWeight, FontWeight.w500);
       expect(textTheme.bodyLarge?.fontSize, 16);

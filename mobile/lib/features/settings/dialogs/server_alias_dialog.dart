@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/theme.dart';
+
 /// 打开服务器别名编辑框；取消返回 null，恢复默认返回空字符串。
 Future<String?> showServerAliasDialog(
   BuildContext context,
@@ -47,30 +49,35 @@ class _ServerAliasDialogState extends State<_ServerAliasDialog> {
     ),
     actionsAlignment: MainAxisAlignment.end,
     actionsOverflowAlignment: OverflowBarAlignment.end,
-    actionsOverflowButtonSpacing: 8,
-    actionsPadding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+    actionsOverflowButtonSpacing: LumaSpacing.xs,
+    actionsPadding: const EdgeInsets.fromLTRB(
+      LumaSpacing.xs,
+      0,
+      LumaSpacing.xs,
+      LumaSpacing.xs,
+    ),
     buttonPadding: EdgeInsets.zero,
     actions: [
       TextButton(
         style: TextButton.styleFrom(
-          minimumSize: const Size(48, 48),
-          padding: const EdgeInsets.symmetric(horizontal: 4),
+          minimumSize: const Size.square(LumaLayout.minTapTarget),
+          padding: const EdgeInsets.symmetric(horizontal: LumaSpacing.xxs),
         ),
         onPressed: () => Navigator.pop(context, ''),
         child: const Text('恢复默认'),
       ),
       TextButton(
         style: TextButton.styleFrom(
-          minimumSize: const Size(48, 48),
-          padding: const EdgeInsets.symmetric(horizontal: 4),
+          minimumSize: const Size.square(LumaLayout.minTapTarget),
+          padding: const EdgeInsets.symmetric(horizontal: LumaSpacing.xxs),
         ),
         onPressed: () => Navigator.pop(context),
         child: const Text('取消'),
       ),
       FilledButton(
         style: FilledButton.styleFrom(
-          minimumSize: const Size(48, 48),
-          padding: const EdgeInsets.symmetric(horizontal: 4),
+          minimumSize: const Size.square(LumaLayout.minTapTarget),
+          padding: const EdgeInsets.symmetric(horizontal: LumaSpacing.xxs),
         ),
         onPressed: () => Navigator.pop(context, _controller.text),
         child: const Text('保存'),

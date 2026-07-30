@@ -10,16 +10,6 @@ abstract interface class CatalogRepository {
     required bool favorite,
     required int revision,
   });
-  Future<List<CatalogIssue>> issues();
-  Future<void> updateMatch({
-    required String mediaId,
-    required CatalogKind kind,
-    required String title,
-    int? year,
-    int? seasonNumber,
-    int? episodeNumber,
-  });
-  Future<void> ignore(String mediaId);
 }
 
 final class EmptyCatalogRepository implements CatalogRepository {
@@ -37,17 +27,4 @@ final class EmptyCatalogRepository implements CatalogRepository {
     required bool favorite,
     required int revision,
   }) => Future.error(StateError('Catalog repository is unavailable'));
-  @override
-  Future<List<CatalogIssue>> issues() async => [];
-  @override
-  Future<void> ignore(String mediaId) async {}
-  @override
-  Future<void> updateMatch({
-    required String mediaId,
-    required CatalogKind kind,
-    required String title,
-    int? year,
-    int? seasonNumber,
-    int? episodeNumber,
-  }) async {}
 }

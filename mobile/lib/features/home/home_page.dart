@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../app/app_scope.dart';
 import '../../app/controllers/media_controller.dart';
 import '../../core/extensions.dart';
+import '../../core/theme.dart';
 import '../../shared/media/media_actions.dart';
 import '../../shared/states/empty_state.dart';
 import '../../shared/states/error_state.dart';
@@ -30,6 +31,8 @@ class _HomePageState extends State<HomePage>
     with AutomaticKeepAliveClientMixin<HomePage> {
   HomeController? _controller;
   final _scroll = ScrollController();
+  int? _prewarmEpoch;
+  bool _prewarmSchedulePending = false;
 
   @override
   bool get wantKeepAlive => true;
@@ -51,6 +54,10 @@ class _HomePageState extends State<HomePage>
   Widget build(BuildContext context) {
     super.build(context);
     final controller = _controller!;
+    if (controller.media.loadState == LoadState.ready &&
+        controller.media.items.isNotEmpty) {
+      _scheduleBranchPrewarm();
+    }
     return Scaffold(
       body: SafeArea(
         child: ListenableBuilder(
@@ -137,7 +144,9 @@ class _HomePageState extends State<HomePage>
                       ),
                     ),
                   ),
-                  const SliverToBoxAdapter(child: SizedBox(height: 24)),
+                  const SliverToBoxAdapter(
+                    child: SizedBox(height: LumaSpacing.lg),
+                  ),
                 ],
               ],
             ),
@@ -150,5 +159,22 @@ class _HomePageState extends State<HomePage>
   void _scrollToTop() {
     if (!_scroll.hasClients || _scroll.offset <= 0) return;
     _scroll.jumpTo(0);
+  }
+
+  /// 首页内容稳定后把媒体分支预热排入空闲队列，同一服务器会话只安排一次。
+  void _scheduleBranchPrewarm() {
+    if (_prewarmSchedulePending) return;
+    final dependencies = AppScope.of(context);
+    final epoch = dependencies.apiSession.epoch;
+    if (_prewarmEpoch == epoch || dependencies.apiSession.origin.isEmpty) {
+      return;
+    }
+    _prewarmSchedulePending = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _prewarmSchedulePending = false;
+      if (!mounted || dependencies.apiSession.epoch != epoch) return;
+      _prewarmEpoch = epoch;
+      dependencies.mediaBranchPrewarmer.schedule(context);
+    });
   }
 }

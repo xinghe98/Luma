@@ -78,7 +78,7 @@ class _CreditPortrait extends StatelessWidget {
               cacheHeight: 112,
               fit: BoxFit.cover,
               fallback: const ColoredBox(
-                color: Color(0xFF30312B),
+                color: CatalogDetailPalette.surfaceHigh,
                 child: Icon(
                   Icons.person_rounded,
                   color: CatalogDetailPalette.muted,
@@ -130,7 +130,9 @@ class CatalogVersionTile extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: LumaSpacing.sm),
         decoration: const BoxDecoration(
-          border: Border(bottom: BorderSide(color: Color(0xFF403D34))),
+          border: Border(
+            bottom: BorderSide(color: CatalogDetailPalette.outlineVariant),
+          ),
         ),
         child: Row(
           children: [
@@ -264,7 +266,7 @@ class CatalogEpisodeTile extends StatelessWidget {
                     path: episode.thumbnailUrl,
                     cacheWidth: 224,
                     fallback: const ColoredBox(
-                      color: Color(0xFF30312B),
+                      color: CatalogDetailPalette.surfaceHigh,
                       child: Icon(
                         Icons.play_circle_outline_rounded,
                         color: CatalogDetailPalette.muted,

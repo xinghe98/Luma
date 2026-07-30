@@ -108,7 +108,7 @@ class _SingleChoiceTile<T> extends StatelessWidget {
         title: Text(choice.label),
         subtitle: choice.description == null ? null : Text(choice.description!),
         trailing: SizedBox(
-          width: 24,
+          width: LumaIconSize.action,
           child: selected
               ? Icon(Icons.check_rounded, color: scheme.primary)
               : null,

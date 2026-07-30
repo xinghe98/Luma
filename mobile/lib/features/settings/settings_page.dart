@@ -114,28 +114,23 @@ class _SettingsPageState extends State<SettingsPage> {
               if (server.can('sources.manage') &&
                   dependencies.sources is MutableSourceRepository)
                 ListTile(
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: LumaSpacing.xxs,
+                  ),
                   leading: const Icon(Icons.folder_copy_outlined),
                   title: const Text('媒体源'),
                   subtitle: const Text('指定个人视频、图片、电影或电视剧目录'),
                   trailing: const Icon(Icons.chevron_right_rounded),
                   onTap: () => context.pushNamed<void>(AppRoute.librarySources),
                 ),
-              if (server.can('catalog.manage'))
-                ListTile(
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 4),
-                  leading: const Icon(Icons.rule_folder_outlined),
-                  title: const Text('待整理文件'),
-                  subtitle: const Text('修正无法自动识别的电影和剧集'),
-                  trailing: const Icon(Icons.chevron_right_rounded),
-                  onTap: () => context.pushNamed<void>(AppRoute.organization),
-                ),
               if (canManageAccess) ...[
                 const SizedBox(height: LumaSpacing.xl),
                 const SectionHeader(title: '成员与访问'),
                 const SizedBox(height: LumaSpacing.sm),
                 ListTile(
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: LumaSpacing.xxs,
+                  ),
                   leading: const Icon(Icons.manage_accounts_outlined),
                   title: const Text('成员与访问管理'),
                   subtitle: const Text('管理成员、媒体源授权和设备令牌'),

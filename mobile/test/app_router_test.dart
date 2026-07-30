@@ -22,6 +22,7 @@ import 'package:luma/data/repositories/source_repository.dart';
 import 'package:luma/data/models/server_profile.dart';
 import 'package:luma/features/catalog/catalog_detail_page.dart';
 import 'package:luma/features/catalog/widgets/catalog_card.dart';
+import 'package:luma/features/library/library_page.dart';
 import 'package:luma/features/player/widgets/player_scene.dart';
 import 'package:luma/shared/states/skeleton.dart';
 
@@ -341,6 +342,23 @@ void main() {
     await tester.pumpAndSettle();
     expect(repository.searchCalls, 1);
     expect(repository.limits, [18]);
+  });
+
+  testWidgets('photo branch uses the same 18-item page size', (tester) async {
+    final dependencies = createDependencies();
+    dependencies.session.connect(connectedProfile());
+    final router = createAppRouter(dependencies)..go('/photos');
+    addTearDown(router.dispose);
+    addTearDown(dependencies.dispose);
+
+    await tester.pumpWidget(
+      routedApp(dependencies, router, disableAnimations: true),
+    );
+    await tester.pump();
+
+    final page = tester.widget<LibraryPage>(find.byType(LibraryPage));
+    expect(page.pageSize, 18);
+    await tester.pumpAndSettle();
   });
 
   testWidgets('image detail route leaves motion to its Hero only', (

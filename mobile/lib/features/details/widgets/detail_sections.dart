@@ -56,7 +56,9 @@ class DetailSections extends StatelessWidget {
           const SizedBox(height: LumaSpacing.xl),
           const SectionHeader(title: '文件信息'),
           ListTile(
-            contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: LumaSpacing.xxs,
+            ),
             leading: const Icon(Icons.storage_rounded),
             title: const Text('媒体源'),
             subtitle: Text(
@@ -64,7 +66,9 @@ class DetailSections extends StatelessWidget {
             ),
           ),
           ListTile(
-            contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: LumaSpacing.xxs,
+            ),
             leading: const Icon(Icons.insert_drive_file_outlined),
             title: const Text('文件名'),
             subtitle: Text(item.filename),

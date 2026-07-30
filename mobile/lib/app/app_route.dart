@@ -7,8 +7,6 @@ abstract final class AppRoute {
   static const personalVideos = 'personal-videos';
   static const player = 'player';
   static const librarySources = 'library-sources';
-  static const organization = 'organization';
-  static const organizationEditor = 'organization-editor';
   static const accessManagement = 'access-management';
   static const newMember = 'new-member';
   static const memberDetail = 'member-detail';

@@ -35,6 +35,7 @@ StatefulShellRoute buildShellRoutes() => StatefulShellRoute.indexedStack(
           path: AppDestination.photos.path,
           builder: (context, _) => LibraryPage(
             type: MediaType.image,
+            pageSize: 18,
             onOpenMedia: (item, {heroTag}) =>
                 context.openImagePreview(item, heroTag: heroTag),
             onLongPressMedia: (item, {heroTag}) =>

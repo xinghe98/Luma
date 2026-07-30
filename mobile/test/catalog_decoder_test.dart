@@ -44,21 +44,6 @@ void main() {
     expect(item.episodes.single.resolution, '3840×2160');
   });
 
-  test('catalog issue decoder uses public snake case contract', () {
-    const decoder = CatalogDecoder();
-    final issue = decoder.decodeIssue({
-      'media_id': 'media-1',
-      'filename': 'clip.mkv',
-      'source_id': 'source-1',
-      'library_kind': 'tv',
-      'suggested_title': '剧名',
-      'season_number': null,
-      'episode_number': null,
-    });
-    expect(issue.mediaId, 'media-1');
-    expect(issue.libraryKind, 'tv');
-  });
-
   test('catalog decoder accepts optional scraping metadata', () {
     const decoder = CatalogDecoder();
     final item = decoder.decode({

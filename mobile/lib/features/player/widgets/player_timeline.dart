@@ -12,7 +12,7 @@ class PlayerTimeline extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final onInk = context.luma.onPlayerInk;
-    const timelineColor = LumaColors.gold;
+    const timelineColor = LumaColors.darkPrimary;
     final durationMs = controller.duration.inMilliseconds.toDouble();
     final positionMs = controller.position.inMilliseconds.clamp(
       0,

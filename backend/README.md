@@ -147,8 +147,6 @@ curl http://127.0.0.1:8080/api/v1/scan-jobs/{scan_id} \
 GET   /api/v1/catalog?kind=movie|series
 GET   /api/v1/catalog/{id}
 PATCH /api/v1/catalog/{id}/user-data
-GET   /api/v1/catalog/issues
-PATCH /api/v1/catalog/media/{media_id}
 GET   /api/v1/catalog/artwork/{artwork_id}
 GET   /api/v1/admin/catalog/{id}/candidates
 POST  /api/v1/admin/catalog/{id}/refresh
@@ -156,7 +154,7 @@ PUT   /api/v1/admin/catalog/{id}/identity
 GET   /api/v1/admin/metadata/status
 ```
 
-作品整理只写入 SQLite 索引，不移动或修改原始文件。人工匹配和忽略状态会锁定保存；重新扫描只重算未锁定且发生变化的文件。
+作品索引只写入 SQLite，不移动或修改原始文件；重新扫描只重算未锁定且发生变化的文件。
 
 ### 媒体查询
 

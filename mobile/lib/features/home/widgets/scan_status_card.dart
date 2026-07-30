@@ -17,12 +17,15 @@ class ScanStatusCard extends StatelessWidget {
     return ListenableBuilder(
       listenable: Listenable.merge([settings, media]),
       builder: (context, _) {
+        final scheme = Theme.of(context).colorScheme;
         final scanning = settings.isScanning;
         final progress = settings.scanProgress ?? 0;
         final percent = (progress * 100).round();
         final count = media.items.length;
         final isProblem = settings.hasScanProblem;
         return SurfaceCard(
+          color: scheme.primary,
+          radius: LumaRadii.large,
           padding: const EdgeInsets.symmetric(
             horizontal: LumaSpacing.md,
             vertical: LumaSpacing.sm,
@@ -40,6 +43,8 @@ class ScanStatusCard extends StatelessWidget {
                   child: CircularProgressIndicator(
                     strokeWidth: 2,
                     value: progress > 0 ? progress : null,
+                    color: scheme.onPrimary,
+                    backgroundColor: scheme.onPrimary.withValues(alpha: 0.24),
                   ),
                 )
               else
@@ -48,7 +53,7 @@ class ScanStatusCard extends StatelessWidget {
                       ? Icons.check_circle_outline_rounded
                       : Icons.error_outline_rounded,
                   color: !isProblem
-                      ? context.luma.success
+                      ? scheme.onPrimary
                       : context.luma.warning,
                 ),
               const SizedBox(width: LumaSpacing.sm),
@@ -58,7 +63,9 @@ class ScanStatusCard extends StatelessWidget {
                   children: [
                     Text(
                       settings.scanStatusLabel,
-                      style: Theme.of(context).textTheme.titleSmall,
+                      style: Theme.of(
+                        context,
+                      ).textTheme.titleSmall?.copyWith(color: scheme.onPrimary),
                     ),
                     const SizedBox(height: LumaSpacing.xxs),
                     Text(
@@ -68,7 +75,7 @@ class ScanStatusCard extends StatelessWidget {
                           ? '媒体库共 $count 个项目 · 轻触查看状态'
                           : settings.scanStatusDetails,
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        color: scheme.onPrimary.withValues(alpha: 0.78),
                       ),
                     ),
                   ],
@@ -78,7 +85,7 @@ class ScanStatusCard extends StatelessWidget {
                 Text(
                   '$percent%',
                   style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                    color: Theme.of(context).colorScheme.primary,
+                    color: scheme.onPrimary,
                   ),
                 ),
             ],
