@@ -60,6 +60,35 @@ void main() {
     expect(localizations.refreshIndicatorSemanticLabel, '刷新');
   });
 
+  for (final (name, size, themeMode, expectedHeight, expectedWidth) in [
+    ('320px 手机深色', const Size(320, 640), ThemeMode.dark, 72.0, 213.0),
+    ('手机浅色', const Size(390, 844), ThemeMode.light, 72.0, 213.0),
+    ('Windows 宽屏深色', const Size(1200, 800), ThemeMode.dark, 180.0, 532.0),
+  ]) {
+    testWidgets('$name开屏使用独立的横版 Logo 比例', (tester) async {
+      await tester.binding.setSurfaceSize(size);
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final dependencies = createDependencies();
+      dependencies.settings.setThemeMode(themeMode);
+      addTearDown(dependencies.dispose);
+
+      await tester.pumpWidget(LumaApp(dependencies: dependencies));
+      await tester.pump();
+
+      final launchLogo = find.byWidgetPredicate(
+        (widget) =>
+            widget is BrandMark &&
+            widget.variant == BrandMarkVariant.horizontal &&
+            widget.height == expectedHeight,
+      );
+      expect(launchLogo, findsOneWidget);
+      final logoSize = tester.getSize(launchLogo);
+      expect(logoSize.height, expectedHeight);
+      expect(logoSize.width, closeTo(expectedWidth, 1));
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   testWidgets('connection page shows brand and validation feedback', (
     tester,
   ) async {

@@ -1,6 +1,7 @@
 // 底部导航专项测试覆盖窄屏几何、选中槽位动画与减少动画模式。
 // 测试通过 AdaptiveAppNavigation 驱动真实五分支配置，不替代路由状态测试。
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:luma/core/theme.dart';
 import 'package:luma/features/shell/app_destination.dart';
@@ -110,6 +111,75 @@ void main() {
         Colors.transparent,
       );
     }
+  });
+
+  testWidgets('手机底部导航仅在切换标签时触发轻触感', (tester) async {
+    tester.view.physicalSize = const Size(390, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final platformCalls = <MethodCall>[];
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        platformCalls.add(call);
+        return null;
+      },
+    );
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        null,
+      ),
+    );
+
+    await tester.pumpWidget(const _NavigationHarness());
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('bottom-nav-photos')));
+    await tester.pump();
+    expect(_hapticCalls(platformCalls), hasLength(1));
+    expect(
+      _hapticCalls(platformCalls).single.arguments,
+      'HapticFeedbackType.selectionClick',
+    );
+
+    await tester.tap(find.byKey(const ValueKey('bottom-nav-photos')));
+    await tester.pump();
+    expect(_hapticCalls(platformCalls), hasLength(1));
+
+    await tester.tap(find.byKey(const ValueKey('bottom-nav-videos')));
+    await tester.pump();
+    expect(_hapticCalls(platformCalls), hasLength(2));
+  });
+
+  testWidgets('宽屏 NavigationRail 切换不触发手机触感', (tester) async {
+    tester.view.physicalSize = const Size(1200, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final platformCalls = <MethodCall>[];
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        platformCalls.add(call);
+        return null;
+      },
+    );
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        null,
+      ),
+    );
+
+    await tester.pumpWidget(const _NavigationHarness());
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('图片库'));
+    await tester.pump();
+
+    expect(find.text('content-1'), findsOneWidget);
+    expect(_hapticCalls(platformCalls), isEmpty);
   });
 
   testWidgets('indicator moves without relayout of destination slots', (
@@ -250,6 +320,10 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 }
+
+List<MethodCall> _hapticCalls(List<MethodCall> calls) => calls
+    .where((call) => call.method == 'HapticFeedback.vibrate')
+    .toList(growable: false);
 
 List<Rect> _slotRects(WidgetTester tester) => AppDestination.values
     .map(

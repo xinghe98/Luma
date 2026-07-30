@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../../core/theme.dart';
 import '../../../shared/branding/brand_mark.dart';
@@ -110,6 +113,14 @@ class _LumaBottomNavigationState extends State<_LumaBottomNavigation> {
     });
   }
 
+  /// 切换新分支时提供轻触感；重复当前分支仍交给路由处理回到根页。
+  void _handleSelect(int index) {
+    if (index != widget.selectedIndex) {
+      unawaited(HapticFeedback.selectionClick());
+    }
+    widget.onSelect(index);
+  }
+
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
@@ -212,7 +223,7 @@ class _LumaBottomNavigationState extends State<_LumaBottomNavigation> {
                                 inactiveColor: colors.onSurfaceVariant,
                                 duration: duration,
                                 selectedContentWidth: indicatorWidth,
-                                onTap: () => widget.onSelect(entry.$1),
+                                onTap: () => _handleSelect(entry.$1),
                               ),
                             ),
                         ],

@@ -127,6 +127,8 @@ class _LaunchBrandOverlay extends StatefulWidget {
 
 class _LaunchBrandOverlayState extends State<_LaunchBrandOverlay> {
   static const _minimumPresentation = Duration(seconds: 1);
+  static const _compactBrandHeight = 72.0;
+  static const _wideBrandHeight = 180.0;
 
   Timer? _dismissTimer;
   bool _isVisible = true;
@@ -160,6 +162,7 @@ class _LaunchBrandOverlayState extends State<_LaunchBrandOverlay> {
     super.dispose();
   }
 
+  /// 按开屏可用宽度选择品牌比例，手机保持克制，Windows 宽屏沿用既有尺寸。
   @override
   Widget build(BuildContext context) => Stack(
     fit: StackFit.expand,
@@ -172,11 +175,20 @@ class _LaunchBrandOverlayState extends State<_LaunchBrandOverlay> {
           child: AbsorbPointer(
             child: ColoredBox(
               color: Theme.of(context).scaffoldBackgroundColor,
-              child: const Center(
-                child: BrandMark(
-                  variant: BrandMarkVariant.horizontal,
-                  height: 180,
-                ),
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final brandHeight =
+                      constraints.maxWidth >=
+                          LumaLayout.navigationRailBreakpoint
+                      ? _wideBrandHeight
+                      : _compactBrandHeight;
+                  return Center(
+                    child: BrandMark(
+                      variant: BrandMarkVariant.horizontal,
+                      height: brandHeight,
+                    ),
+                  );
+                },
               ),
             ),
           ),
