@@ -5,6 +5,7 @@ import '../../core/theme.dart';
 import '../../data/models/api_access.dart';
 import '../../data/repositories/access_repository.dart';
 import '../../data/repositories/source_repository.dart';
+import '../../shared/layout/adaptive_action_width.dart';
 import '../../shared/layout/constrained_page_list.dart';
 import '../../shared/layout/section_header.dart';
 import '../../shared/library/library_kind_presentation.dart';
@@ -257,15 +258,17 @@ class _NewLibrarySourcePageState extends State<NewLibrarySourcePage> {
             ),
           ),
         const SizedBox(height: LumaSpacing.lg),
-        FilledButton.icon(
-          onPressed: _submitting || _roots?.isEmpty != false ? null : _submit,
-          icon: _submitting
-              ? const SizedBox.square(
-                  dimension: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Icon(Icons.create_new_folder_outlined),
-          label: Text(_submitting ? '正在新增' : '新增并开始扫描'),
+        AdaptiveActionWidth(
+          child: FilledButton.icon(
+            onPressed: _submitting || _roots?.isEmpty != false ? null : _submit,
+            icon: _submitting
+                ? const SizedBox.square(
+                    dimension: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.create_new_folder_outlined),
+            label: Text(_submitting ? '正在新增' : '新增并开始扫描'),
+          ),
         ),
       ],
     ),

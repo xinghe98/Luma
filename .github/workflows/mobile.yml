@@ -1,4 +1,4 @@
-# Flutter 持续集成覆盖格式、静态分析、测试和 Android 调试构建。
+# Flutter 持续集成覆盖检查、Android 调试包与 Windows x64 便携包。
 name: Mobile
 
 on:
@@ -31,3 +31,24 @@ jobs:
       - run: flutter analyze
       - run: flutter test
       - run: flutter build apk --debug
+
+  windows-release:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.41.6
+          cache: true
+      - run: flutter pub get
+      - run: flutter build windows --release
+      - shell: pwsh
+        run: .\tool\package_windows.ps1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: luma-windows-x64
+          path: mobile/build/dist/luma-windows-x64-*.zip
+          if-no-files-found: error

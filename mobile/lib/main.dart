@@ -8,6 +8,7 @@ import 'package:media_kit/media_kit.dart';
 import 'app/app_dependencies.dart';
 import 'app/app_router.dart';
 import 'app/app_scope.dart';
+import 'app/app_window_controller.dart';
 import 'core/theme.dart';
 import 'features/player/widgets/mini_player_overlay.dart';
 import 'shared/branding/brand_mark.dart';
@@ -20,16 +21,23 @@ Future<void> main() async {
   final logicalShortestSide =
       view.physicalSize.shortestSide / view.devicePixelRatio;
   final isLargeScreen = logicalShortestSide >= 600;
-  imageCache.maximumSize = 150;
-  // 手机减少纹理驻留量；平板保留更大的缓存，避免宽屏多列反复解码。
-  imageCache.maximumSizeBytes = (isLargeScreen ? 64 : 48) << 20;
-  runApp(LumaApp.production());
+  imageCache.maximumSize = AppWindowController.isWindows ? 200 : 150;
+  // Windows 多列和大图预览使用更大缓存；Android 保持既有内存边界。
+  imageCache.maximumSizeBytes =
+      (AppWindowController.isWindows ? 96 : (isLargeScreen ? 64 : 48)) << 20;
+  final dependencies = AppDependencies.create();
+  final appWindow = AppWindowController();
+  await appWindow.initialize();
+  runApp(LumaApp(dependencies: dependencies, ownsDependencies: true));
 }
 
 class LumaApp extends StatefulWidget {
-  /// 使用外部依赖构建应用；依赖生命周期仍由调用方负责。
-  const LumaApp({super.key, required this.dependencies})
-    : ownsDependencies = false;
+  /// 使用指定依赖构建应用；仅在 [ownsDependencies] 为 true 时随应用释放。
+  const LumaApp({
+    super.key,
+    required this.dependencies,
+    this.ownsDependencies = false,
+  });
 
   /// 创建并持有生产依赖，应用卸载时会统一释放。
   LumaApp.production({super.key})

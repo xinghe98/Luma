@@ -8,6 +8,7 @@ import 'package:luma/data/repositories/catalog_repository.dart';
 import 'package:luma/features/catalog/catalog_detail_page.dart';
 import 'package:luma/features/catalog/widgets/catalog_detail_hero.dart';
 import 'package:luma/features/catalog/widgets/catalog_detail_sections.dart';
+import 'package:luma/features/catalog/widgets/catalog_detail_theme.dart';
 import 'package:luma/shared/media/authenticated_media_image.dart';
 
 void main() {
@@ -133,6 +134,18 @@ void main() {
     );
     await tester.pump();
 
+    final backButton = tester.widget<IconButton>(
+      find.byKey(const ValueKey('catalog-detail-back')),
+    );
+    expect(
+      backButton.style?.backgroundColor?.resolve({}),
+      CatalogDetailPalette.text,
+    );
+    expect(backButton.style?.shape?.resolve({}), isA<CircleBorder>());
+    expect(
+      tester.getSize(find.byKey(const ValueKey('catalog-detail-back'))),
+      const Size.square(48),
+    );
     expect(find.text('剧情'), findsOneWidget);
     expect(find.text('★ 8.4'), findsOneWidget);
     expect(

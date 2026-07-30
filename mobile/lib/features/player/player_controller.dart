@@ -21,6 +21,9 @@ class PlayerController extends ChangeNotifier {
   }) : _media = media,
        _apiSession = apiSession,
        _startAtZero = startFromBeginning,
+       _pendingResumePosition = startFromBeginning || item.progress <= 0
+           ? null
+           : item.duration * item.progress,
        _position = startFromBeginning
            ? Duration.zero
            : item.duration * item.progress;
@@ -31,6 +34,7 @@ class PlayerController extends ChangeNotifier {
   final bool startFromBeginning;
   final Duration autoHideDelay;
   bool _startAtZero;
+  Duration? _pendingResumePosition;
   late Duration _position;
   Timer? _hideTimer;
   Timer? _saveTimer;
@@ -51,6 +55,9 @@ class PlayerController extends ChangeNotifier {
   bool _resumeAfterScrub = false;
   Duration? _scrubOrigin;
   double _speed = 1;
+  double _volume = 1;
+  double _volumeBeforeMute = 1;
+  bool _muted = false;
   int _initializationGeneration = 0;
 
   Duration get position => _position;
@@ -58,6 +65,12 @@ class PlayerController extends ChangeNotifier {
   bool get controlsVisible => _controlsVisible;
   bool get locked => _locked;
   double get speed => _speed;
+
+  /// 播放器内部音量，范围为 0 到 1。
+  double get volume => _volume;
+
+  /// 当前是否静音；零音量同样视为静音。
+  bool get muted => _muted;
   bool get initialized => _initialized;
   bool get buffering => _buffering;
   bool get scrubbing => _scrubbing;
@@ -110,18 +123,21 @@ class PlayerController extends ChangeNotifier {
     _videoController = VideoController(player);
     _listenToPlayer(player, generation);
     try {
-      final initial = _startAtZero
-          ? Duration.zero
-          : item.duration * item.progress;
+      final initial = _startAtZero ? Duration.zero : _position;
+      _pendingResumePosition = initial > Duration.zero ? initial : null;
       await player.open(
-        Media(access.url, httpHeaders: access.headers),
+        Media(
+          access.url,
+          httpHeaders: access.headers,
+          start: _pendingResumePosition,
+        ),
         play: false,
       );
       if (_disposed || generation != _initializationGeneration) {
         await player.dispose();
         return;
       }
-      if (initial > Duration.zero) await player.seek(initial);
+      await player.setVolume(_volume * 100);
       await player.play();
       if (_disposed || generation != _initializationGeneration) return;
       _startAtZero = false;
@@ -148,8 +164,7 @@ class PlayerController extends ChangeNotifier {
             _scrubbing) {
           return;
         }
-        _position = value;
-        _notifyPlaybackState();
+        syncPosition(value);
       }),
       player.stream.duration.listen((_) {
         if (_disposed || generation != _initializationGeneration) return;
@@ -164,6 +179,14 @@ class PlayerController extends ChangeNotifier {
         if (_disposed || generation != _initializationGeneration) return;
         _buffering = value;
         _notifyPlaybackState();
+      }),
+      player.stream.volume.listen((value) {
+        if (_disposed || generation != _initializationGeneration) return;
+        final volume = (value / 100).clamp(0.0, 1.0);
+        if ((_volume - volume).abs() < 0.001) return;
+        _volume = volume;
+        _muted = volume <= 0.001;
+        _notifyPlaybackState(immediate: true);
       }),
       player.stream.completed.listen((completed) {
         if (_disposed ||
@@ -207,6 +230,18 @@ class PlayerController extends ChangeNotifier {
     }
   }
 
+  /// 同步底层播放位置；续播真正开始前忽略装载阶段的零值，避免覆盖待恢复进度。
+  @visibleForTesting
+  void syncPosition(Duration value) {
+    final pending = _pendingResumePosition;
+    if (pending != null) {
+      if (value <= Duration.zero) return;
+      _pendingResumePosition = null;
+    }
+    _position = value;
+    _notifyPlaybackState();
+  }
+
   /// 重新创建失败的视频解码器；地址仍不可用时更新错误但不离开播放器。
   Future<void> retry() async {
     if (_disposed) return;
@@ -233,6 +268,7 @@ class PlayerController extends ChangeNotifier {
   Future<void> restartFromBeginning() async {
     if (_disposed) return;
     _startAtZero = true;
+    _pendingResumePosition = null;
     _position = Duration.zero;
     final player = _player;
     if (player == null || !initialized) {
@@ -268,6 +304,19 @@ class PlayerController extends ChangeNotifier {
     } else {
       _hideTimer?.cancel();
     }
+  }
+
+  /// 显示控制层并重新开始自动隐藏计时。
+  void showControls() {
+    if (_locked) {
+      showLockHint();
+      return;
+    }
+    if (!_controlsVisible) {
+      _controlsVisible = true;
+      notifyListeners();
+    }
+    scheduleHide();
   }
 
   void togglePlay({bool revealControls = true}) {
@@ -381,8 +430,28 @@ class PlayerController extends ChangeNotifier {
 
   void setSpeed(double value) => setPlaybackSpeed(value);
 
+  /// 设置播放器内部音量并同步静音状态；值会限制在 0 到 1。
   void setLocalVolume(double value) {
-    if (initialized) unawaited(_player!.setVolume(value.clamp(0, 1) * 100));
+    final next = value.clamp(0.0, 1.0);
+    if (next > 0) {
+      _volumeBeforeMute = next;
+      _muted = false;
+    } else {
+      if (_volume > 0) _volumeBeforeMute = _volume;
+      _muted = true;
+    }
+    _volume = next;
+    if (initialized) unawaited(_player!.setVolume(next * 100));
+    notifyListeners();
+  }
+
+  /// 在静音与上次非零音量之间切换。
+  void toggleMute() {
+    if (_muted || _volume <= 0.001) {
+      setLocalVolume(_volumeBeforeMute.clamp(0.05, 1.0));
+    } else {
+      setLocalVolume(0);
+    }
   }
 
   void setLocked(bool value) {

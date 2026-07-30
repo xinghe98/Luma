@@ -66,6 +66,7 @@ class CatalogCollectionBody extends StatefulWidget {
 class _CatalogCollectionBodyState extends State<CatalogCollectionBody>
     with AutomaticKeepAliveClientMixin<CatalogCollectionBody> {
   CatalogController? _controller;
+  bool _entrySettled = false;
 
   @override
   bool get wantKeepAlive => true;
@@ -80,7 +81,9 @@ class _CatalogCollectionBodyState extends State<CatalogCollectionBody>
       initialItems: widget.initialItems,
     );
     _controller = controller;
-    unawaited(controller.ensureLoadedAfter(waitForRouteTransition(context)));
+    final entryGate = waitForRouteTransition(context);
+    unawaited(controller.ensureLoadedAfter(entryGate));
+    unawaited(_restoreScrollCacheAfter(entryGate));
   }
 
   @override
@@ -100,7 +103,7 @@ class _CatalogCollectionBodyState extends State<CatalogCollectionBody>
           onRefresh: controller.load,
           child: CustomScrollView(
             key: PageStorageKey('catalog-scroll-${widget.kind.name}'),
-            cacheExtent: LumaLayout.scrollCacheExtent,
+            cacheExtent: _entrySettled ? LumaLayout.scrollCacheExtent : 0,
             physics: const AlwaysScrollableScrollPhysics(),
             slivers: [
               if (controller.state == CatalogLoadState.loading &&
@@ -182,6 +185,13 @@ class _CatalogCollectionBodyState extends State<CatalogCollectionBody>
         );
       },
     );
+  }
+
+  /// 入场动画完成后恢复屏外缓存，避免路由或 Hero 过渡期间解码额外海报。
+  Future<void> _restoreScrollCacheAfter(Future<void> gate) async {
+    await gate;
+    if (!mounted || _entrySettled) return;
+    setState(() => _entrySettled = true);
   }
 }
 

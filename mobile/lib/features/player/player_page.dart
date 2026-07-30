@@ -38,6 +38,7 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
   bool _resolved = false;
   bool _minimizing = false;
   bool _loading = false;
+  bool _fullscreen = false;
   String? _loadError;
   int _loadGeneration = 0;
 
@@ -85,12 +86,28 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     unawaited(interaction.initialize());
     final mediaQuery = MediaQuery.of(context);
     unawaited(
-      _systemUi.enter(
-        portraitVideo: item.isPortrait,
-        entryOrientation: mediaQuery.orientation,
+      _enterPresentation(
+        item: item,
+        orientation: mediaQuery.orientation,
         shortestSide: mediaQuery.size.shortestSide,
       ),
     );
+  }
+
+  /// 进入当前平台的播放器呈现模式，并同步桌面全屏状态。
+  Future<void> _enterPresentation({
+    required MediaItem item,
+    required Orientation orientation,
+    required double shortestSide,
+  }) async {
+    await _systemUi.enter(
+      portraitVideo: item.isPortrait,
+      entryOrientation: orientation,
+      shortestSide: shortestSide,
+    );
+    if (mounted && _fullscreen != _systemUi.fullScreen) {
+      setState(() => _fullscreen = _systemUi.fullScreen);
+    }
   }
 
   /// 深链无缓存时读取媒体；失败保留播放器尺寸和返回操作，并允许原地重试。
@@ -180,6 +197,14 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
           onRotate: _systemUi.canRotate
               ? () => unawaited(_systemUi.rotate())
               : null,
+          isDesktop: _systemUi.isDesktop,
+          isFullScreen: _fullscreen,
+          onToggleFullScreen: _systemUi.isDesktop
+              ? () => unawaited(_toggleFullScreen())
+              : null,
+          onEscape: _systemUi.isDesktop
+              ? () => unawaited(_handleEscape())
+              : null,
         ),
       ),
     );
@@ -203,6 +228,23 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
   void _closeAndPop() {
     unawaited(_session?.close());
     Navigator.of(context).pop();
+  }
+
+  /// 切换 Windows 原生全屏，并刷新工具栏和光标状态。
+  Future<void> _toggleFullScreen() async {
+    final fullscreen = await _systemUi.toggleFullScreen();
+    if (mounted && fullscreen != _fullscreen) {
+      setState(() => _fullscreen = fullscreen);
+    }
+  }
+
+  /// Escape 优先退出全屏，窗口模式下才关闭播放器页面。
+  Future<void> _handleEscape() async {
+    if (await _systemUi.exitFullScreen()) {
+      if (mounted) setState(() => _fullscreen = false);
+      return;
+    }
+    if (mounted) _closeAndPop();
   }
 }
 

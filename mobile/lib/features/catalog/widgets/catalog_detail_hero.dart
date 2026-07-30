@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../../core/theme.dart';
 import '../../../data/models/api_catalog.dart';
 import '../../../shared/formatters/duration_formatter.dart';
+import '../../../shared/layout/adaptive_action_width.dart';
 import '../../../shared/media/authenticated_media_image.dart';
 import 'catalog_card.dart';
 import 'catalog_detail_theme.dart';
@@ -127,15 +128,19 @@ class CatalogDetailHero extends StatelessWidget {
                           ],
                         ),
                       const SizedBox(height: LumaSpacing.xl),
-                      _PrimaryPlayButton(item: item, onPlay: onPlay),
+                      AdaptiveActionWidth(
+                        child: _PrimaryPlayButton(item: item, onPlay: onPlay),
+                      ),
                       const SizedBox(height: LumaSpacing.sm),
-                      _SecondaryActions(
-                        item: item,
-                        vertical: stackIdentity,
-                        favorite: favorite,
-                        savingFavorite: savingFavorite,
-                        onPlayFromStart: onPlayFromStart,
-                        onToggleFavorite: onToggleFavorite,
+                      AdaptiveActionWidth(
+                        child: _SecondaryActions(
+                          item: item,
+                          vertical: stackIdentity,
+                          favorite: favorite,
+                          savingFavorite: savingFavorite,
+                          onPlayFromStart: onPlayFromStart,
+                          onToggleFavorite: onToggleFavorite,
+                        ),
                       ),
                     ],
                   ),
@@ -208,7 +213,7 @@ class _SecondaryActions extends StatelessWidget {
   ButtonStyle _secondaryActionStyle() => OutlinedButton.styleFrom(
     foregroundColor: CatalogDetailPalette.text,
     side: const BorderSide(color: CatalogDetailPalette.outline),
-    minimumSize: const Size.fromHeight(52),
+    minimumSize: const Size(0, 52),
     shape: RoundedRectangleBorder(
       borderRadius: BorderRadius.circular(LumaRadii.medium),
     ),
@@ -343,7 +348,7 @@ class _PrimaryPlayButton extends StatelessWidget {
         style: FilledButton.styleFrom(
           backgroundColor: CatalogDetailPalette.accent,
           foregroundColor: CatalogDetailPalette.onAccent,
-          minimumSize: const Size.fromHeight(56),
+          minimumSize: const Size(0, 56),
           textStyle: Theme.of(
             context,
           ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),

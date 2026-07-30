@@ -50,38 +50,46 @@ class HomeHeader extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    Expanded(
-                      child: GestureDetector(
-                        behavior: HitTestBehavior.translucent,
-                        onDoubleTap: onScrollToTop,
-                        child: Align(
-                          alignment: Alignment.centerLeft,
+                    GestureDetector(
+                      behavior: HitTestBehavior.translucent,
+                      onDoubleTap: onScrollToTop,
+                      child: SizedBox.square(
+                        dimension: 56,
+                        child: Center(
                           child: Theme(
                             data: theme,
                             child: const BrandMark(
                               variant: BrandMarkVariant.symbol,
-                              height: 44,
+                              height: 52,
                             ),
                           ),
                         ),
                       ),
                     ),
+                    const SizedBox(width: LumaSpacing.md),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '${greetingForHour(DateTime.now().hour)}，欢迎回来',
+                            style: theme.textTheme.headlineLarge?.copyWith(
+                              color: luma.onBrandSurface,
+                            ),
+                          ),
+                          const SizedBox(height: LumaSpacing.xxs),
+                          Text(
+                            '在熟悉的影像里，继续今天的片刻。',
+                            style: theme.textTheme.bodyLarge?.copyWith(
+                              color: luma.onBrandSurfaceMuted,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ],
-                ),
-                const SizedBox(height: LumaSpacing.lg),
-                Text(
-                  '${greetingForHour(DateTime.now().hour)}，欢迎回来',
-                  style: theme.textTheme.headlineLarge?.copyWith(
-                    color: luma.onBrandSurface,
-                  ),
-                ),
-                const SizedBox(height: LumaSpacing.xs),
-                Text(
-                  '在熟悉的影像里，继续今天的片刻。',
-                  style: theme.textTheme.bodyLarge?.copyWith(
-                    color: luma.onBrandSurfaceMuted,
-                  ),
                 ),
                 const SizedBox(height: LumaSpacing.lg),
                 _HomeSearchButton(onPressed: onOpenSearch),

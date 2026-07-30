@@ -7,6 +7,7 @@ import '../../../data/models/api_access.dart';
 import '../../../data/models/api_source.dart';
 import '../../../data/repositories/access_repository.dart';
 import '../../../data/repositories/source_repository.dart';
+import '../../../shared/layout/adaptive_action_width.dart';
 import '../../../shared/layout/constrained_page_list.dart';
 import '../../../shared/layout/section_header.dart';
 import '../../../shared/states/empty_state.dart';
@@ -140,22 +141,24 @@ class _NewMemberPageState extends State<NewMemberPage> {
           ),
         ),
         const SizedBox(height: LumaSpacing.lg),
-        FilledButton.icon(
-          onPressed: _submitting ? null : _submit,
-          icon: _submitting
-              ? const SizedBox.square(
-                  dimension: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Icon(Icons.person_add_alt_1_outlined),
-          label: Text(
-            _submitting
-                ? accountCreated
-                      ? '正在重试授权'
-                      : '正在创建'
-                : accountCreated
-                ? '继续授权'
-                : '创建成员',
+        AdaptiveActionWidth(
+          child: FilledButton.icon(
+            onPressed: _submitting ? null : _submit,
+            icon: _submitting
+                ? const SizedBox.square(
+                    dimension: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.person_add_alt_1_outlined),
+            label: Text(
+              _submitting
+                  ? accountCreated
+                        ? '正在重试授权'
+                        : '正在创建'
+                  : accountCreated
+                  ? '继续授权'
+                  : '创建成员',
+            ),
           ),
         ),
       ],

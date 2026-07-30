@@ -161,6 +161,8 @@ abstract final class LumaTypography {
 }
 
 abstract final class LumaLayout {
+  static const _mediaCardDetailsHeight = 76.0;
+
   static const contentMaxWidth = 1280.0;
   static const detailMaxWidth = 1160.0;
   static const formMaxWidth = 520.0;
@@ -180,6 +182,8 @@ abstract final class LumaLayout {
   static const inputHeight = 52.0;
   static const compactControlHeight = 48.0;
   static const chipHeight = 40.0;
+  static const actionWidthBreakpoint = 600.0;
+  static const actionMaxWidth = 360.0;
 
   static const scrollCacheExtent = 320.0;
 
@@ -203,10 +207,11 @@ abstract final class LumaLayout {
       ? 3
       : 2;
 
+  /// 按网格宽度计算卡片比例，并为两行标题和元信息保留完整高度。
   static double mediaCardAspectRatio(double gridWidth) {
     final count = gridColumns(gridWidth);
     final cardWidth = (gridWidth - LumaSpacing.md * (count - 1)) / count;
-    return cardWidth / (cardWidth / 1.6 + 66);
+    return cardWidth / (cardWidth / 1.6 + _mediaCardDetailsHeight);
   }
 }
 

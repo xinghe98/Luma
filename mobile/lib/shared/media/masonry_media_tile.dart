@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/theme.dart';
 import '../../data/models/media_item.dart';
+import '../interaction/luma_focusable_surface.dart';
 import 'authenticated_media_image.dart';
 import 'luma_favorite_button.dart';
 
@@ -36,43 +37,34 @@ class MasonryMediaTile extends StatelessWidget {
         final placeholder = _MasonryPlaceholder(item: item);
         final radius = BorderRadius.circular(LumaRadii.small);
 
-        return Semantics(
-          button: true,
+        return LumaFocusableSurface(
           label: item.title,
-          child: Material(
-            color: Colors.transparent,
-            child: InkWell(
-              onTap: onTap,
-              onLongPress: onLongPress,
-              // Hero 过渡期间保留的默认水波纹会像一层灰色蒙版。
-              splashFactory: NoSplash.splashFactory,
-              overlayColor: const WidgetStatePropertyAll(Colors.transparent),
-              borderRadius: radius,
-              child: ClipRRect(
-                borderRadius: radius,
-                child: SizedBox(
-                  height: height,
-                  child: Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      _tileImage(
-                        placeholder: placeholder,
-                        cacheWidth: cacheWidth,
-                        cacheHeight: cacheHeight,
-                      ),
-                      if (onFavorite != null)
-                        Positioned(
-                          right: LumaSpacing.xxs,
-                          top: LumaSpacing.xxs,
-                          child: LumaFavoriteButton(
-                            isFavorite: item.isFavorite,
-                            onPressed: onFavorite,
-                            overlay: true,
-                          ),
-                        ),
-                    ],
+          onActivate: onTap,
+          onLongPress: onLongPress,
+          borderRadius: radius,
+          child: ClipRRect(
+            borderRadius: radius,
+            child: SizedBox(
+              height: height,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  _tileImage(
+                    placeholder: placeholder,
+                    cacheWidth: cacheWidth,
+                    cacheHeight: cacheHeight,
                   ),
-                ),
+                  if (onFavorite != null)
+                    Positioned(
+                      right: LumaSpacing.xxs,
+                      top: LumaSpacing.xxs,
+                      child: LumaFavoriteButton(
+                        isFavorite: item.isFavorite,
+                        onPressed: onFavorite,
+                        overlay: true,
+                      ),
+                    ),
+                ],
               ),
             ),
           ),

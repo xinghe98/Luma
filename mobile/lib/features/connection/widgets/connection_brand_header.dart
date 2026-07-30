@@ -38,7 +38,7 @@ class ConnectionBrandHeader extends StatelessWidget {
               data: theme,
               child: const BrandMark(
                 variant: BrandMarkVariant.horizontal,
-                height: 42,
+                height: 56,
               ),
             ),
             const SizedBox(height: LumaSpacing.xl),

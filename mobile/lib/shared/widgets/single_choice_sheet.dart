@@ -17,24 +17,39 @@ class BottomSheetChoice<T> {
   final String? description;
 }
 
+/// 在宽屏使用居中对话框、窄屏使用底部抽屉，返回用户选中的值。
 Future<T?> showSingleChoiceSheet<T>(
   BuildContext context, {
   required String title,
   required String supportingText,
   required T? selectedValue,
   required List<BottomSheetChoice<T>> choices,
-}) => showModalBottomSheet<T>(
-  context: context,
-  isScrollControlled: true,
-  showDragHandle: true,
-  useSafeArea: true,
-  builder: (context) => _SingleChoiceSheet<T>(
+}) {
+  final content = _SingleChoiceSheet<T>(
     title: title,
     supportingText: supportingText,
     selectedValue: selectedValue,
     choices: choices,
-  ),
-);
+  );
+  if (MediaQuery.sizeOf(context).width >= LumaLayout.navigationRailBreakpoint) {
+    return showDialog<T>(
+      context: context,
+      builder: (_) => Dialog(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 520),
+          child: content,
+        ),
+      ),
+    );
+  }
+  return showModalBottomSheet<T>(
+    context: context,
+    isScrollControlled: true,
+    showDragHandle: true,
+    useSafeArea: true,
+    builder: (_) => content,
+  );
+}
 
 class _SingleChoiceSheet<T> extends StatelessWidget {
   const _SingleChoiceSheet({
@@ -59,7 +74,7 @@ class _SingleChoiceSheet<T> extends StatelessWidget {
       child: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(
           LumaLayout.pagePaddingH,
-          LumaSpacing.xxs,
+          LumaSpacing.lg,
           LumaLayout.pagePaddingH,
           LumaSpacing.lg,
         ),

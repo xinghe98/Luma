@@ -8,6 +8,7 @@ import '../../../core/theme.dart';
 import '../../../data/models/api_access.dart';
 import '../../../data/repositories/access_repository.dart';
 import '../../../data/repositories/source_repository.dart';
+import '../../../shared/layout/adaptive_action_width.dart';
 import '../../../shared/layout/constrained_page_list.dart';
 import '../../../shared/states/empty_state.dart';
 import '../../../shared/states/skeleton.dart';
@@ -87,10 +88,13 @@ class _AccessManagementPageState extends State<AccessManagementPage> {
           ),
         ),
         const SizedBox(height: LumaSpacing.lg),
-        FilledButton.icon(
-          onPressed: _createMember,
-          icon: const Icon(Icons.person_add_alt_1_outlined),
-          label: const Text('添加成员'),
+        AdaptiveActionWidth(
+          maxWidth: 240,
+          child: FilledButton.icon(
+            onPressed: _createMember,
+            icon: const Icon(Icons.person_add_alt_1_outlined),
+            label: const Text('添加成员'),
+          ),
         ),
         const SizedBox(height: LumaSpacing.md),
         if (_error != null) ...[

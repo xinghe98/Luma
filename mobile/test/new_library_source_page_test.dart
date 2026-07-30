@@ -100,6 +100,35 @@ void main() {
     expect(find.text('选择视频用途'), findsNothing);
     expect(find.text('个人视频'), findsOneWidget);
   });
+
+  testWidgets('wide layout uses a dialog for single-choice fields', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1200, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: NewLibrarySourcePage(
+          sources: _FakeSourceRepository(),
+          access: _FakeAccessRepository(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('个人视频'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(Dialog), findsOneWidget);
+    expect(find.byType(BottomSheet), findsNothing);
+    expect(find.text('选择视频用途'), findsOneWidget);
+
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(find.byType(Dialog), findsNothing);
+  });
 }
 
 class _FakeSourceRepository implements MutableSourceRepository {

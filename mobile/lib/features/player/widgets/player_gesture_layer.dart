@@ -3,9 +3,17 @@ import 'package:flutter/material.dart';
 import '../player_interaction_controller.dart';
 
 class PlayerGestureLayer extends StatefulWidget {
-  const PlayerGestureLayer({super.key, required this.interaction});
+  /// 创建播放器交互层；桌面双击交给窗口全屏，触控端保留分区手势。
+  const PlayerGestureLayer({
+    super.key,
+    required this.interaction,
+    this.desktop = false,
+    this.onDesktopDoubleTap,
+  });
 
   final PlayerInteractionController interaction;
+  final bool desktop;
+  final VoidCallback? onDesktopDoubleTap;
 
   @override
   State<PlayerGestureLayer> createState() => _PlayerGestureLayerState();
@@ -28,16 +36,31 @@ class _PlayerGestureLayerState extends State<PlayerGestureLayer> {
             onDoubleTapDown: (details) {
               _doubleTapX = details.localPosition.dx;
             },
-            onDoubleTap: () =>
-                widget.interaction.handleDoubleTap(_doubleTapX, size.width),
-            onPanStart: (details) =>
-                widget.interaction.beginPan(details.localPosition, size),
-            onPanUpdate: (details) =>
-                widget.interaction.updatePan(details.delta),
-            onPanEnd: (_) => widget.interaction.endPan(),
-            onPanCancel: () => widget.interaction.endPan(cancelled: true),
-            onLongPressStart: (_) => widget.interaction.beginLongPress(),
-            onLongPressEnd: (_) => widget.interaction.endLongPress(),
+            onDoubleTap: widget.desktop
+                ? widget.onDesktopDoubleTap
+                : () => widget.interaction.handleDoubleTap(
+                    _doubleTapX,
+                    size.width,
+                  ),
+            onPanStart: widget.desktop
+                ? null
+                : (details) =>
+                      widget.interaction.beginPan(details.localPosition, size),
+            onPanUpdate: widget.desktop
+                ? null
+                : (details) => widget.interaction.updatePan(details.delta),
+            onPanEnd: widget.desktop
+                ? null
+                : (_) => widget.interaction.endPan(),
+            onPanCancel: widget.desktop
+                ? null
+                : () => widget.interaction.endPan(cancelled: true),
+            onLongPressStart: widget.desktop
+                ? null
+                : (_) => widget.interaction.beginLongPress(),
+            onLongPressEnd: widget.desktop
+                ? null
+                : (_) => widget.interaction.endLongPress(),
           ),
         );
       },

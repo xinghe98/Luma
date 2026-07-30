@@ -108,6 +108,22 @@ class _ImagePreviewDialogState extends State<ImagePreviewDialog> {
       ..scaleByDouble(_doubleTapScale, _doubleTapScale, 1, 1);
   }
 
+  /// 围绕预览中心调整缩放，超出允许范围时钳制到边界。
+  void _zoomBy(double factor) {
+    final current = _transform.value.getMaxScaleOnAxis();
+    final next = (current * factor).clamp(_minScale, _maxScale).toDouble();
+    final viewport = MediaQuery.sizeOf(context);
+    final center = Offset(viewport.width / 2, viewport.height / 2);
+    final sceneCenter = _transform.toScene(center);
+    _transform.value = Matrix4.identity()
+      ..translateByDouble(center.dx, center.dy, 0, 1)
+      ..scaleByDouble(next, next, 1, 1)
+      ..translateByDouble(-sceneCenter.dx, -sceneCenter.dy, 0, 1);
+  }
+
+  /// 还原图片位置与缩放，不触发重新加载。
+  void _resetZoom() => _transform.value = Matrix4.identity();
+
   /// 先还原缩放并隐藏原图，再触发反向 Hero，确保图片准确缩回来源卡片。
   Future<void> _close([ImagePreviewAction? action]) async {
     if (_closing) return;
@@ -231,50 +247,67 @@ class _ImagePreviewDialogState extends State<ImagePreviewDialog> {
     );
 
     final backdrop = ColoredBox(color: context.luma.playerInk);
-    return PopScope(
-      canPop: _closing,
-      onPopInvokedWithResult: (didPop, _) {
-        if (!didPop && !_closing) unawaited(_close());
+    return CallbackShortcuts(
+      bindings: <ShortcutActivator, VoidCallback>{
+        const SingleActivator(LogicalKeyboardKey.escape): () =>
+            unawaited(_close()),
+        const SingleActivator(LogicalKeyboardKey.equal, shift: true): () =>
+            _zoomBy(1.25),
+        const SingleActivator(LogicalKeyboardKey.numpadAdd): () =>
+            _zoomBy(1.25),
+        const SingleActivator(LogicalKeyboardKey.minus): () => _zoomBy(0.8),
+        const SingleActivator(LogicalKeyboardKey.numpadSubtract): () =>
+            _zoomBy(0.8),
+        const SingleActivator(LogicalKeyboardKey.digit0): _resetZoom,
       },
-      child: AnnotatedRegion<SystemUiOverlayStyle>(
-        value: SystemUiOverlayStyle.light,
-        child: Material(
-          type: MaterialType.transparency,
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              if (routeAnimation == null)
-                backdrop
-              else
-                FadeTransition(
-                  opacity: CurvedAnimation(
-                    parent: routeAnimation,
-                    curve: Curves.easeOutQuart,
-                    reverseCurve: Curves.easeInCubic,
-                  ),
-                  child: backdrop,
-                ),
-              Semantics(
-                image: true,
-                label: '图片预览：${item.title}',
-                hint: '可双指缩放或双击放大',
-                child: GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onDoubleTapDown: (details) => _doubleTapDetails = details,
-                  onDoubleTap: _onDoubleTap,
-                  child: Center(
-                    child: InteractiveViewer(
-                      transformationController: _transform,
-                      minScale: _minScale,
-                      maxScale: _maxScale,
-                      clipBehavior: Clip.none,
-                      child: preview,
+      child: Focus(
+        autofocus: true,
+        child: PopScope(
+          canPop: _closing,
+          onPopInvokedWithResult: (didPop, _) {
+            if (!didPop && !_closing) unawaited(_close());
+          },
+          child: AnnotatedRegion<SystemUiOverlayStyle>(
+            value: SystemUiOverlayStyle.light,
+            child: Material(
+              type: MaterialType.transparency,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  if (routeAnimation == null)
+                    backdrop
+                  else
+                    FadeTransition(
+                      opacity: CurvedAnimation(
+                        parent: routeAnimation,
+                        curve: Curves.easeOutQuart,
+                        reverseCurve: Curves.easeInCubic,
+                      ),
+                      child: backdrop,
+                    ),
+                  Semantics(
+                    image: true,
+                    label: '图片预览：${item.title}',
+                    hint: '可双指或滚轮缩放，双击放大，按 0 还原',
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onDoubleTapDown: (details) => _doubleTapDetails = details,
+                      onDoubleTap: _onDoubleTap,
+                      child: Center(
+                        child: InteractiveViewer(
+                          transformationController: _transform,
+                          minScale: _minScale,
+                          maxScale: _maxScale,
+                          clipBehavior: Clip.none,
+                          child: preview,
+                        ),
+                      ),
                     ),
                   ),
-                ),
+                  chrome,
+                ],
               ),
-              chrome,
-            ],
+            ),
           ),
         ),
       ),

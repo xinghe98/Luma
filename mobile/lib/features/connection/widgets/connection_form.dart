@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../../core/theme.dart';
+import '../../../shared/layout/adaptive_action_width.dart';
 import '../connection_controller.dart';
 import 'connection_notice.dart';
 
@@ -37,6 +38,7 @@ class ConnectionForm extends StatelessWidget {
               flex: 3,
               child: TextField(
                 controller: hostController,
+                autofocus: true,
                 enabled: enabled && !controller.isLoading,
                 keyboardType: TextInputType.url,
                 textInputAction: TextInputAction.next,
@@ -100,18 +102,20 @@ class ConnectionForm extends StatelessWidget {
           ),
         ),
         const SizedBox(height: LumaSpacing.md),
-        FilledButton.icon(
-          onPressed: !enabled || controller.isLoading ? null : onConnect,
-          icon: controller.isLoading
-              ? SizedBox.square(
-                  dimension: 18,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: Theme.of(context).colorScheme.onPrimary,
-                  ),
-                )
-              : const Icon(Icons.link_rounded),
-          label: Text(controller.isLoading ? '正在连接' : '立即连接'),
+        AdaptiveActionWidth(
+          child: FilledButton.icon(
+            onPressed: !enabled || controller.isLoading ? null : onConnect,
+            icon: controller.isLoading
+                ? SizedBox.square(
+                    dimension: 18,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Theme.of(context).colorScheme.onPrimary,
+                    ),
+                  )
+                : const Icon(Icons.link_rounded),
+            label: Text(controller.isLoading ? '正在连接' : '立即连接'),
+          ),
         ),
         AnimatedSwitcher(
           duration: LumaMotion.forContext(context, LumaMotion.normal),

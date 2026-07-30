@@ -95,7 +95,7 @@ ThemeData applyLumaComponentThemes({
     ),
     filledButtonTheme: FilledButtonThemeData(
       style: FilledButton.styleFrom(
-        minimumSize: const Size.fromHeight(LumaLayout.buttonHeight),
+        minimumSize: const Size(0, LumaLayout.buttonHeight),
         padding: const EdgeInsets.symmetric(horizontal: LumaSpacing.lg),
         shape: buttonShape,
         textStyle: textTheme.labelLarge,

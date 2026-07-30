@@ -8,6 +8,40 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:luma/features/player/player_system_ui.dart';
 
 void main() {
+  test('Windows 全屏由播放器原生宿主进入并在退出会话时恢复', () async {
+    final events = <String>[];
+    final session = PlayerSystemUiSession(
+      desktop: true,
+      enterDesktopFullScreen: () async => events.add('enter-native'),
+      exitDesktopFullScreen: () async => events.add('exit-native'),
+    );
+
+    await session.enter(
+      portraitVideo: false,
+      entryOrientation: Orientation.landscape,
+      shortestSide: 640,
+    );
+    expect(session.fullScreen, isFalse);
+
+    expect(await session.toggleFullScreen(), isTrue);
+    expect(session.fullScreen, isTrue);
+    expect(events, ['enter-native']);
+
+    expect(await session.exitFullScreen(), isTrue);
+    expect(session.fullScreen, isFalse);
+    expect(events, ['enter-native', 'exit-native']);
+
+    await session.toggleFullScreen();
+    await session.exit();
+    expect(session.fullScreen, isFalse);
+    expect(events, [
+      'enter-native',
+      'exit-native',
+      'enter-native',
+      'exit-native',
+    ]);
+  });
+
   testWidgets('a stale exit cannot override a newer player enter', (
     tester,
   ) async {

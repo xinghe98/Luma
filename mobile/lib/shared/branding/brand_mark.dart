@@ -4,6 +4,7 @@ import '../../core/theme.dart';
 
 enum BrandMarkVariant { symbol, horizontal }
 
+/// 根据主题选择品牌资源，并按可见图形尺寸统一 symbol 与横版 Logo 的布局。
 class BrandMark extends StatelessWidget {
   const BrandMark({
     super.key,
@@ -33,6 +34,7 @@ class BrandMark extends StatelessWidget {
     };
   }
 
+  /// 构建去除资源透明留白后的品牌标志，不改变原始图片内容。
   @override
   Widget build(BuildContext context) {
     final brightness = Theme.of(context).brightness;
@@ -45,11 +47,14 @@ class BrandMark extends StatelessWidget {
         };
 
     if (variant == BrandMarkVariant.horizontal) {
-      return Image.asset(
-        asset,
+      final cropRect = brightness == Brightness.dark
+          ? const Rect.fromLTWH(122, 314, 1208, 409)
+          : const Rect.fromLTWH(129, 302, 1205, 407);
+      return _CroppedBrandAsset(
+        asset: asset,
+        sourceSize: const Size(1448, 1086),
+        cropRect: cropRect,
         height: resolvedHeight,
-        fit: BoxFit.contain,
-        filterQuality: FilterQuality.high,
       );
     }
 
@@ -59,6 +64,47 @@ class BrandMark extends StatelessWidget {
       height: resolvedHeight,
       fit: BoxFit.contain,
       filterQuality: FilterQuality.high,
+    );
+  }
+}
+
+class _CroppedBrandAsset extends StatelessWidget {
+  const _CroppedBrandAsset({
+    required this.asset,
+    required this.sourceSize,
+    required this.cropRect,
+    required this.height,
+  });
+
+  final String asset;
+  final Size sourceSize;
+  final Rect cropRect;
+  final double height;
+
+  @override
+  Widget build(BuildContext context) {
+    final scale = height / cropRect.height;
+    return SizedBox(
+      width: cropRect.width * scale,
+      height: height,
+      child: ClipRect(
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            Positioned(
+              left: -cropRect.left * scale,
+              top: -cropRect.top * scale,
+              width: sourceSize.width * scale,
+              height: sourceSize.height * scale,
+              child: Image.asset(
+                asset,
+                fit: BoxFit.fill,
+                filterQuality: FilterQuality.high,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

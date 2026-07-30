@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:luma/app/controllers/media_controller.dart';
 import 'package:luma/data/fixtures/media_fixtures.dart';
@@ -109,6 +110,50 @@ void main() {
       await tester.tap(find.text('重试播放'));
       await tester.pump();
       expect(find.text('重试播放'), findsOneWidget);
+    } finally {
+      harness.dispose();
+    }
+  });
+
+  testWidgets('desktop player exposes volume and keyboard controls', (
+    tester,
+  ) async {
+    final harness = _WidgetHarness.create();
+    var fullscreenToggles = 0;
+    var escapeCalls = 0;
+    try {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: ThemeData.dark(),
+          home: Scaffold(
+            body: PlayerScene(
+              controller: harness.player,
+              interaction: harness.interaction,
+              onBack: () {},
+              onMinimize: () {},
+              onRotate: null,
+              isDesktop: true,
+              onToggleFullScreen: () => fullscreenToggles++,
+              onEscape: () => escapeCalls++,
+            ),
+          ),
+        ),
+      );
+
+      expect(find.byTooltip('静音'), findsOneWidget);
+      expect(find.byTooltip('进入全屏'), findsOneWidget);
+      expect(find.byTooltip('锁定控制'), findsNothing);
+      expect(find.byTooltip('旋转屏幕'), findsNothing);
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.keyM);
+      await tester.pump();
+      expect(harness.player.muted, isTrue);
+      expect(harness.player.volume, 0);
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.keyF);
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      expect(fullscreenToggles, 1);
+      expect(escapeCalls, 1);
     } finally {
       harness.dispose();
     }

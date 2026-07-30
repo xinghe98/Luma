@@ -147,9 +147,7 @@ class _LibraryPageState extends State<LibraryPage>
                 ),
                 controller: _scroll,
                 // 首入场只构建可视区，动效结束后再预构建约半屏内容。
-                cacheExtent: _entrySettled
-                    ? LumaLayout.scrollCacheExtent
-                    : 0,
+                cacheExtent: _entrySettled ? LumaLayout.scrollCacheExtent : 0,
                 physics: const AlwaysScrollableScrollPhysics(),
                 slivers: [
                   if (controller.isRefreshing)
@@ -175,7 +173,7 @@ class _LibraryPageState extends State<LibraryPage>
                         ),
                       ),
                     ),
-                  if (showInitialSkeleton)
+                  if (showInitialSkeleton && isVideo)
                     const SliverPadding(
                       padding: EdgeInsets.fromLTRB(
                         LumaLayout.pagePaddingH,
@@ -186,6 +184,16 @@ class _LibraryPageState extends State<LibraryPage>
                       sliver: SliverToBoxAdapter(
                         child: MediaGridSkeleton(items: 8),
                       ),
+                    )
+                  else if (showInitialSkeleton)
+                    const SliverPadding(
+                      padding: EdgeInsets.fromLTRB(
+                        LumaSpacing.sm,
+                        LumaSpacing.xs,
+                        LumaSpacing.sm,
+                        LumaSpacing.xl,
+                      ),
+                      sliver: SliverToBoxAdapter(child: PhotoMasonrySkeleton()),
                     )
                   else if (loadState == LoadState.error && items.isEmpty)
                     SliverFillRemaining(

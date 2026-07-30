@@ -2,6 +2,7 @@
 // 挂在 MaterialApp.builder 根 Stack 最上层，盖过路由页与图片预览等 Dialog。
 // 不依赖 Navigator Overlay（根层无 Overlay），避免 Tooltip/InkWell 报错。
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 
@@ -9,6 +10,9 @@ import '../../../core/theme.dart';
 import '../player_controller.dart';
 import '../player_session_controller.dart';
 import 'player_video_surface.dart';
+
+bool get _isWindowsDesktop =>
+    Platform.isWindows && Platform.environment['FLUTTER_TEST'] != 'true';
 
 class MiniPlayerOverlay extends StatelessWidget {
   /// 根据会话状态显示小窗，并由调用方负责打开对应的全屏路由。
@@ -83,6 +87,10 @@ class _MiniPlayerCardState extends State<_MiniPlayerCard> {
   void _handleDoubleTap(double width) {
     _tapTimer?.cancel();
     _tapTimer = null;
+    if (_isWindowsDesktop) {
+      widget.onExpand();
+      return;
+    }
     final x = _doubleTapPosition?.dx ?? width / 2;
     if (x < width / 3) {
       _seekBy(-10);
@@ -121,6 +129,7 @@ class _MiniPlayerCardState extends State<_MiniPlayerCard> {
 
   /// 等待双击识别结束，避免双击手势同时切换操作按钮。
   void _scheduleControlToggle() {
+    if (_isWindowsDesktop) return;
     _tapTimer?.cancel();
     _tapTimer = Timer(const Duration(milliseconds: 100), () {
       if (mounted) _toggleControls();
@@ -160,15 +169,18 @@ class _MiniPlayerCardState extends State<_MiniPlayerCard> {
   Widget build(BuildContext context) {
     final mediaQuery = MediaQuery.of(context);
     final baseWidth = (mediaQuery.size.width - LumaSpacing.lg * 2)
-        .clamp(160.0, 280.0)
+        .clamp(160.0, _isWindowsDesktop ? 320.0 : 280.0)
         .toDouble();
-    final compactWidth = baseWidth < 220 ? baseWidth : 220.0;
+    final compactWidth = _isWindowsDesktop
+        ? baseWidth.clamp(240.0, 320.0).toDouble()
+        : (baseWidth < 220 ? baseWidth : 220.0);
     final maxScale = (mediaQuery.size.width - LumaSpacing.md) / compactWidth;
     final scale = _scale.clamp(0.8, maxScale.clamp(1.0, 1.7)).toDouble();
     final width = compactWidth * scale;
     final height = width / 1.6;
     final safeBottom =
-        mediaQuery.padding.bottom + LumaLayout.navigationBarHeight;
+        mediaQuery.padding.bottom +
+        (_isWindowsDesktop ? 0 : LumaLayout.navigationBarHeight);
     final base = Offset(
       mediaQuery.size.width - width - LumaSpacing.md,
       mediaQuery.size.height - height - safeBottom - LumaSpacing.md,
@@ -189,169 +201,217 @@ class _MiniPlayerCardState extends State<_MiniPlayerCard> {
       child: Semantics(
         container: true,
         label: '正在小窗播放：${widget.controller.item.title}',
-        hint: '单击显示或隐藏操作按钮；拖动移动，双指缩放；双击左侧快退、中间播放暂停、右侧快进',
-        child: Material(
-          color: colors.surfaceContainerHighest,
-          elevation: 8,
-          shadowColor: Colors.black.withValues(alpha: 0.28),
-          borderRadius: BorderRadius.circular(LumaRadii.medium),
-          clipBehavior: Clip.antiAlias,
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onScaleStart: (_) => _scaleAtStart = _scale,
-            onScaleUpdate: (details) {
-              setState(() {
-                _dragOffset += details.focalPointDelta;
-                _scale = (_scaleAtStart * details.scale)
-                    .clamp(0.8, maxScale.clamp(1.0, 1.7))
-                    .toDouble();
-              });
-            },
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                // 小窗可见时独占纹理；全屏页在 minimize 前会先卸下 VideoPlayer。
-                PlayerVideoSurface(
-                  controller: widget.controller,
-                  attachVideo: true,
-                ),
-                const DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        Color(0x5C000000),
-                        Color(0x00000000),
-                        Color(0x85000000),
-                      ],
-                    ),
+        hint: _isWindowsDesktop
+            ? '鼠标拖动可移动，右下角可缩放，双击还原播放器'
+            : '单击显示或隐藏操作按钮；拖动移动，双指缩放；双击左侧快退、中间播放暂停、右侧快进',
+        child: MouseRegion(
+          cursor: _isWindowsDesktop
+              ? SystemMouseCursors.move
+              : MouseCursor.defer,
+          onEnter: _isWindowsDesktop
+              ? (_) => setState(() => _controlsVisible = true)
+              : null,
+          onExit: _isWindowsDesktop
+              ? (_) => setState(() => _controlsVisible = false)
+              : null,
+          child: Material(
+            color: colors.surfaceContainerHighest,
+            elevation: 8,
+            shadowColor: Colors.black.withValues(alpha: 0.28),
+            borderRadius: BorderRadius.circular(LumaRadii.medium),
+            clipBehavior: Clip.antiAlias,
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onScaleStart: (_) => _scaleAtStart = _scale,
+              onScaleUpdate: (details) {
+                setState(() {
+                  _dragOffset += details.focalPointDelta;
+                  _scale = (_scaleAtStart * details.scale)
+                      .clamp(0.8, maxScale.clamp(1.0, 1.7))
+                      .toDouble();
+                });
+              },
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  // 小窗可见时独占纹理；全屏页在 minimize 前会先卸下 VideoPlayer。
+                  PlayerVideoSurface(
+                    controller: widget.controller,
+                    attachVideo: true,
                   ),
-                ),
-                Positioned.fill(
-                  child: Semantics(
-                    button: true,
-                    label: _controlsVisible ? '隐藏小窗操作按钮' : '显示小窗操作按钮',
-                    onTap: _toggleControls,
-                    child: Listener(
-                      behavior: HitTestBehavior.opaque,
-                      onPointerDown: _handlePointerDown,
-                      onPointerMove: _handlePointerMove,
-                      onPointerUp: _handlePointerEnd,
-                      onPointerCancel: _handlePointerEnd,
-                      child: GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        onDoubleTapDown: (details) =>
-                            _doubleTapPosition = details.localPosition,
-                        onDoubleTap: () => _handleDoubleTap(width),
-                      ),
-                    ),
-                  ),
-                ),
-                Center(
-                  child: IgnorePointer(
-                    child: AnimatedSwitcher(
-                      duration: LumaMotion.forContext(context, LumaMotion.fast),
-                      child: _feedback == null
-                          ? const SizedBox.shrink(
-                              key: ValueKey('mini-player-feedback-empty'),
-                            )
-                          : Semantics(
-                              key: ValueKey(_feedback),
-                              liveRegion: true,
-                              label: _feedback,
-                              child: DecoratedBox(
-                                decoration: BoxDecoration(
-                                  color: colors.surface.withValues(alpha: 0.9),
-                                  borderRadius: BorderRadius.circular(
-                                    LumaRadii.small,
-                                  ),
-                                ),
-                                child: Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: LumaSpacing.sm,
-                                    vertical: LumaSpacing.xs,
-                                  ),
-                                  child: Text(
-                                    _feedback!,
-                                    style: Theme.of(context)
-                                        .textTheme
-                                        .labelMedium
-                                        ?.copyWith(color: colors.onSurface),
-                                  ),
-                                ),
-                              ),
-                            ),
-                    ),
-                  ),
-                ),
-                IgnorePointer(
-                  ignoring: !_controlsVisible,
-                  child: ExcludeSemantics(
-                    excluding: !_controlsVisible,
-                    child: AnimatedOpacity(
-                      key: const ValueKey('mini-player-controls'),
-                      opacity: _controlsVisible ? 1 : 0,
-                      duration: LumaMotion.forContext(context, LumaMotion.fast),
-                      child: Stack(
-                        children: [
-                          Positioned(
-                            top: LumaSpacing.xxs,
-                            left: LumaSpacing.xxs,
-                            child: _MiniPlayerIconButton(
-                              label: '还原全屏播放器',
-                              icon: Icons.fullscreen_rounded,
-                              onPressed: widget.onExpand,
-                            ),
-                          ),
-                          Positioned(
-                            top: LumaSpacing.xxs,
-                            right: LumaSpacing.xxs,
-                            child: _MiniPlayerIconButton(
-                              label: '关闭小窗播放器',
-                              icon: Icons.close_rounded,
-                              onPressed: widget.onClose,
-                            ),
-                          ),
-                          Positioned(
-                            left: LumaSpacing.xxs,
-                            right: LumaSpacing.xxs,
-                            bottom: LumaSpacing.xxs,
-                            child: ListenableBuilder(
-                              listenable: widget.controller,
-                              builder: (context, _) => Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  _MiniPlayerIconButton(
-                                    label: '快退 10 秒',
-                                    icon: Icons.replay_10_rounded,
-                                    onPressed: () => _seekBy(-10),
-                                  ),
-                                  _MiniPlayerIconButton(
-                                    label: widget.controller.playing
-                                        ? '暂停'
-                                        : '播放',
-                                    icon: widget.controller.playing
-                                        ? Icons.pause_rounded
-                                        : Icons.play_arrow_rounded,
-                                    onPressed: _togglePlay,
-                                    animationDuration: duration,
-                                  ),
-                                  _MiniPlayerIconButton(
-                                    label: '快进 10 秒',
-                                    icon: Icons.forward_10_rounded,
-                                    onPressed: () => _seekBy(10),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
+                  const DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          Color(0x5C000000),
+                          Color(0x00000000),
+                          Color(0x85000000),
                         ],
                       ),
                     ),
                   ),
-                ),
-              ],
+                  Positioned.fill(
+                    child: Semantics(
+                      button: true,
+                      label: _controlsVisible ? '隐藏小窗操作按钮' : '显示小窗操作按钮',
+                      onTap: _toggleControls,
+                      child: Listener(
+                        behavior: HitTestBehavior.opaque,
+                        onPointerDown: _handlePointerDown,
+                        onPointerMove: _handlePointerMove,
+                        onPointerUp: _handlePointerEnd,
+                        onPointerCancel: _handlePointerEnd,
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onDoubleTapDown: (details) =>
+                              _doubleTapPosition = details.localPosition,
+                          onDoubleTap: () => _handleDoubleTap(width),
+                        ),
+                      ),
+                    ),
+                  ),
+                  Center(
+                    child: IgnorePointer(
+                      child: AnimatedSwitcher(
+                        duration: LumaMotion.forContext(
+                          context,
+                          LumaMotion.fast,
+                        ),
+                        child: _feedback == null
+                            ? const SizedBox.shrink(
+                                key: ValueKey('mini-player-feedback-empty'),
+                              )
+                            : Semantics(
+                                key: ValueKey(_feedback),
+                                liveRegion: true,
+                                label: _feedback,
+                                child: DecoratedBox(
+                                  decoration: BoxDecoration(
+                                    color: colors.surface.withValues(
+                                      alpha: 0.9,
+                                    ),
+                                    borderRadius: BorderRadius.circular(
+                                      LumaRadii.small,
+                                    ),
+                                  ),
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: LumaSpacing.sm,
+                                      vertical: LumaSpacing.xs,
+                                    ),
+                                    child: Text(
+                                      _feedback!,
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .labelMedium
+                                          ?.copyWith(color: colors.onSurface),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                      ),
+                    ),
+                  ),
+                  IgnorePointer(
+                    ignoring: !_controlsVisible,
+                    child: ExcludeSemantics(
+                      excluding: !_controlsVisible,
+                      child: AnimatedOpacity(
+                        key: const ValueKey('mini-player-controls'),
+                        opacity: _controlsVisible ? 1 : 0,
+                        duration: LumaMotion.forContext(
+                          context,
+                          LumaMotion.fast,
+                        ),
+                        child: Stack(
+                          children: [
+                            Positioned(
+                              top: LumaSpacing.xxs,
+                              left: LumaSpacing.xxs,
+                              child: _MiniPlayerIconButton(
+                                label: '还原全屏播放器',
+                                icon: Icons.fullscreen_rounded,
+                                onPressed: widget.onExpand,
+                              ),
+                            ),
+                            Positioned(
+                              top: LumaSpacing.xxs,
+                              right: LumaSpacing.xxs,
+                              child: _MiniPlayerIconButton(
+                                label: '关闭小窗播放器',
+                                icon: Icons.close_rounded,
+                                onPressed: widget.onClose,
+                              ),
+                            ),
+                            Positioned(
+                              left: LumaSpacing.xxs,
+                              right: LumaSpacing.xxs,
+                              bottom: LumaSpacing.xxs,
+                              child: ListenableBuilder(
+                                listenable: widget.controller,
+                                builder: (context, _) => Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    _MiniPlayerIconButton(
+                                      label: '快退 10 秒',
+                                      icon: Icons.replay_10_rounded,
+                                      onPressed: () => _seekBy(-10),
+                                    ),
+                                    _MiniPlayerIconButton(
+                                      label: widget.controller.playing
+                                          ? '暂停'
+                                          : '播放',
+                                      icon: widget.controller.playing
+                                          ? Icons.pause_rounded
+                                          : Icons.play_arrow_rounded,
+                                      onPressed: _togglePlay,
+                                      animationDuration: duration,
+                                    ),
+                                    _MiniPlayerIconButton(
+                                      label: '快进 10 秒',
+                                      icon: Icons.forward_10_rounded,
+                                      onPressed: () => _seekBy(10),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  if (_isWindowsDesktop)
+                    Positioned(
+                      right: 0,
+                      bottom: 0,
+                      child: MouseRegion(
+                        cursor: SystemMouseCursors.resizeUpLeftDownRight,
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onPanUpdate: (details) {
+                            setState(() {
+                              _scale =
+                                  (_scale + details.delta.dx / compactWidth)
+                                      .clamp(0.8, maxScale.clamp(1.0, 1.7))
+                                      .toDouble();
+                            });
+                          },
+                          child: const SizedBox.square(
+                            dimension: 28,
+                            child: Icon(
+                              Icons.open_in_full_rounded,
+                              size: 14,
+                              color: LumaColors.onInk,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
             ),
           ),
         ),

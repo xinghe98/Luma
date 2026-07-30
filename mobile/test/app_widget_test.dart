@@ -17,6 +17,7 @@ import 'package:luma/data/storage/server_alias_store.dart';
 import 'package:luma/features/catalog/catalog_page.dart';
 import 'package:luma/features/catalog/widgets/catalog_card.dart';
 import 'package:luma/features/connection/connection_page.dart';
+import 'package:luma/features/connection/widgets/connection_brand_header.dart';
 import 'package:luma/features/home/widgets/home_header.dart';
 import 'package:luma/features/search/widgets/search_results.dart';
 import 'package:luma/features/settings/settings_page.dart';
@@ -73,11 +74,11 @@ void main() {
       tester
           .widget<BrandMark>(
             find.byWidgetPredicate(
-              (widget) => widget is BrandMark && widget.height == 42,
+              (widget) => widget is BrandMark && widget.height == 56,
             ),
           )
           .height,
-      42,
+      56,
     );
     expect(find.text('连接家庭服务器后，你的影像仍然只属于自己的网络。'), findsNothing);
 
@@ -89,6 +90,28 @@ void main() {
     await tester.pump(const Duration(milliseconds: 950));
     expect(find.text('请输入有效的服务器地址'), findsOneWidget);
   });
+
+  for (final (name, size, theme) in [
+    ('手机浅色', const Size(390, 844), LumaTheme.light()),
+    ('Windows 宽屏深色', const Size(1200, 800), LumaTheme.dark()),
+  ]) {
+    testWidgets('$name连接页横版 Logo 使用可见尺寸布局', (tester) async {
+      await tester.binding.setSurfaceSize(size);
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: theme,
+          home: const Scaffold(body: ConnectionBrandHeader()),
+        ),
+      );
+
+      final logoRect = tester.getRect(find.byType(BrandMark));
+      expect(logoRect.height, 56);
+      expect(logoRect.width, inInclusiveRange(160, 170));
+      expect(tester.takeException(), isNull);
+    });
+  }
 
   testWidgets('connection page uses HTTP without a protocol choice', (
     tester,
@@ -293,6 +316,20 @@ void main() {
       ),
     );
 
+    final homeLogo = find.byWidgetPredicate(
+      (widget) =>
+          widget is BrandMark &&
+          widget.variant == BrandMarkVariant.symbol &&
+          widget.height == 52,
+    );
+    final greeting = find.textContaining('欢迎回来');
+    expect(homeLogo, findsOneWidget);
+    expect(greeting, findsOneWidget);
+    final logoRect = tester.getRect(homeLogo);
+    final greetingRect = tester.getRect(greeting);
+    expect(logoRect.right, lessThan(greetingRect.left));
+    expect(greetingRect.top, lessThan(logoRect.bottom));
+    expect(greetingRect.bottom, greaterThan(logoRect.top));
     expect(find.text('搜索你的媒体'), findsOneWidget);
     expect(tester.takeException(), isNull);
     await tester.tap(find.text('搜索你的媒体'));

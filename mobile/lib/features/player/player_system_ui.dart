@@ -1,20 +1,45 @@
-// 播放器系统 UI 会话协调沉浸模式与手机方向锁定。
-// 全局 generation 保证相邻播放器页面的异步 enter/exit 不会互相覆盖。
+// 播放器系统 UI 会话协调移动端沉浸/方向与 Windows 播放器原生全屏。
+// 全局 generation 隔离相邻移动端页面；桌面全屏由 media_kit_video 原生宿主管理。
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:media_kit_video/media_kit_video.dart';
 
 class PlayerSystemUiSession {
+  /// 创建播放器系统 UI 会话；测试可替换桌面判定与原生全屏回调。
+  PlayerSystemUiSession({
+    bool? desktop,
+    Future<void> Function()? enterDesktopFullScreen,
+    Future<void> Function()? exitDesktopFullScreen,
+  }) : _desktop = desktop,
+       _enterDesktopFullScreen =
+           enterDesktopFullScreen ?? defaultEnterNativeFullscreen,
+       _exitDesktopFullScreen =
+           exitDesktopFullScreen ?? defaultExitNativeFullscreen;
+
   static int _globalGeneration = 0;
 
+  final bool? _desktop;
+  final Future<void> Function() _enterDesktopFullScreen;
+  final Future<void> Function() _exitDesktopFullScreen;
   Orientation? _entryOrientation;
   bool _portrait = false;
   bool _canLockOrientation = false;
   bool _entered = false;
+  bool _fullScreen = false;
 
   bool get portrait => _portrait;
   bool get canRotate => _canLockOrientation;
+
+  /// 当前会话是否运行在真实 Windows 桌面宿主；Flutter 测试保持移动端路径。
+  bool get isDesktop =>
+      _desktop ??
+      (Platform.isWindows && Platform.environment['FLUTTER_TEST'] != 'true');
+
+  /// 当前记录的 Windows 全屏状态；移动端始终为 false。
+  bool get fullScreen => _fullScreen;
 
   /// 进入沉浸模式并按视频方向锁定手机；平板保持系统当前方向。
   Future<void> enter({
@@ -26,8 +51,12 @@ class PlayerSystemUiSession {
     _entered = true;
     _entryOrientation = entryOrientation;
     _portrait = portraitVideo;
-    _canLockOrientation = shortestSide < 600;
+    _canLockOrientation = !isDesktop && shortestSide < 600;
     final generation = ++_globalGeneration;
+    if (isDesktop) {
+      _fullScreen = false;
+      return;
+    }
     if (_canLockOrientation) {
       await _applyOrientationBestEffort();
       if (generation != _globalGeneration || !_entered) return;
@@ -43,6 +72,27 @@ class PlayerSystemUiSession {
     await _applyOrientationBestEffort();
     if (generation != _globalGeneration || !_entered) return;
     await _setImmersiveBestEffort(generation);
+  }
+
+  /// 通过 media_kit_video 切换 Windows 播放器原生全屏。
+  Future<bool> toggleFullScreen() async {
+    if (!_entered || !isDesktop) return _fullScreen;
+    final next = !_fullScreen;
+    if (next) {
+      await _enterDesktopFullScreen();
+    } else {
+      await _exitDesktopFullScreen();
+    }
+    _fullScreen = next;
+    return next;
+  }
+
+  /// 优先退出 Windows 全屏；已是窗口模式时返回 false。
+  Future<bool> exitFullScreen() async {
+    if (!_entered || !isDesktop || !_fullScreen) return false;
+    await _exitDesktopFullScreen();
+    _fullScreen = false;
+    return true;
   }
 
   Future<void> _applyOrientationBestEffort() => _setOrientationsBestEffort(
@@ -70,6 +120,13 @@ class PlayerSystemUiSession {
     if (!_entered) return;
     _entered = false;
     final generation = ++_globalGeneration;
+    if (isDesktop) {
+      if (_fullScreen) {
+        await _exitDesktopFullScreen();
+      }
+      _fullScreen = false;
+      return;
+    }
     try {
       if (_canLockOrientation) {
         final entry = _entryOrientation;

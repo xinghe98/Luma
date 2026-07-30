@@ -24,6 +24,7 @@ class _SearchPageState extends State<SearchPage>
     with AutomaticKeepAliveClientMixin<SearchPage> {
   final _text = TextEditingController();
   final _scroll = ScrollController();
+  final _searchFocus = FocusNode(debugLabel: 'search-input');
   feature.SearchController? _controller;
 
   @override
@@ -38,6 +39,7 @@ class _SearchPageState extends State<SearchPage>
   @override
   void dispose() {
     _text.dispose();
+    _searchFocus.dispose();
     _scroll
       ..removeListener(_onScroll)
       ..dispose();
@@ -92,6 +94,8 @@ class _SearchPageState extends State<SearchPage>
                       delegate: SliverChildListDelegate.fixed([
                         SearchInput(
                           textController: _text,
+                          focusNode: _searchFocus,
+                          autofocus: true,
                           onChanged: controller.setQuery,
                           onSubmitted: controller.remember,
                           onClear: _clearQuery,

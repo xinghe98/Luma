@@ -8,19 +8,25 @@ import 'player_timeline.dart';
 import 'player_top_bar.dart';
 
 class PlayerControls extends StatelessWidget {
-  /// 显示全屏控制；提供小窗回调时在顶部栏显示收起按钮。
+  /// 显示全屏控制；桌面端改用音量和窗口全屏，移动端保留锁定与旋转。
   const PlayerControls({
     super.key,
     required this.controller,
     required this.onBack,
     this.onMinimize,
     required this.onRotate,
+    this.isDesktop = false,
+    this.isFullScreen = false,
+    this.onToggleFullScreen,
   });
 
   final PlayerController controller;
   final VoidCallback onBack;
   final VoidCallback? onMinimize;
   final VoidCallback? onRotate;
+  final bool isDesktop;
+  final bool isFullScreen;
+  final VoidCallback? onToggleFullScreen;
 
   @override
   Widget build(BuildContext context) {
@@ -58,7 +64,13 @@ class PlayerControls extends StatelessWidget {
           child: Column(
             children: [
               PlayerTimeline(controller: controller),
-              PlayerBottomToolbar(controller: controller, onRotate: onRotate),
+              PlayerBottomToolbar(
+                controller: controller,
+                onRotate: onRotate,
+                isDesktop: isDesktop,
+                isFullScreen: isFullScreen,
+                onToggleFullScreen: onToggleFullScreen,
+              ),
             ],
           ),
         ),

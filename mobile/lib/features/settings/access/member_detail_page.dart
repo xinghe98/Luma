@@ -7,6 +7,7 @@ import '../../../data/models/api_access.dart';
 import '../../../data/models/api_source.dart';
 import '../../../data/repositories/access_repository.dart';
 import '../../../data/repositories/source_repository.dart';
+import '../../../shared/layout/adaptive_action_width.dart';
 import '../../../shared/layout/constrained_page_list.dart';
 import '../../../shared/layout/section_header.dart';
 import '../../../shared/states/empty_state.dart';
@@ -106,10 +107,13 @@ class _MemberDetailPageState extends State<MemberDetailPage> {
             onChanged: _busy ? null : _setEnabled,
           ),
         const SizedBox(height: LumaSpacing.md),
-        FilledButton.tonalIcon(
-          onPressed: _busy ? null : _resetPassword,
-          icon: const Icon(Icons.lock_reset_outlined),
-          label: const Text('重置密码'),
+        AdaptiveActionWidth(
+          maxWidth: 240,
+          child: FilledButton.tonalIcon(
+            onPressed: _busy ? null : _resetPassword,
+            icon: const Icon(Icons.lock_reset_outlined),
+            label: const Text('重置密码'),
+          ),
         ),
         const SizedBox(height: LumaSpacing.xl),
         const SectionHeader(title: '媒体源访问'),

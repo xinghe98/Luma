@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 
 import '../../../core/theme.dart';
 import 'base.dart';
@@ -44,6 +45,46 @@ class MediaGridSkeleton extends StatelessWidget {
                 child: SkeletonBox(height: 11),
               ),
             ],
+          ),
+        );
+      },
+    );
+    return animate ? SkeletonPulse(child: grid) : grid;
+  }
+}
+
+/// 图片库首次加载骨架，复用真实瀑布流的列数、间距和无文字结构。
+class PhotoMasonrySkeleton extends StatelessWidget {
+  /// 构建有限数量的图片占位；[animate] 关闭时不创建加载脉冲。
+  const PhotoMasonrySkeleton({super.key, this.items = 10, this.animate = true});
+
+  static const _aspectRatios = <double>[4 / 3, 3 / 4, 1, 16 / 10, 2 / 3];
+
+  final int items;
+  final bool animate;
+
+  @override
+  Widget build(BuildContext context) {
+    final grid = LayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.maxWidth;
+        return MasonryGridView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          padding: EdgeInsets.zero,
+          gridDelegate: SliverSimpleGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: LumaLayout.gridColumns(width),
+          ),
+          mainAxisSpacing: LumaSpacing.xs,
+          crossAxisSpacing: LumaSpacing.xs,
+          itemCount: items,
+          addAutomaticKeepAlives: false,
+          itemBuilder: (context, index) => AspectRatio(
+            aspectRatio: _aspectRatios[index % _aspectRatios.length],
+            child: const SkeletonBox(
+              height: double.infinity,
+              radius: LumaRadii.small,
+            ),
           ),
         );
       },

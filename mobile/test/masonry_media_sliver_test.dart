@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:luma/core/theme.dart';
 import 'package:luma/data/models/media_item.dart';
 import 'package:luma/data/models/media_types.dart';
+import 'package:luma/shared/interaction/luma_focusable_surface.dart';
 import 'package:luma/shared/media/authenticated_media_image.dart';
 import 'package:luma/shared/media/masonry_media_sliver.dart';
 import 'package:luma/shared/media/masonry_media_tile.dart';
@@ -97,4 +99,111 @@ void main() {
     expect(builtCards, lessThan(items.length));
     expect(find.byType(SliverLayoutBuilder), findsNothing);
   });
+
+  testWidgets('宽屏媒体卡片的双行标题不会溢出', (tester) async {
+    const gridWidth = 1213.0;
+    final cardWidth =
+        (gridWidth - LumaSpacing.md * (LumaLayout.gridColumns(gridWidth) - 1)) /
+        LumaLayout.gridColumns(gridWidth);
+    final cardHeight = cardWidth / LumaLayout.mediaCardAspectRatio(gridWidth);
+    final media = item(0).copyWith(title: '这是一段会在桌面媒体卡片中稳定换成两行显示的较长标题');
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: LumaTheme.light(),
+        home: Scaffold(
+          body: Align(
+            alignment: Alignment.topLeft,
+            child: SizedBox(
+              width: cardWidth,
+              height: cardHeight,
+              child: MediaCard(item: media, onTap: () {}),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(
+      tester.widget<LumaFocusableSurface>(
+        find.byType(LumaFocusableSurface),
+      ).contentPadding,
+      EdgeInsets.zero,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  for (final (name, viewport, gridWidth, theme) in [
+    ('手机浅色', const Size(390, 844), 350.0, LumaTheme.light()),
+    ('Windows 宽屏深色', const Size(1280, 800), 1213.0, LumaTheme.dark()),
+  ]) {
+    testWidgets('$name视频卡片的 hover 边框与文字保持内距', (tester) async {
+      await tester.binding.setSurfaceSize(viewport);
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      final columnCount = LumaLayout.gridColumns(gridWidth);
+      final cardWidth =
+          (gridWidth - LumaSpacing.md * (columnCount - 1)) / columnCount;
+      final cardHeight = cardWidth / LumaLayout.mediaCardAspectRatio(gridWidth);
+      final media = MediaItem(
+        id: 'video-hover',
+        title: '视频卡片标题',
+        type: MediaType.video,
+        duration: const Duration(minutes: 8),
+        resolution: '1920×1080',
+        format: 'MP4',
+        fileSize: '',
+        directory: '',
+        tags: const [],
+        addedAt: DateTime.utc(2026),
+        artSeed: 1,
+        aspectRatio: 16 / 9,
+        thumbnailUrl: '/api/v1/media/video-hover/thumbnail',
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: theme,
+          home: Scaffold(
+            body: Align(
+              alignment: Alignment.topLeft,
+              child: SizedBox(
+                width: cardWidth,
+                height: cardHeight,
+                child: MediaCard(item: media, onTap: () {}),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      final surface = tester.widget<LumaFocusableSurface>(
+        find.byType(LumaFocusableSurface),
+      );
+      expect(surface.contentPadding, const EdgeInsets.all(LumaSpacing.xs));
+
+      final cardSize = tester.getSize(find.byType(MediaCard));
+      final cardRect = tester.getRect(find.byType(MediaCard));
+      final titleRect = tester.getRect(find.text('视频卡片标题'));
+      expect(titleRect.left - cardRect.left, greaterThanOrEqualTo(8));
+
+      final inkFinder = find.descendant(
+        of: find.byType(LumaFocusableSurface),
+        matching: find.byType(InkWell),
+      );
+      tester.widget<InkWell>(inkFinder).onHover!(true);
+      await tester.pumpAndSettle();
+
+      final animated = tester.widget<AnimatedContainer>(
+        find.descendant(
+          of: find.byType(LumaFocusableSurface),
+          matching: find.byType(AnimatedContainer),
+        ),
+      );
+      final decoration = animated.foregroundDecoration as BoxDecoration;
+      expect(decoration.border, isNotNull);
+      expect(tester.getSize(find.byType(MediaCard)), cardSize);
+      expect(tester.takeException(), isNull);
+    });
+  }
 }

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../app/controllers/settings_controller.dart';
 import '../../../core/theme.dart';
 import '../../../data/models/server_profile.dart';
+import '../../../shared/layout/adaptive_action_width.dart';
 import '../../../shared/layout/surface_card.dart';
 
 class ServerSettingsCard extends StatelessWidget {
@@ -118,8 +119,8 @@ class ServerSettingsCard extends StatelessWidget {
           ],
           const SizedBox(height: LumaSpacing.md),
           if (canScan)
-            SizedBox(
-              width: double.infinity,
+            AdaptiveActionWidth(
+              maxWidth: 280,
               child: FilledButton.tonalIcon(
                 onPressed: settings.isScanning
                     ? null

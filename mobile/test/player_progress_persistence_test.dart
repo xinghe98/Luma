@@ -26,6 +26,28 @@ void main() {
     expect(player.position, Duration.zero);
   });
 
+  test('media loading zero does not erase pending resume position', () {
+    final repository = MockMediaRepository();
+    final media = MediaController(repository);
+    final item = buildMediaFixtures().firstWhere(
+      (item) => item.type == MediaType.video && item.progress > 0,
+    );
+    final player = PlayerController(item: item, media: media);
+    final resumePosition = item.duration * item.progress;
+    addTearDown(() {
+      player.dispose();
+      media.dispose();
+    });
+
+    player.syncPosition(Duration.zero);
+
+    expect(player.position, resumePosition);
+
+    player.syncPosition(resumePosition + const Duration(milliseconds: 250));
+
+    expect(player.position, resumePosition + const Duration(milliseconds: 250));
+  });
+
   testWidgets('periodic progress saves only while playback is active', (
     tester,
   ) async {

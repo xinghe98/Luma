@@ -205,6 +205,30 @@ class _CatalogDetailPageState extends State<CatalogDetailPage> {
       backgroundColor: item == null ? null : CatalogDetailPalette.background,
       extendBodyBehindAppBar: item != null,
       appBar: AppBar(
+        automaticallyImplyLeading: false,
+        leadingWidth: 64,
+        leading: Padding(
+          padding: const EdgeInsets.only(left: 8),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: SizedBox.square(
+              dimension: 48,
+              child: IconButton.filled(
+                key: const ValueKey('catalog-detail-back'),
+                tooltip: '返回',
+                onPressed: () => Navigator.of(context).maybePop(),
+                style: IconButton.styleFrom(
+                  minimumSize: const Size.square(48),
+                  maximumSize: const Size.square(48),
+                  backgroundColor: CatalogDetailPalette.text,
+                  foregroundColor: CatalogDetailPalette.background,
+                  shape: const CircleBorder(),
+                ),
+                icon: const Icon(Icons.arrow_back_rounded),
+              ),
+            ),
+          ),
+        ),
         title: item == null ? const Text('作品详情') : null,
         backgroundColor: item == null ? null : Colors.transparent,
         surfaceTintColor: Colors.transparent,
