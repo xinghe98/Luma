@@ -91,17 +91,83 @@ void main() {
       ),
     );
 
+    final card = find.byKey(const ValueKey('mini-player-card'));
+    final controls = find.byKey(const ValueKey('mini-player-controls'));
+    expect(tester.widget<AnimatedOpacity>(controls).opacity, 0);
+    expect(find.bySemanticsLabel('关闭小窗播放器'), findsNothing);
+
+    await tester.tapAt(tester.getCenter(card));
+    await tester.pump(const Duration(milliseconds: 150));
+
+    expect(tester.widget<AnimatedOpacity>(controls).opacity, 1);
     expect(find.byIcon(Icons.close_rounded), findsOneWidget);
-    expect(find.bySemanticsLabel('关闭小窗播放器'), findsOneWidget);
-    expect(find.bySemanticsLabel('播放'), findsOneWidget);
-    expect(find.bySemanticsLabel('快退 10 秒'), findsOneWidget);
-    expect(find.bySemanticsLabel('快进 10 秒'), findsOneWidget);
+    expect(find.byIcon(Icons.play_arrow_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.replay_10_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.forward_10_rounded), findsOneWidget);
+
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.tapAt(tester.getCenter(card));
+    await tester.pump(const Duration(milliseconds: 150));
+
+    expect(tester.widget<AnimatedOpacity>(controls).opacity, 0);
+
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.tapAt(tester.getCenter(card));
+    await tester.pump(const Duration(milliseconds: 150));
 
     await tester.tap(find.byIcon(Icons.close_rounded));
     await tester.pump();
 
     expect(session.player, isNull);
     expect(find.byIcon(Icons.close_rounded), findsNothing);
+  });
+
+  testWidgets('单击小窗显示操作按钮而不进入全屏', (tester) async {
+    final media = MediaController(MockMediaRepository());
+    final session = PlayerSessionController(
+      media: media,
+      apiSession: ApiSession(),
+    );
+    addTearDown(() {
+      session.dispose();
+      media.dispose();
+    });
+    session
+      ..start(
+        buildMediaFixtures().firstWhere((item) => item.type == MediaType.video),
+      )
+      ..minimize();
+    var expandCount = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: LumaTheme.light(),
+        home: Scaffold(
+          body: Stack(
+            children: [
+              MiniPlayerOverlay(
+                session: session,
+                onExpand: (_) => expandCount++,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    final card = find.byKey(const ValueKey('mini-player-card'));
+    await tester.tapAt(tester.getCenter(card));
+    await tester.pump(const Duration(milliseconds: 150));
+
+    expect(expandCount, 0);
+    expect(session.minimized, isTrue);
+    expect(find.byIcon(Icons.fullscreen_rounded), findsOneWidget);
+
+    await tester.tap(find.byIcon(Icons.fullscreen_rounded));
+    await tester.pump();
+
+    expect(expandCount, 1);
+    expect(session.minimized, isFalse);
+    await session.close();
   });
 
   testWidgets('双指缩放会放大小窗', (tester) async {

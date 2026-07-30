@@ -62,18 +62,27 @@ class _MiniPlayerCardState extends State<_MiniPlayerCard> {
   Offset _dragOffset = Offset.zero;
   double _scale = 1;
   double _scaleAtStart = 1;
+  final Set<int> _activePointers = <int>{};
+  int? _tapPointer;
+  Offset? _tapStartPosition;
+  bool _canRevealControls = false;
   Offset? _doubleTapPosition;
   String? _feedback;
   Timer? _feedbackTimer;
+  bool _controlsVisible = false;
+  Timer? _tapTimer;
 
   @override
   void dispose() {
     _feedbackTimer?.cancel();
+    _tapTimer?.cancel();
     super.dispose();
   }
 
   /// 按小窗宽度把双击分成快退、播放暂停和快进三个区域。
   void _handleDoubleTap(double width) {
+    _tapTimer?.cancel();
+    _tapTimer = null;
     final x = _doubleTapPosition?.dx ?? width / 2;
     if (x < width / 3) {
       _seekBy(-10);
@@ -103,6 +112,48 @@ class _MiniPlayerCardState extends State<_MiniPlayerCard> {
     _feedbackTimer = Timer(const Duration(milliseconds: 600), () {
       if (mounted) setState(() => _feedback = null);
     });
+  }
+
+  /// 切换小窗操作按钮的显示状态。
+  void _toggleControls() {
+    setState(() => _controlsVisible = !_controlsVisible);
+  }
+
+  /// 等待双击识别结束，避免双击手势同时切换操作按钮。
+  void _scheduleControlToggle() {
+    _tapTimer?.cancel();
+    _tapTimer = Timer(const Duration(milliseconds: 100), () {
+      if (mounted) _toggleControls();
+    });
+  }
+
+  /// 仅把未移动的单指触点视为点击，避免拖动和缩放也打开控制层。
+  void _handlePointerDown(PointerDownEvent event) {
+    if (_activePointers.isEmpty) {
+      _tapPointer = event.pointer;
+      _tapStartPosition = event.localPosition;
+      _canRevealControls = true;
+    }
+    _activePointers.add(event.pointer);
+    if (_activePointers.length > 1) _canRevealControls = false;
+  }
+
+  void _handlePointerMove(PointerMoveEvent event) {
+    if (event.pointer != _tapPointer || _tapStartPosition == null) return;
+    if ((event.localPosition - _tapStartPosition!).distance > 18) {
+      _canRevealControls = false;
+    }
+  }
+
+  void _handlePointerEnd(PointerEvent event) {
+    final shouldReveal = event.pointer == _tapPointer && _canRevealControls;
+    _activePointers.remove(event.pointer);
+    if (shouldReveal) _scheduleControlToggle();
+    if (_activePointers.isEmpty) {
+      _tapPointer = null;
+      _tapStartPosition = null;
+      _canRevealControls = false;
+    }
   }
 
   @override
@@ -138,7 +189,7 @@ class _MiniPlayerCardState extends State<_MiniPlayerCard> {
       child: Semantics(
         container: true,
         label: '正在小窗播放：${widget.controller.item.title}',
-        hint: '单击还原全屏，双击左侧快退、中间播放暂停、右侧快进',
+        hint: '单击显示或隐藏操作按钮；拖动移动，双指缩放；双击左侧快退、中间播放暂停、右侧快进',
         child: Material(
           color: colors.surfaceContainerHighest,
           elevation: 8,
@@ -146,13 +197,16 @@ class _MiniPlayerCardState extends State<_MiniPlayerCard> {
           borderRadius: BorderRadius.circular(LumaRadii.medium),
           clipBehavior: Clip.antiAlias,
           child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
             onScaleStart: (_) => _scaleAtStart = _scale,
-            onScaleUpdate: (details) => setState(() {
-              _dragOffset += details.focalPointDelta;
-              _scale = (_scaleAtStart * details.scale)
-                  .clamp(0.8, maxScale.clamp(1.0, 1.7))
-                  .toDouble();
-            }),
+            onScaleUpdate: (details) {
+              setState(() {
+                _dragOffset += details.focalPointDelta;
+                _scale = (_scaleAtStart * details.scale)
+                    .clamp(0.8, maxScale.clamp(1.0, 1.7))
+                    .toDouble();
+              });
+            },
             child: Stack(
               fit: StackFit.expand,
               children: [
@@ -177,13 +231,20 @@ class _MiniPlayerCardState extends State<_MiniPlayerCard> {
                 Positioned.fill(
                   child: Semantics(
                     button: true,
-                    label: '还原全屏播放器',
-                    child: GestureDetector(
+                    label: _controlsVisible ? '隐藏小窗操作按钮' : '显示小窗操作按钮',
+                    onTap: _toggleControls,
+                    child: Listener(
                       behavior: HitTestBehavior.opaque,
-                      onTap: widget.onExpand,
-                      onDoubleTapDown: (details) =>
-                          _doubleTapPosition = details.localPosition,
-                      onDoubleTap: () => _handleDoubleTap(width),
+                      onPointerDown: _handlePointerDown,
+                      onPointerMove: _handlePointerMove,
+                      onPointerUp: _handlePointerEnd,
+                      onPointerCancel: _handlePointerEnd,
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onDoubleTapDown: (details) =>
+                            _doubleTapPosition = details.localPosition,
+                        onDoubleTap: () => _handleDoubleTap(width),
+                      ),
                     ),
                   ),
                 ),
@@ -224,53 +285,69 @@ class _MiniPlayerCardState extends State<_MiniPlayerCard> {
                     ),
                   ),
                 ),
-                Positioned(
-                  top: LumaSpacing.xxs,
-                  left: LumaSpacing.xxs,
-                  child: _MiniPlayerIconButton(
-                    label: '还原全屏播放器',
-                    icon: Icons.fullscreen_rounded,
-                    onPressed: widget.onExpand,
-                  ),
-                ),
-                Positioned(
-                  top: LumaSpacing.xxs,
-                  right: LumaSpacing.xxs,
-                  child: _MiniPlayerIconButton(
-                    label: '关闭小窗播放器',
-                    icon: Icons.close_rounded,
-                    onPressed: widget.onClose,
-                  ),
-                ),
-                Positioned(
-                  left: LumaSpacing.xxs,
-                  right: LumaSpacing.xxs,
-                  bottom: LumaSpacing.xxs,
-                  child: ListenableBuilder(
-                    listenable: widget.controller,
-                    builder: (context, _) => Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        _MiniPlayerIconButton(
-                          label: '快退 10 秒',
-                          icon: Icons.replay_10_rounded,
-                          onPressed: () => _seekBy(-10),
-                        ),
-                        _MiniPlayerIconButton(
-                          label: widget.controller.playing ? '暂停' : '播放',
-                          icon: widget.controller.playing
-                              ? Icons.pause_rounded
-                              : Icons.play_arrow_rounded,
-                          onPressed: _togglePlay,
-                          selected: true,
-                          animationDuration: duration,
-                        ),
-                        _MiniPlayerIconButton(
-                          label: '快进 10 秒',
-                          icon: Icons.forward_10_rounded,
-                          onPressed: () => _seekBy(10),
-                        ),
-                      ],
+                IgnorePointer(
+                  ignoring: !_controlsVisible,
+                  child: ExcludeSemantics(
+                    excluding: !_controlsVisible,
+                    child: AnimatedOpacity(
+                      key: const ValueKey('mini-player-controls'),
+                      opacity: _controlsVisible ? 1 : 0,
+                      duration: LumaMotion.forContext(context, LumaMotion.fast),
+                      child: Stack(
+                        children: [
+                          Positioned(
+                            top: LumaSpacing.xxs,
+                            left: LumaSpacing.xxs,
+                            child: _MiniPlayerIconButton(
+                              label: '还原全屏播放器',
+                              icon: Icons.fullscreen_rounded,
+                              onPressed: widget.onExpand,
+                            ),
+                          ),
+                          Positioned(
+                            top: LumaSpacing.xxs,
+                            right: LumaSpacing.xxs,
+                            child: _MiniPlayerIconButton(
+                              label: '关闭小窗播放器',
+                              icon: Icons.close_rounded,
+                              onPressed: widget.onClose,
+                            ),
+                          ),
+                          Positioned(
+                            left: LumaSpacing.xxs,
+                            right: LumaSpacing.xxs,
+                            bottom: LumaSpacing.xxs,
+                            child: ListenableBuilder(
+                              listenable: widget.controller,
+                              builder: (context, _) => Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  _MiniPlayerIconButton(
+                                    label: '快退 10 秒',
+                                    icon: Icons.replay_10_rounded,
+                                    onPressed: () => _seekBy(-10),
+                                  ),
+                                  _MiniPlayerIconButton(
+                                    label: widget.controller.playing
+                                        ? '暂停'
+                                        : '播放',
+                                    icon: widget.controller.playing
+                                        ? Icons.pause_rounded
+                                        : Icons.play_arrow_rounded,
+                                    onPressed: _togglePlay,
+                                    animationDuration: duration,
+                                  ),
+                                  _MiniPlayerIconButton(
+                                    label: '快进 10 秒',
+                                    icon: Icons.forward_10_rounded,
+                                    onPressed: () => _seekBy(10),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
@@ -300,19 +377,16 @@ class _MiniPlayerIconButton extends StatelessWidget {
     required this.label,
     required this.icon,
     required this.onPressed,
-    this.selected = false,
     this.animationDuration = Duration.zero,
   });
 
   final String label;
   final IconData icon;
   final VoidCallback onPressed;
-  final bool selected;
   final Duration animationDuration;
 
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
     return Semantics(
       button: true,
       label: label,
@@ -321,15 +395,20 @@ class _MiniPlayerIconButton extends StatelessWidget {
         child: IconButton(
           onPressed: onPressed,
           style: IconButton.styleFrom(
-            minimumSize: const Size.square(LumaLayout.minTapTarget),
-            backgroundColor: colors.surface.withValues(
-              alpha: selected ? 0.94 : 0.82,
-            ),
-            foregroundColor: colors.onSurface,
+            minimumSize: const Size.square(36),
+            maximumSize: const Size.square(36),
+            padding: const EdgeInsets.all(6),
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            foregroundColor: LumaColors.onInk,
           ),
           icon: AnimatedSwitcher(
             duration: animationDuration,
-            child: Icon(icon, key: ValueKey(icon)),
+            child: Icon(
+              icon,
+              key: ValueKey(icon),
+              size: 20,
+              shadows: const [Shadow(color: Colors.black54, blurRadius: 3)],
+            ),
           ),
         ),
       ),
