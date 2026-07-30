@@ -5,7 +5,7 @@
 data/
 dist/
 scripts/*
-!scripts/docker-entrypoint.sh
+!scripts/docker-deploy.sh
 api/
 .air.toml
 .env

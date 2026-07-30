@@ -26,11 +26,10 @@ Android 调试包可通过 `flutter build apk --debug` 构建。
 Windows 使用标准标题栏，默认窗口为 1280×800，最小尺寸为 960×640。Release 便携包构建方式：
 
 ```powershell
-flutter build windows --release
-.\tool\package_windows.ps1
+..\backend\scripts\windows-deploy.ps1 -Action PackageClient
 ```
 
-压缩包输出到 `build/dist/luma-windows-x64-<version>.zip`。解压后必须保留 `luma.exe`、DLL 和 `data` 目录的相对位置。当前不提供 MSIX、自动更新、ARM64 或代码签名。
+脚本会构建 Windows Release 并输出 `build/dist/luma-windows-x64-<version>.zip`。解压后必须保留 `luma.exe`、DLL 和 `data` 目录的相对位置。当前不提供 MSIX、自动更新、ARM64 或代码签名。
 
 ## 服务器连接
 

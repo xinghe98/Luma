@@ -24,7 +24,7 @@ TV/漫长的季节/Season 01/漫长的季节.S01E01.mkv
 - 本地开发：复制 `backend/configs/config.example.yaml` 为被 Git 忽略的 `backend/configs/config.yaml`，修改后者。
 - Windows：以 `backend/configs/config.windows.example.yaml` 为模板复制一份实际配置。
 - Linux：以 `backend/configs/config.example.yaml` 为模板复制到例如 `/etc/luma/config.yaml`。
-- Docker：只修改 `backend/.env`；`backend/scripts/docker-compose.sh` 会根据 `backend/configs/config.docker.yaml` 生成 `.cache/docker/config.yaml`，不要手改生成文件。
+- Docker：只修改 `backend/.env`；`backend/scripts/docker-deploy.sh` 会根据 `backend/configs/config.docker.yaml` 生成 `.cache/docker/config.yaml`，不要手改生成文件。
 
 本地 NFO 默认启用。要让扫描发现后来新增的 NFO，`media.scan_extensions` 必须包含 `nfo`，新增 NFO 后执行一次正常目录扫描：
 
@@ -153,8 +153,8 @@ LUMA_MEDIA_DIRS=/mnt/TV=tv,/mnt/Movies=movies,/mnt/Photos=photos
 
 ```bash
 cd backend
-chmod +x scripts/docker-compose.sh
-./scripts/docker-compose.sh up -d --build
+chmod +x scripts/docker-deploy.sh
+./scripts/docker-deploy.sh up -d --build
 ```
 
 Compose 使用命名卷 `luma-data` 持久化以下内容：
@@ -166,22 +166,22 @@ Compose 使用命名卷 `luma-data` 持久化以下内容：
 /data/cache
 ```
 
-删除容器或重新构建镜像不会删除该命名卷。不要执行 `./scripts/docker-compose.sh down -v`，除非确认需要删除数据库、管理员初始密码文件和衍生数据。
+删除容器或重新构建镜像不会删除该命名卷。不要执行 `./scripts/docker-deploy.sh down -v`，除非确认需要删除数据库、管理员初始密码文件和衍生数据。
 
 启动时容器会先读取脚本生成的只读配置，复制到容器临时目录并限制为仅 `luma` 用户可读；随后以 `luma` 用户检查配置、数据目录和 ffmpeg/ffprobe，再正式启动服务。检查失败时容器会退出，具体原因可通过下一步的日志命令查看。
 
 ### 3. 检查服务
 
 ```bash
-./scripts/docker-compose.sh ps
-./scripts/docker-compose.sh logs -f luma-server
+./scripts/docker-deploy.sh ps
+./scripts/docker-deploy.sh logs -f luma-server
 curl http://127.0.0.1:8080/health
 ```
 
 读取首次启动生成的管理员初始密码：
 
 ```bash
-./scripts/docker-compose.sh exec luma-server cat /data/secrets/admin_password
+./scripts/docker-deploy.sh exec luma-server cat /data/secrets/admin_password
 ```
 
 ### 4. 创建媒体源并扫描
@@ -215,10 +215,10 @@ curl -X POST http://127.0.0.1:8080/api/v1/sources/{source_id}/scan \
 ### 5. 更新和停止
 
 ```bash
-./scripts/docker-compose.sh up -d --build
-./scripts/docker-compose.sh stop
-./scripts/docker-compose.sh start
-./scripts/docker-compose.sh down
+./scripts/docker-deploy.sh up -d --build
+./scripts/docker-deploy.sh stop
+./scripts/docker-deploy.sh start
+./scripts/docker-deploy.sh down
 ```
 
 更新前建议停止服务并备份 `luma-data` 命名卷。SQLite 数据库文件、WAL 文件、管理员初始密码文件和配置应作为同一份数据一起备份。
@@ -236,7 +236,7 @@ curl -X POST http://127.0.0.1:8080/api/v1/sources/{source_id}/scan \
 ```bash
 cd backend
 go test ./...
-VERSION=0.1.0 ./scripts/build.sh
+./scripts/linux-deploy.sh build 0.1.0
 ```
 
 产物位于（服务端与管理员工具）：
@@ -246,17 +246,14 @@ backend/dist/luma-server
 backend/dist/luma-admin
 ```
 
-构建脚本默认使用 `CGO_ENABLED=0`，生成不依赖系统 SQLite 动态库的当前平台二进制。
+部署脚本的 `build` 动作默认使用 `CGO_ENABLED=0`，生成不依赖系统 SQLite 动态库的当前平台二进制。
 
 ### 2. 准备目录和配置
 
 以下路径仅为示例：
 
 ```bash
-sudo useradd --system --home /var/lib/luma --shell /usr/sbin/nologin luma
-sudo install -d -o luma -g luma /var/lib/luma
-sudo install -d /etc/luma /opt/luma
-sudo install -m 0755 dist/luma-server /opt/luma/luma-server
+sudo install -d /etc/luma
 sudo cp configs/config.example.yaml /etc/luma/config.yaml
 ```
 
@@ -284,50 +281,19 @@ media:
   ffprobe_path: /usr/bin/ffprobe
 ```
 
-确保 `luma` 用户可以读取 `/srv/media`，但不需要写入权限。
+确保 `luma` 用户可以读取 `/srv/media`，但不需要写入权限。部署脚本会在缺少 `luma` 系统用户时创建它，并负责 `/var/lib/luma` 与 `/opt/luma`。
 
-### 3. 部署前检查
-
-```bash
-sudo -u luma /opt/luma/luma-server \
-  -config /etc/luma/config.yaml \
-  -check-config \
-  -log-format text
-```
-
-该命令会检查配置、数据目录写权限以及 `ffmpeg`、`ffprobe`。
-
-### 4. 使用 systemd 运行
-
-创建 `/etc/systemd/system/luma.service`：
-
-```ini
-[Unit]
-Description=Luma Media Server
-After=network-online.target
-Wants=network-online.target
-
-[Service]
-Type=simple
-User=luma
-Group=luma
-ExecStart=/opt/luma/luma-server -config /etc/luma/config.yaml
-Restart=on-failure
-RestartSec=5s
-TimeoutStopSec=40s
-NoNewPrivileges=true
-
-[Install]
-WantedBy=multi-user.target
-```
-
-启动并设置开机启动：
+### 3. 安装、校验并启动
 
 ```bash
-sudo systemctl daemon-reload
-sudo systemctl enable --now luma
-sudo systemctl status luma
+sudo ./scripts/linux-deploy.sh install
 sudo journalctl -u luma -f
+```
+
+`install` 会检查配置、数据目录写权限及 `ffmpeg`/`ffprobe`，安装两个二进制，创建或更新 systemd 服务，并启动服务。更新时重新执行 `build` 和 `install`。卸载服务与程序但保留配置和数据：
+
+```bash
+sudo ./scripts/linux-deploy.sh uninstall
 ```
 
 读取管理员初始密码：
@@ -350,7 +316,7 @@ sudo cat /var/lib/luma/secrets/admin_password
 ```powershell
 Set-Location backend
 go test ./...
-.\scripts\build.ps1 -Version '0.1.0'
+.\scripts\windows-deploy.ps1 -Action BuildServer -Version '0.1.0'
 ```
 
 产物位于 `backend\dist\luma-server.exe` 和 `backend\dist\luma-admin.exe`。
@@ -382,7 +348,8 @@ Copy-Item '.\configs\config.windows.example.yaml' 'C:\ProgramData\Luma\config.ya
 在管理员 PowerShell 中执行：
 
 ```powershell
-.\scripts\install-service.ps1 `
+.\scripts\windows-deploy.ps1 -Action InstallServer `
+  -Version '0.1.0' `
   -ServiceName 'LumaServer' `
   -ConfigPath 'C:\ProgramData\Luma\config.yaml'
 ```
@@ -403,18 +370,18 @@ Invoke-RestMethod http://127.0.0.1:8080/health
 Get-Content 'C:\ProgramData\Luma\secrets\admin_password'
 ```
 
-服务默认使用 `LocalSystem`。如果媒体位于 UNC 网络共享，应在 Windows“服务”管理器中改用具有共享读取权限的专用账户，并授予其：
+服务默认使用 `NT SERVICE\LumaServer` 虚拟服务账户。如果媒体位于 UNC 网络共享，应在 Windows“服务”管理器中改用具有共享读取权限的专用账户，并授予其：
 
 - 读取媒体目录和 ffmpeg 工具的权限。
 - 写入 `C:\ProgramData\Luma` 的权限。
 - “作为服务登录”权限。
 
-更新服务时重新构建并再次运行 `install-service.ps1`，脚本会停止旧服务、替换稳定安装目录中的二进制并重新启动。
+更新服务时重新运行 `windows-deploy.ps1 -Action InstallServer`，脚本会重新构建、停止旧服务、替换稳定安装目录中的二进制并重新启动。已有可信二进制时可加 `-SkipBuild`。
 
 卸载服务：
 
 ```powershell
-.\scripts\uninstall-service.ps1 -ServiceName 'LumaServer'
+.\scripts\windows-deploy.ps1 -Action UninstallServer -ServiceName 'LumaServer'
 ```
 
 卸载只删除服务注册，不删除 `C:\ProgramData\Luma` 中的配置、数据库、管理员密码文件、缩略图和缓存，也不删除原始媒体。

@@ -13,6 +13,27 @@ important for changes under `mobile/`, which is the Flutter application.
   widget/unit tests for the affected feature. Run `git diff --check` before
   handing work off.
 
+## Script inventory contract
+
+- 仓库中受版本控制的 `.sh` 和 `.ps1` 必须始终只保留以下 5 个文件：
+  - `backend/scripts/docker-deploy.sh`：仅用于 Linux Docker 部署，同时承载
+    Compose 包装和容器入口逻辑。
+  - `backend/scripts/linux-deploy.sh`：仅用于 Linux 实体机的构建、安装、
+    更新和卸载。
+  - `backend/scripts/linux-dev.sh`：仅用于 Linux 本地开发。
+  - `backend/scripts/windows-deploy.ps1`：仅用于 Windows 服务端构建、安装、
+    更新、卸载及 Windows 客户端便携包构建。
+  - `backend/scripts/windows-dev.ps1`：仅用于 Windows 本地开发。
+- 新的脚本需求必须优先作为参数、动作或内部函数整合进上述对应入口。禁止重新拆出
+  `build`、`install-service`、`uninstall-service`、`docker-entrypoint`、
+  `package_windows` 等独立脚本，也禁止在 `mobile/tool/` 或其他目录新增 `.sh`
+  和 `.ps1`。
+- 未经用户明确授权，不得增加、删除、重命名上述脚本，不得改变其平台边界或重新引入
+  第六个脚本。Dockerfile、CI、文档和其他调用方必须直接复用这 5 个入口。
+- 修改脚本后必须确认仓库脚本清单仍精确为这 5 个文件，检查 Shell/PowerShell
+  语法、旧文件名残留引用以及 `git diff --check`；涉及打包流程时继续执行本文件
+  规定的平台构建与产物检查。
+
 ## Code documentation rules
 
 - 所有新增或修改的代码注释必须使用简洁、自然的中文；避免模板化、冗长或带有 AI 生成痕迹的表述。

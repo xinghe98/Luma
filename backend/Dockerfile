@@ -18,9 +18,9 @@ RUN apk add --no-cache ca-certificates ffmpeg su-exec \
     && mkdir -p /data /media /run/luma \
     && chown -R luma:luma /data
 COPY --from=build /out/luma-server /usr/local/bin/luma-server
-COPY --chmod=0755 scripts/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+COPY --chmod=0755 scripts/docker-deploy.sh /usr/local/bin/docker-deploy.sh
 EXPOSE 8080
 VOLUME ["/data"]
 STOPSIGNAL SIGTERM
-ENTRYPOINT ["docker-entrypoint.sh"]
+ENTRYPOINT ["docker-deploy.sh", "container-entrypoint"]
 CMD ["luma-server", "-config", "/run/luma/config.yaml"]

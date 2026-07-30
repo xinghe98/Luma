@@ -1,11 +1,45 @@
 #!/usr/bin/env sh
-# 根据 .env 生成 Luma Docker 的媒体挂载与运行时配置，并将参数转交给 Docker Compose。
-# 它与 docker-compose.yml、config.docker.yaml 协作；每次运行都会覆盖 backend/.cache/docker 中的派生文件。
+# 本脚本统一处理 Linux 宿主机的 Docker Compose 部署和容器启动；它依赖 .env、Compose 与 Dockerfile，并会重建派生配置。
 set -eu
 umask 077
 
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 PROJECT_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
+
+fail() {
+    echo "luma docker: $*" >&2
+    exit 1
+}
+
+# 将任意文本转成单引号包裹的 YAML 标量。
+yaml_quote() {
+    printf "'"
+    printf '%s' "$1" | sed "s/'/''/g"
+    printf "'"
+}
+
+# 容器启动时复制只读配置、校验运行依赖，再降权运行服务。
+run_container() {
+    source_config=/run/luma-config-source.yaml
+    runtime_config=/run/luma/config.yaml
+    shift
+
+    [ -r "$source_config" ] || fail "missing readable configuration at $source_config"
+    [ "$#" -gt 0 ] || fail 'missing container command'
+
+    mkdir -p /run/luma
+    cp "$source_config" "$runtime_config"
+    chown luma:luma "$runtime_config"
+    chmod 600 "$runtime_config"
+
+    su-exec luma:luma luma-server -config "$runtime_config" -check-config
+    exec su-exec luma:luma "$@"
+}
+
+if [ "${1:-}" = 'container-entrypoint' ]; then
+    run_container "$@"
+fi
+
 ENV_FILE="$PROJECT_DIR/.env"
 GENERATED_DIR="$PROJECT_DIR/.cache/docker"
 GENERATED_CONFIG="$GENERATED_DIR/config.yaml"
@@ -13,18 +47,9 @@ GENERATED_COMPOSE="$GENERATED_DIR/docker-compose.generated.yaml"
 ROOTS_FILE="$GENERATED_DIR/allowed-roots.yaml"
 MEDIA_ENTRIES_FILE="$GENERATED_DIR/media-entries"
 
-fail() {
-    echo "luma docker: $*" >&2
-    exit 1
-}
-
-yaml_quote() {
-    printf "'"
-    printf '%s' "$1" | sed "s/'/''/g"
-    printf "'"
-}
-
+[ "$(uname -s)" = 'Linux' ] || fail 'Docker deployment is supported only on Linux'
 [ -f "$ENV_FILE" ] || fail "missing $ENV_FILE; copy .env.example to .env and configure it"
+command -v docker >/dev/null 2>&1 || fail 'docker is not installed'
 
 # .env 由部署管理员维护，只接受标准 shell 变量赋值，以便同时传给 Docker Compose。
 set -a

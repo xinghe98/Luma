@@ -11,14 +11,14 @@ cd backend
 go mod download
 cp configs/config.example.yaml configs/config.yaml
 go test ./...
-sh ./scripts/dev.sh
+sh ./scripts/linux-dev.sh
 ```
 
 Windows 使用 PowerShell 启动：
 
 ```powershell
 Copy-Item configs/config.example.yaml configs/config.yaml
-.\scripts\dev.ps1
+.\scripts\windows-dev.ps1
 ```
 
 开发脚本优先使用 `PATH` 中已安装的 `air`；如果本机尚未安装，则自动通过 `go run github.com/air-verse/air@v1.62.0` 使用固定版本。修改 `cmd`、`internal`、`configs`、`migrations` 或 `api` 下的 Go、YAML、SQL 文件后，Air 会重新构建并重启 API 服务。临时二进制和 Air 日志位于 `.cache/air`，退出时自动清理。生产环境仍直接运行构建后的 `luma-server`，不使用 Air。
@@ -74,11 +74,11 @@ media:
 
 ```bash
 go run ./cmd/server -config configs/config.yaml -check-config
-sh ./scripts/build.sh
-./scripts/docker-compose.sh up --build
+./scripts/linux-deploy.sh build
+./scripts/docker-deploy.sh up --build
 ```
 
-`configs/config.example.yaml` 是入库的配置模板；首次开发前将其复制为已被 Git 忽略的 `configs/config.yaml`，后续仅修改本地配置。Windows 可使用 `scripts/dev.ps1`、`scripts/build.ps1`。如需提前安装 Air，可执行 `go install github.com/air-verse/air@v1.62.0`。生产运行应复制示例配置并显式传入路径，不要直接依赖当前工作目录。
+`configs/config.example.yaml` 是入库的配置模板；首次开发前将其复制为已被 Git 忽略的 `configs/config.yaml`，后续仅修改本地配置。Windows 可使用 `scripts/windows-dev.ps1`，服务端构建与安装使用 `scripts/windows-deploy.ps1`。如需提前安装 Air，可执行 `go install github.com/air-verse/air@v1.62.0`。生产运行应复制示例配置并显式传入路径，不要直接依赖当前工作目录。
 
 ### 影视识别与刮削配置
 
@@ -86,7 +86,7 @@ sh ./scripts/build.sh
 
 - `configs/config.example.yaml`：Linux/通用及本地开发模板；
 - `configs/config.windows.example.yaml`：Windows 模板；
-- `configs/config.docker.yaml`：Docker 生成模板，其中 TMDb 占位符由 `scripts/docker-compose.sh` 从 `.env` 安全替换。
+- `configs/config.docker.yaml`：Docker 生成模板，其中 TMDb 占位符由 `scripts/docker-deploy.sh` 从 `.env` 安全替换。
 
 Docker 部署者只配置 `.env` 的 `LUMA_TMDB_ENABLED` 与 `LUMA_TMDB_ACCESS_TOKEN`。直接部署则在私有 YAML 中设置 `metadata.providers.tmdb.enabled` 和 `metadata.providers.tmdb.options.access_token`。启用 TMDb 但访问密钥为空、Provider options 含未知字段、API/图片基址不是 HTTPS，服务会拒绝启动。配置文件和健康接口不会回显该密钥。
 
@@ -514,12 +514,11 @@ local-media-server/
 │   └── openapi.yaml
 │
 ├── scripts/
-│   ├── dev.sh
-│   ├── build.sh
-│   ├── dev.ps1
-│   ├── build.ps1
-│   ├── install-service.ps1
-│   └── uninstall-service.ps1
+│   ├── docker-deploy.sh
+│   ├── linux-deploy.sh
+│   ├── linux-dev.sh
+│   ├── windows-deploy.ps1
+│   └── windows-dev.ps1
 │
 ├── Dockerfile
 ├── docker-compose.yml
@@ -1099,10 +1098,8 @@ C:\ProgramData\Luma\
 仓库提供：
 
 ```text
-scripts/dev.ps1
-scripts/build.ps1
-scripts/install-service.ps1
-scripts/uninstall-service.ps1
+scripts/windows-dev.ps1
+scripts/windows-deploy.ps1
 configs/config.windows.example.yaml
 ```
 
@@ -1816,7 +1813,7 @@ Windows 路径在 YAML 中优先使用单引号，避免反斜杠被当作转义
 ```bash
 cp .env.example .env
 # 编辑 LUMA_VERSION、LUMA_PORT 和 LUMA_MEDIA_DIRS。
-./scripts/docker-compose.sh up -d --build
+./scripts/docker-deploy.sh up -d --build
 ```
 
 Docker 部署的唯一用户配置入口是 `.env`。`LUMA_MEDIA_DIRS` 使用 `/host/path=container-name` 的逗号分隔格式；脚本会生成只读挂载与匹配的 `security.allowed_roots`，容器内路径为 `/media/<container-name>`。`LUMA_VERSION` 由 Compose 传入 Docker 构建参数，再由 Go 链接参数写入服务二进制。`docker-compose.yml` 使用命名卷 `luma-data` 持久化 `/data`；容器以非特权用户运行，宿主机媒体目录必须允许该用户读取。Compose 的停止宽限期为 40 秒，应始终长于配置中的 30 秒优雅关闭时间。
@@ -1840,8 +1837,7 @@ luma-server-windows-amd64.zip
 ├── luma-server.exe
 ├── luma-admin.exe
 ├── config.example.yaml
-├── install-service.ps1
-├── uninstall-service.ps1
+├── windows-deploy.ps1
 └── README-Windows.md
 ```
 

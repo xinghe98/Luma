@@ -1,4 +1,4 @@
-# Docker 服务定义。媒体目录和运行时配置由 scripts/docker-compose.sh 根据 .env 生成。
+# Docker 服务定义。媒体目录和运行时配置由 scripts/docker-deploy.sh 根据 .env 生成。
 services:
   luma-server:
     build:
