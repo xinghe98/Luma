@@ -2,9 +2,9 @@
 cmake_minimum_required(VERSION 3.14)
 project(luma LANGUAGES CXX)
 
-# The name of the executable created for the application. Change this to change
-# the on-disk name of your application.
-set(BINARY_NAME "luma")
+# 可执行文件名由统一应用元数据生成，避免 Windows 文件名与其他平台标识漂移。
+include("${CMAKE_CURRENT_SOURCE_DIR}/app_metadata.cmake")
+set(BINARY_NAME "${LUMA_EXECUTABLE_NAME}")
 
 # Explicitly opt in to modern CMake behaviors to avoid warnings with recent
 # versions of CMake.

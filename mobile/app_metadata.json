@@ -1,0 +1,11 @@
+{
+  "projectName": "luma",
+  "displayName": "轻影",
+  "productName": "轻影 Luma",
+  "androidApplicationId": "com.xinghe98.luma",
+  "windowsExecutableName": "luma",
+  "companyName": "Luma",
+  "authorName": "xinghe98",
+  "copyright": "Copyright (C) 2026 com.xinghe98. All rights reserved.",
+  "version": "1.0.0+1"
+}

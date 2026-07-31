@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../app/controllers/settings_controller.dart';
+import '../../../app/app_metadata.g.dart';
 import '../../../shared/layout/surface_card.dart';
 
 class ApplicationSettingsCard extends StatelessWidget {
@@ -37,8 +38,8 @@ class ApplicationSettingsCard extends StatelessWidget {
           const Divider(height: 1, indent: 56),
           ListTile(
             leading: const Icon(Icons.info_outline_rounded),
-            title: const Text('关于轻影'),
-            subtitle: const Text('客户端版本 1.0.0'),
+            title: Text('关于${AppMetadata.displayName}'),
+            subtitle: Text('客户端版本 ${AppMetadata.version}'),
             trailing: const Icon(Icons.chevron_right_rounded),
             onTap: onAbout,
           ),

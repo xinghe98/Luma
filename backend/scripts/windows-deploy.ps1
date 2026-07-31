@@ -47,6 +47,47 @@ function Build-ServerBinaries {
     }
 }
 
+# 读取唯一的客户端元数据来源；缺失字段会中止打包，避免包名与客户端信息不一致。
+function Get-ClientAppMetadata {
+    $MetadataPath = Join-Path $MobileDir 'app_metadata.json'
+    if (-not (Test-Path -LiteralPath $MetadataPath -PathType Leaf)) {
+        throw "找不到客户端元数据文件：$MetadataPath"
+    }
+    $Metadata = Get-Content -Raw -LiteralPath $MetadataPath | ConvertFrom-Json
+    foreach ($Field in @('projectName', 'version')) {
+        if ([string]::IsNullOrWhiteSpace([string]$Metadata.$Field)) {
+            throw "客户端元数据缺少字段：$Field"
+        }
+    }
+    return $Metadata
+}
+
+# 校验所有客户端生成文件都对应当前元数据源；打包时不依赖 Dart 包装器以避免环境差异。
+function Assert-ClientAppMetadataGenerated {
+    $MetadataPath = Join-Path $MobileDir 'app_metadata.json'
+    $SourceText = Get-Content -Raw -LiteralPath $MetadataPath
+    $Bytes = [System.Text.Encoding]::UTF8.GetBytes($SourceText)
+    $Fingerprint = [Convert]::ToBase64String($Bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_')
+    $Marker = "元数据指纹：$Fingerprint"
+    $GeneratedPaths = @(
+        (Join-Path $MobileDir 'pubspec.yaml'),
+        (Join-Path $MobileDir 'lib\app\app_metadata.g.dart'),
+        (Join-Path $MobileDir 'android\app\app_metadata.gradle.kts'),
+        (Join-Path $MobileDir 'android\app\src\main\res\values\app_metadata.xml'),
+        (Join-Path $MobileDir 'windows\app_metadata.cmake'),
+        (Join-Path $MobileDir 'windows\runner\app_metadata.h'),
+        (Join-Path $MobileDir 'windows\WINDOWS-README.txt')
+    )
+    foreach ($GeneratedPath in $GeneratedPaths) {
+        if (-not (Test-Path -LiteralPath $GeneratedPath -PathType Leaf)) {
+            throw "客户端元数据生成文件不存在：$GeneratedPath"
+        }
+        if (-not (Select-String -LiteralPath $GeneratedPath -SimpleMatch -Quiet -Pattern $Marker)) {
+            throw "客户端元数据生成文件已过期：$GeneratedPath。请执行 dart run tool/sync_app_metadata.dart。"
+        }
+    }
+}
+
 # 丢弃目录继承权限，仅保留服务身份、SYSTEM 与管理员所需权限。
 function Set-RestrictedDirectoryAcl {
     param(
@@ -146,6 +187,8 @@ function Uninstall-ServerService {
 
 # 构建并打包 Windows x64 Flutter 客户端，压缩完成后只清理受控的临时目录。
 function New-ClientPackage {
+    $ClientMetadata = Get-ClientAppMetadata
+    Assert-ClientAppMetadataGenerated
     if (-not $SkipBuild) {
         Push-Location $MobileDir
         try {
@@ -177,7 +220,7 @@ function New-ClientPackage {
         throw "客户端输出目录不在 mobile 内：$ResolvedOutput"
     }
 
-    $PackageName = "luma-windows-x64-$ClientVersion"
+    $PackageName = "$($ClientMetadata.projectName)-windows-x64-$ClientVersion"
     $StagePath = Join-Path $ResolvedOutput $PackageName
     if (Test-Path -LiteralPath $StagePath) {
         $ResolvedStage = (Resolve-Path -LiteralPath $StagePath).Path

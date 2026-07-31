@@ -420,4 +420,14 @@ go run ./cmd/server -config configs/config.example.yaml -log-format text
 
 Android 构建默认使用 `google()`、Maven Central 和 Gradle Plugin Portal。仅当当前网络无法访问官方仓库时，可设置环境变量 `LUMA_USE_CHINA_MIRRORS=true`，或向 Gradle 传入 `--project-prop "luma.useChinaMirrors=true"`，临时在官方仓库之前加入阿里云镜像。
 
+### 客户端应用信息
+
+Windows 与 Android 客户端的名称、Android application ID、Windows 可执行文件名、公司、作者、版权和版本统一维护在 `mobile/app_metadata.json`。修改该文件后，在 `mobile` 目录执行：
+
+```powershell
+dart run tool/sync_app_metadata.dart
+```
+
+该命令会生成 Android、Windows 和应用内使用的元数据；`backend/scripts/windows-deploy.ps1 -Action PackageClient` 会先校验生成结果，避免将过期信息打入发行包。
+
 仓库文本默认使用 LF；`.bat`、`.cmd` 和 `.ps1` 使用 CRLF。提交前分别运行 `gofmt`、`dart format`，不要依赖编辑器自动改写整仓行尾。

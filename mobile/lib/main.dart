@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:media_kit/media_kit.dart';
 
 import 'app/app_dependencies.dart';
+import 'app/app_metadata.g.dart';
 import 'app/app_router.dart';
 import 'app/app_scope.dart';
 import 'app/app_window_controller.dart';
@@ -84,7 +85,7 @@ class _LumaAppState extends State<LumaApp> {
         ]),
         builder: (context, _) => MaterialApp.router(
           debugShowCheckedModeBanner: false,
-          title: '轻影 Luma',
+          title: AppMetadata.productName,
           locale: const Locale('zh', 'CN'),
           localizationsDelegates: const [
             GlobalMaterialLocalizations.delegate,

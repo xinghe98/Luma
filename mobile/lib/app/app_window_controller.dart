@@ -5,6 +5,8 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:window_manager/window_manager.dart';
 
+import 'app_metadata.g.dart';
+
 class AppWindowController {
   bool _initialized = false;
 
@@ -21,7 +23,7 @@ class AppWindowController {
       size: Size(1280, 800),
       minimumSize: Size(960, 640),
       center: true,
-      title: '轻影 Luma',
+      title: AppMetadata.productName,
       titleBarStyle: TitleBarStyle.normal,
     );
     await windowManager.waitUntilReadyToShow(options, () async {

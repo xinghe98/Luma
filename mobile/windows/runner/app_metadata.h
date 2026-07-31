@@ -1,0 +1,10 @@
+// 此文件由 tool/sync_app_metadata.dart 从 app_metadata.json 生成，请勿手工修改。 元数据指纹：ewogICJwcm9qZWN0TmFtZSI6ICJsdW1hIiwKICAiZGlzcGxheU5hbWUiOiAi6L275b2xIiwKICAicHJvZHVjdE5hbWUiOiAi6L275b2xIEx1bWEiLAogICJhbmRyb2lkQXBwbGljYXRpb25JZCI6ICJjb20ueGluZ2hlOTgubHVtYSIsCiAgIndpbmRvd3NFeGVjdXRhYmxlTmFtZSI6ICJsdW1hIiwKICAiY29tcGFueU5hbWUiOiAiTHVtYSIsCiAgImF1dGhvck5hbWUiOiAieGluZ2hlOTgiLAogICJjb3B5cmlnaHQiOiAiQ29weXJpZ2h0IChDKSAyMDI2IGNvbS54aW5naGU5OC4gQWxsIHJpZ2h0cyByZXNlcnZlZC4iLAogICJ2ZXJzaW9uIjogIjEuMC4wKzEiCn0K
+#pragma once
+
+#define LUMA_WINDOW_TITLE L"轻影 Luma"
+#define LUMA_COMPANY_NAME "Luma"
+#define LUMA_FILE_DESCRIPTION "轻影 Luma"
+#define LUMA_INTERNAL_NAME "luma"
+#define LUMA_LEGAL_COPYRIGHT "Copyright (C) 2026 com.xinghe98. All rights reserved."
+#define LUMA_ORIGINAL_FILENAME "luma.exe"
+#define LUMA_PRODUCT_NAME "轻影 Luma"

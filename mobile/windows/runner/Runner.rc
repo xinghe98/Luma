@@ -2,6 +2,7 @@
 //
 #pragma code_page(65001)
 #include "resource.h"
+#include "app_metadata.h"
 
 #define APSTUDIO_READONLY_SYMBOLS
 /////////////////////////////////////////////////////////////////////////////
@@ -89,13 +90,13 @@ BEGIN
     BEGIN
         BLOCK "040904e4"
         BEGIN
-            VALUE "CompanyName", "Luma" "\0"
-            VALUE "FileDescription", "轻影 Luma" "\0"
+            VALUE "CompanyName", LUMA_COMPANY_NAME "\0"
+            VALUE "FileDescription", LUMA_FILE_DESCRIPTION "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
-            VALUE "InternalName", "luma" "\0"
-            VALUE "LegalCopyright", "Copyright (C) 2026 com.luma. All rights reserved." "\0"
-            VALUE "OriginalFilename", "luma.exe" "\0"
-            VALUE "ProductName", "轻影 Luma" "\0"
+            VALUE "InternalName", LUMA_INTERNAL_NAME "\0"
+            VALUE "LegalCopyright", LUMA_LEGAL_COPYRIGHT "\0"
+            VALUE "OriginalFilename", LUMA_ORIGINAL_FILENAME "\0"
+            VALUE "ProductName", LUMA_PRODUCT_NAME "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

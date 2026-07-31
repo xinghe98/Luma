@@ -13,8 +13,13 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+apply(from = "app_metadata.gradle.kts")
+
+val appMetadataApplicationId =
+    rootProject.extra["luma.appMetadata.applicationId"] as String
+
 android {
-    namespace = "com.luma.luma"
+    namespace = appMetadataApplicationId
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -28,7 +33,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.luma.luma"
+        applicationId = appMetadataApplicationId
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode

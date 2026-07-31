@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/theme.dart';
+import '../../app/app_metadata.g.dart';
 
 enum BrandMarkVariant { symbol, horizontal }
 
@@ -127,10 +128,10 @@ class BrandLockup extends StatelessWidget {
       children: [
         const BrandMark(variant: BrandMarkVariant.symbol, height: 44),
         const SizedBox(width: LumaSpacing.sm),
-        Text('轻影', style: theme.textTheme.headlineSmall),
+        Text(AppMetadata.displayName, style: theme.textTheme.headlineSmall),
         const SizedBox(width: LumaSpacing.xs),
         Text(
-          'Luma',
+          AppMetadata.companyName,
           style: theme.textTheme.titleMedium?.copyWith(
             color: theme.colorScheme.onSurfaceVariant,
             fontWeight: FontWeight.w400,
