@@ -24,3 +24,8 @@ backend/configs/.luma-config-*.yaml
 *.log
 .idea/
 .vscode/
+
+# Android release signing keys and configurations
+**/key.properties
+**/*.keystore
+**/*.jks

@@ -13,10 +13,12 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
-apply(from = "app_metadata.gradle.kts")
-
-val appMetadataApplicationId =
-    rootProject.extra["luma.appMetadata.applicationId"] as String
+val appMetadataProperties = Properties()
+val appMetadataPropertiesFile = file("app_metadata.properties")
+FileInputStream(appMetadataPropertiesFile).use(appMetadataProperties::load)
+val appMetadataApplicationId = requireNotNull(
+    appMetadataProperties.getProperty("androidApplicationId"),
+) { "app_metadata.properties 缺少 androidApplicationId。" }
 
 android {
     namespace = appMetadataApplicationId
@@ -46,7 +48,7 @@ android {
 			// 保持 debug/test 在未配置发布密钥的开发环境中可运行。
 			releaseProperties.getProperty("storeFile")?.let { keyFile ->
 				signingConfig = signingConfigs.maybeCreate("release").apply {
-					storeFile = file(keyFile)
+					storeFile = rootProject.file(keyFile)
 					storePassword = releaseProperties.getProperty("storePassword")
 					keyAlias = releaseProperties.getProperty("keyAlias")
 					keyPassword = releaseProperties.getProperty("keyPassword")
@@ -58,4 +60,16 @@ android {
 
 flutter {
     source = "../.."
+}
+
+val distDir = File(rootProject.projectDir.parentFile, "build/dist")
+
+tasks.matching { it.name == "assembleRelease" }.configureEach {
+    doLast {
+        copy {
+            from(layout.buildDirectory.dir("outputs/apk/release"))
+            into(distDir)
+            include("*.apk")
+        }
+    }
 }

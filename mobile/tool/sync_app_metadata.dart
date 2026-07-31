@@ -23,8 +23,8 @@ void main(List<String> arguments) {
     ),
     _join(mobileDirectory.path, 'lib', 'app', 'app_metadata.g.dart'):
         _dartMetadata(metadata),
-    _join(mobileDirectory.path, 'android', 'app', 'app_metadata.gradle.kts'):
-        _androidGradleMetadata(metadata),
+    _join(mobileDirectory.path, 'android', 'app', 'app_metadata.properties'):
+        _androidPropertiesMetadata(metadata),
     _join(
       mobileDirectory.path,
       'android',
@@ -110,16 +110,16 @@ abstract final class AppMetadata {
 }
 ''';
 
-String _androidGradleMetadata(_AppMetadata metadata) =>
-    '''${_generatedComment(metadata, '//')}
-rootProject.extra["luma.appMetadata.applicationId"] = "${_gradleString(metadata.androidApplicationId)}"
+String _androidPropertiesMetadata(_AppMetadata metadata) =>
+    '''${_generatedComment(metadata, '#')}
+androidApplicationId=${_propertiesString(metadata.androidApplicationId)}
 ''';
 
 String _androidStringMetadata(_AppMetadata metadata) =>
     '''<?xml version="1.0" encoding="utf-8"?>
 <!-- ${_generatedComment(metadata, '').trim()} -->
 <resources>
-    <string name="app_name">${_xmlString(metadata.displayName)}</string>
+    <string name="app_name">${_xmlString(metadata.productName)}</string>
 </resources>
 ''';
 
@@ -145,8 +145,8 @@ String _windowsReadme(_AppMetadata metadata) =>
     '''${metadata.productName} for Windows
 
 支持系统：Windows 10/11 x64
-启动方式：解压整个压缩包后运行 ${metadata.windowsExecutableName}.exe，请勿单独移动 exe 或 data、DLL 文件。
-压缩包已包含应用所需的 Visual C++ x64 运行库。
+安装方式：运行 NSIS 安装包完成安装；也可在安装目录直接启动 ${metadata.windowsExecutableName}.exe。
+请勿单独移动 exe、data 或 DLL 文件，安装包已包含应用所需的 Visual C++ x64 运行库。
 
 播放器使用内置 media_kit/libmpv 解码能力，直接播放服务端提供的认证媒体流。
 首次运行请填写 ${metadata.companyName} 服务端地址、端口、用户名和密码。
@@ -161,10 +161,10 @@ M               静音
 F               切换全屏
 Esc             退出全屏或关闭播放器
 
-字体许可位于压缩包根目录的 MiSans-LICENSE.pdf。
+字体许可位于安装目录的 MiSans-LICENSE.pdf。
 第三方软件声明由 Flutter 生成在 data\\flutter_assets\\NOTICES.Z。
 
-${_generatedComment(metadata, '')}
+${_generatedComment(metadata, "")}
 ''';
 
 String _generatedComment(_AppMetadata metadata, String prefix) =>
@@ -201,10 +201,12 @@ String _dartString(String value) => value
     .replaceAll('\n', r'\n')
     .replaceAll('\r', r'\r');
 
-String _gradleString(String value) => value
+String _propertiesString(String value) => value
     .replaceAll('\\', r'\\')
-    .replaceAll('"', r'\"')
-    .replaceAll(r'$', r'\$');
+    .replaceAll('\n', r'\n')
+    .replaceAll('\r', r'\r')
+    .replaceAll('=', r'\=')
+    .replaceAll(':', r'\:');
 
 String _xmlString(String value) => value
     .replaceAll('&', '&amp;')
