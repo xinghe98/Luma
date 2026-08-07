@@ -31,6 +31,27 @@ Windows 使用标准标题栏，默认窗口为 1280×800，最小尺寸为 960�
 
 脚本会调用 `backend/scripts/windows-deploy.ps1 -Action PackageClient`，构建 Windows Release 并输出 `build/dist/luma-windows-x64-<version>-setup.exe`。需本机已安装 Flutter、Visual Studio C++ 工具链与 NSIS 3（`makensis`）。当前不提供 MSIX、自动更新、ARM64 或代码签名。
 
+## VMess 内网代理
+
+连接页右上角「代理」可启用内嵌 VMess 代理：
+
+1. 点右上角蓝色「代理」。
+2. 在弹层中粘贴或填写一条 `vmess://` 分享链接，选择「连接」。
+3. 按钮变为「代理已开」后，再填写内网 Luma 服务器地址和账号。
+
+- 仅支持 Android 与 Windows x64，只接受单条 VMess 分享链接，不接受订阅、多节点文本、VLESS、Trojan 或 Shadowsocks。
+- 分享链接保存在系统安全存储。每次 App 进程启动后都保持“未启动”，必须由用户手动开启。
+- 启动后，Dio API、Flutter 图片和 `media_kit` 视频请求都经过应用内代理。视频由仅监听 `127.0.0.1` 的 Range relay 流式转发。
+- 代理只作用于轻影，不创建系统 VPN/TUN，不申请 VPN 权限，也不修改系统代理或其他应用的流量。
+- 断开服务器会话不会关闭代理。代理保持运行，直到用户在连接页手动关闭或 App 进程退出。
+- 内嵌核心固定为 [libXray v26.7.28](https://github.com/XTLS/libXray/tree/v26.7.28)，其包含 [Xray-core v26.7.28](https://github.com/XTLS/Xray-core/tree/v26.7.28)。libXray 使用 MIT 许可，Xray-core 使用 MPL-2.0，完整文本随应用分发并可从“关于轻影 → 开源许可”查看。
+
+已入库的 AAR、DLL 和许可文本可重复同步，不在 Gradle 或 CMake 构建期间联网：
+
+```powershell
+.\tool\sync_libxray.ps1
+```
+
 ## 服务器连接
 
 - `/health` 用于检测服务存活。
@@ -46,13 +67,13 @@ Windows 使用标准标题栏，默认窗口为 1280×800，最小尺寸为 960�
 
 ## 页面结构
 
-- 首次连接：地址输入、最近服务器，以及加载、成功和失败反馈。
+- 首次连接：VMess 代理导入与启停、地址输入、最近服务器，以及加载、成功和失败反馈。
 - 首页：欢迎区、扫描状态、继续观看、最近添加和收藏。
 - 图片库：图片瀑布流、收藏、排序、下拉刷新和响应式布局。
 - 影视库：电影、电视剧、个人视频三个常驻分页；电影和电视剧使用 2:3 竖版海报墙，个人视频保留原文件卡片体验且不会混入影视来源。
 - 搜索：最近搜索、类型/标签组合筛选和无结果状态。
 - 媒体详情：封面、播放/大图、收藏、元数据、标签、笔记、媒体源名称和文件名。
-- 播放器：使用 `media_kit`/libmpv 直接播放认证视频流和 HTTP Range；移动端支持手势与锁定，Windows 支持音量、全屏、鼠标和键盘控制。
+- 播放器：使用 `media_kit`/libmpv 播放认证视频流和 HTTP Range；代理活动时由应用内 loopback relay 转发，移动端支持手势与锁定，Windows 支持音量、全屏、鼠标和键盘控制。
 - 设置：服务器状态、扫描、媒体源类型、缓存、关于和断开连接；主题切换在页面右上角。
 
 手机使用 Material 3 底部导航（首页、图片库、影视库、搜索、设置）；宽度达到 840px 后切换为侧边导航。Windows 窗口最小宽度为 960px，因此始终使用侧边导航，并为媒体卡片、横向货架、筛选和图片预览提供键鼠交互。媒体网格会在 2–5 列间自适应，详情页在宽屏使用双栏布局。默认浅色主题，可在设置页右上角切换深色。
@@ -67,6 +88,7 @@ Windows 与 Android 共用现有 OpenAPI、认证、Range 流式传输和进度�
 
 - `lib/app/`：依赖组装、Scope，以及会话、媒体和设置共享 Controller。
 - `lib/data/api/`：Dio 请求、API Prefix、会话认证和统一错误。
+- `lib/data/proxy/`：VMess 配置安全存储、libXray 原生桥、动态 HTTP 路由和媒体 Range relay。
 - `lib/data/decoders/`：独立的 JSON 到类型模型映射。
 - `lib/data/repositories/`：媒体、来源和扫描数据边界。
 - `lib/data/mock/`、`lib/data/fixtures/`：仅供测试使用，不进入生产依赖图。

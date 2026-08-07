@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:dio/dio.dart';
+import 'package:dio/io.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
@@ -14,6 +17,12 @@ import '../data/repositories/api_source_repository.dart';
 import '../data/repositories/media_repository.dart';
 import '../data/repositories/catalog_repository.dart';
 import '../data/repositories/source_repository.dart';
+import '../data/proxy/loopback_media_relay.dart';
+import '../data/proxy/proxy_profile_store.dart';
+import '../data/proxy/proxy_route.dart';
+import '../data/proxy/vmess_proxy_controller.dart';
+import '../data/proxy/vmess_proxy_profile.dart';
+import '../data/proxy/xray_bridge.dart';
 import '../data/services/api_connection_service.dart';
 import '../data/services/connection_service.dart';
 import '../data/storage/credential_store.dart';
@@ -40,6 +49,11 @@ class AppDependencies {
     CatalogRepository? catalogRepository,
     SourceRepository? sourceRepository,
     AccessRepository? accessRepository,
+    VmessProxyController? proxyController,
+    this.proxyRoute,
+    ProxyHttpOverrides? proxyOverrides,
+    this.mediaRelay,
+    MediaRequestRouter? mediaRequestRouter,
   }) : media = MediaController(mediaRepository),
        session = SessionController(),
        settings = settingsController ?? SettingsController(),
@@ -49,6 +63,10 @@ class AppDependencies {
        ),
        access = accessRepository ?? const UnavailableAccessRepository(),
        sources = sourceRepository,
+       proxy = proxyController,
+       _proxyOverrides = proxyOverrides,
+       _mediaRequestRouter =
+           mediaRequestRouter ?? mediaRelay ?? const DirectMediaRequestRouter(),
        _connectionService = connectionService,
        _credentialStore = credentialStore,
        _aliasStore = aliasStore,
@@ -62,11 +80,13 @@ class AppDependencies {
       media: media,
       apiSession: this.apiSession,
       onCatalogInvalidated: catalog.invalidate,
+      mediaRequestRouter: _mediaRequestRouter,
     );
     connection = ConnectionController(
       connectionService: connectionService,
       sessionController: session,
       mediaController: media,
+      isProxyActive: () => proxy?.isActive ?? false,
       onConnected: () async {
         final server = session.server;
         if (server != null && server.can('scans.manage')) {
@@ -81,7 +101,21 @@ class AppDependencies {
       'LUMA_API_PREFIX',
       defaultValue: ApiClient.defaultApiPrefix,
     );
+    final proxyRoute = ProxyRoute();
+    final proxyOverrides = ProxyHttpOverrides(proxyRoute)..install();
+    final xrayBridge = XrayBridge();
+    final proxyController = VmessProxyController(
+      store: SecureProxyProfileStore(const FlutterSecureStorage()),
+      parser: VmessProfileParser(xrayBridge),
+      bridge: xrayBridge,
+      route: proxyRoute,
+    );
     final apiSession = ApiSession();
+    final mediaRelay = LoopbackMediaRelay(
+      proxyRoute: proxyRoute,
+      createHttpClient: () => proxyOverrides.newClient(),
+      authorizationHeadersFor: apiSession.authorizationHeadersFor,
+    );
     final dio = Dio(
       BaseOptions(
         connectTimeout: const Duration(seconds: 8),
@@ -89,6 +123,9 @@ class AppDependencies {
         sendTimeout: const Duration(seconds: 10),
       ),
     )..interceptors.add(ApiSessionInterceptor(apiSession));
+    dio.httpClientAdapter = IOHttpClientAdapter(
+      createHttpClient: () => proxyOverrides.newClient(),
+    );
     final client = ApiClient(dio, apiPrefix: apiPrefix);
     const secureStorage = FlutterSecureStorage();
     final credentials = SecureCredentialStore(secureStorage);
@@ -100,6 +137,7 @@ class AppDependencies {
       credentialStore: credentials,
       aliasStore: aliases,
       sourceRepository: sources,
+      activeProxyProfileId: () => proxyController.activeProfileId,
     );
     return AppDependencies(
       mediaRepository: ApiMediaRepository(client, sources),
@@ -114,11 +152,16 @@ class AppDependencies {
       catalogRepository: ApiCatalogRepository(client),
       sourceRepository: sources,
       accessRepository: ApiAccessRepository(client),
+      proxyController: proxyController,
+      proxyRoute: proxyRoute,
+      proxyOverrides: proxyOverrides,
+      mediaRelay: mediaRelay,
     );
   }
 
   static Future<AppDependencies> production() async {
     final dependencies = create();
+    await dependencies.initialize();
     await dependencies.restoreSession();
     return dependencies;
   }
@@ -136,15 +179,34 @@ class AppDependencies {
   final CredentialStore? _credentialStore;
   final ServerAliasStore? _aliasStore;
   final Dio? _dio;
+  final VmessProxyController? proxy;
+  final ProxyRoute? proxyRoute;
+  final ProxyHttpOverrides? _proxyOverrides;
+  final LoopbackMediaRelay? mediaRelay;
+  final MediaRequestRouter _mediaRequestRouter;
   late final ConnectionController connection;
 
   /// 恢复旧会话期间禁止新的连接尝试，避免两个请求改写同一 ApiSession。
   final ValueNotifier<bool> restoring = ValueNotifier(false);
   int _restoreOperation = 0;
   bool _disposed = false;
+  StoredCredentials? _pendingProxyRestore;
 
   /// 依赖容器是否已释放；主要供宿主生命周期与测试断言使用。
   bool get isDisposed => _disposed;
+
+  bool get canConfigureProxy =>
+      !_disposed &&
+      session.server == null &&
+      !connection.isLoading &&
+      !restoring.value;
+
+  Future<void> initialize() async {
+    if (_disposed) return;
+    await mediaRelay?.start();
+    if (_disposed) return;
+    await proxy?.load();
+  }
 
   /// 尝试恢复保存的会话；读取或连接失败时返回 false，销毁后不再发布状态。
   Future<bool> restoreSession() async {
@@ -161,6 +223,15 @@ class AppDependencies {
           saved.sessionToken == null) {
         return false;
       }
+      if (saved.proxyProfileId != null) {
+        final controller = proxy;
+        if (controller == null ||
+            controller.activeProfileId != saved.proxyProfileId) {
+          _pendingProxyRestore = saved;
+          return false;
+        }
+      }
+      _pendingProxyRestore = null;
       final restored = await connection.restore(
         saved.origin,
         saved.sessionToken!,
@@ -173,26 +244,86 @@ class AppDependencies {
     }
   }
 
+  Future<bool> startProxy() async {
+    if (!canConfigureProxy) return false;
+    final controller = proxy;
+    if (controller == null) return false;
+    await controller.start();
+    if (_disposed || !controller.isActive) return false;
+    final pending = _pendingProxyRestore;
+    if (pending == null ||
+        pending.proxyProfileId != controller.activeProfileId ||
+        pending.sessionToken == null) {
+      return true;
+    }
+    restoring.value = true;
+    try {
+      final restored = await connection.restore(
+        pending.origin,
+        pending.sessionToken!,
+      );
+      if (!_disposed && restored) _pendingProxyRestore = null;
+      return !_disposed && restored;
+    } finally {
+      if (!_disposed) restoring.value = false;
+    }
+  }
+
+  Future<void> stopProxy() async {
+    if (!canConfigureProxy) return;
+    await proxy?.stop();
+  }
+
+  Future<void> importProxyProfile(String clipboardText) async {
+    if (!canConfigureProxy) return;
+    final controller = proxy;
+    if (controller == null) return;
+    final previousId = controller.profile?.id;
+    await controller.importFromClipboard(clipboardText);
+    if (controller.profile?.id != previousId) _pendingProxyRestore = null;
+  }
+
+  Future<void> deleteProxyProfile() async {
+    if (!canConfigureProxy) return;
+    await proxy?.deleteProfile();
+    _pendingProxyRestore = null;
+  }
+
   /// 结束当前服务器会话并清空所有会话级缓存；销毁期间会安全停止。
   Future<void> disconnect() async {
     if (_disposed) return;
     _restoreOperation++;
     restoring.value = false;
-    session.disconnect();
     await playerSession.close(invalidateCatalog: false);
     if (_disposed) return;
-    mediaBranchPrewarmer.reset();
-    media.clear();
-    catalog.clear();
-    final imageCache = PaintingBinding.instance.imageCache;
-    imageCache.clear();
-    imageCache.clearLiveImages();
-    if (sources case SessionResettableSourceRepository resettable) {
-      resettable.clearSessionCache();
+
+    Object? disconnectError;
+    StackTrace? disconnectStack;
+    try {
+      await _connectionService.disconnect();
+    } on Object catch (error, stackTrace) {
+      disconnectError = error;
+      disconnectStack = stackTrace;
+    } finally {
+      if (!_disposed) {
+        session.disconnect();
+        mediaRelay?.revokeAll();
+        mediaBranchPrewarmer.reset();
+        media.clear();
+        catalog.clear();
+        final imageCache = PaintingBinding.instance.imageCache;
+        imageCache.clear();
+        imageCache.clearLiveImages();
+        if (sources case SessionResettableSourceRepository resettable) {
+          resettable.clearSessionCache();
+        }
+        settings.resetConnection();
+        connection.reset();
+      }
     }
-    settings.resetConnection();
-    connection.reset();
-    await _connectionService.disconnect();
+    if (disconnectError != null) {
+      Error.throwWithStackTrace(disconnectError, disconnectStack!);
+    }
   }
 
   /// 保存当前服务器的本地别名；容器销毁后忽略尚未完成的写入结果。
@@ -218,6 +349,12 @@ class AppDependencies {
     if (_disposed) return;
     _disposed = true;
     _restoreOperation++;
+    _proxyOverrides?.restore();
+    proxyRoute?.deactivate();
+    mediaRelay?.revokeAll();
+    unawaited(mediaRelay?.close());
+    final proxyController = proxy;
+    if (proxyController != null) unawaited(proxyController.disposeProxy());
     playerSession.dispose();
     connection.dispose();
     mediaBranchPrewarmer.dispose();

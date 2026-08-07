@@ -6,6 +6,7 @@ import 'package:flutter/scheduler.dart';
 import '../../app/controllers/media_controller.dart';
 import '../../data/api/api_session.dart';
 import '../../data/models/media_item.dart';
+import '../../data/proxy/loopback_media_relay.dart';
 import 'player_controller.dart';
 
 class PlayerSessionController extends ChangeNotifier {
@@ -15,12 +16,16 @@ class PlayerSessionController extends ChangeNotifier {
     required MediaController media,
     required ApiSession apiSession,
     ValueChanged<String?>? onCatalogInvalidated,
+    MediaRequestRouter? mediaRequestRouter,
   }) : _media = media,
        _apiSession = apiSession,
+       _mediaRequestRouter =
+           mediaRequestRouter ?? const DirectMediaRequestRouter(),
        _onCatalogInvalidated = onCatalogInvalidated;
 
   final MediaController _media;
   final ApiSession _apiSession;
+  final MediaRequestRouter _mediaRequestRouter;
   final ValueChanged<String?>? _onCatalogInvalidated;
   PlayerController? _player;
   bool _minimized = false;
@@ -55,6 +60,7 @@ class PlayerSessionController extends ChangeNotifier {
       item: item,
       media: _media,
       apiSession: _apiSession,
+      mediaRequestRouter: _mediaRequestRouter,
       startFromBeginning: startFromBeginning,
     );
     _player = player;

@@ -4,7 +4,7 @@ project(luma LANGUAGES CXX)
 
 # 可执行文件名由统一应用元数据生成，避免 Windows 文件名与其他平台标识漂移。
 include("${CMAKE_CURRENT_SOURCE_DIR}/app_metadata.cmake")
-set(BINARY_NAME "${LUMA_EXECUTABLE_NAME}")
+set(BINARY_NAME "luma")
 
 # Explicitly opt in to modern CMake behaviors to avoid warnings with recent
 # versions of CMake.
@@ -86,6 +86,14 @@ if(PLUGIN_BUNDLED_LIBRARIES)
     DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
     COMPONENT Runtime)
 endif()
+
+set(LIBXRAY_DLL "${CMAKE_CURRENT_SOURCE_DIR}/libxray/libXray.dll")
+if(NOT EXISTS "${LIBXRAY_DLL}")
+  message(FATAL_ERROR
+    "Missing ${LIBXRAY_DLL}. Run tool/sync_libxray.ps1 before building.")
+endif()
+install(FILES "${LIBXRAY_DLL}" DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
+  COMPONENT Runtime)
 
 # Copy the native assets provided by the build.dart from all packages.
 set(NATIVE_ASSETS_DIR "${PROJECT_BUILD_DIR}native_assets/windows/")

@@ -62,6 +62,10 @@ flutter {
     source = "../.."
 }
 
+dependencies {
+    implementation(files("libs/libXray.aar"))
+}
+
 val distDir = File(rootProject.projectDir.parentFile, "build/dist")
 
 tasks.matching { it.name == "assembleRelease" }.configureEach {

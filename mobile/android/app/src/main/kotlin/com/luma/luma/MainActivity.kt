@@ -7,10 +7,15 @@ import android.view.WindowManager
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
+import libXray.LibXray
 import kotlin.math.roundToInt
 
 class MainActivity : FlutterActivity() {
     private val playerControlsChannel = "com.luma.luma/player_controls"
+    private val xrayChannel = "com.luma.luma/xray"
+    private val xrayExecutor: ExecutorService = Executors.newSingleThreadExecutor()
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -35,11 +40,52 @@ class MainActivity : FlutterActivity() {
                 else -> result.notImplemented()
             }
         }
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            xrayChannel,
+        ).setMethodCallHandler { call, result ->
+            if (call.method != "invoke") {
+                result.notImplemented()
+                return@setMethodCallHandler
+            }
+            val request = call.arguments as? String
+            if (request == null) {
+                result.error("XRAY_INVALID_REQUEST", "代理请求格式无效", null)
+                return@setMethodCallHandler
+            }
+            xrayExecutor.execute {
+                try {
+                    val response = LibXray.invoke(request)
+                    runOnUiThread { result.success(response) }
+                } catch (_: Throwable) {
+                    runOnUiThread {
+                        result.error("XRAY_INVOKE_FAILED", "原生代理调用失败", null)
+                    }
+                }
+            }
+        }
     }
 
     override fun onResume() {
         super.onResume()
         volumeControlStream = AudioManager.STREAM_MUSIC
+    }
+
+    override fun onDestroy() {
+        try {
+            xrayExecutor.execute {
+                try {
+                    LibXray.invoke(
+                        """{"apiVersion":1,"method":"stopXray","payload":{}}""",
+                    )
+                } catch (_: Throwable) {
+                    // Activity 销毁阶段只能尽力释放进程内 core。
+                }
+            }
+        } finally {
+            xrayExecutor.shutdown()
+        }
+        super.onDestroy()
     }
 
     private fun readPlayerControlState(): Map<String, Any> {

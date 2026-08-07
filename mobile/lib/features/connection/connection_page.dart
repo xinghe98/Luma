@@ -7,6 +7,7 @@ import '../../data/services/connection_service.dart';
 import 'widgets/connection_brand_header.dart';
 import 'widgets/connection_form.dart';
 import 'widgets/recent_servers.dart';
+import 'widgets/vmess_proxy_control.dart';
 
 class ConnectionPage extends StatefulWidget {
   const ConnectionPage({super.key});
@@ -44,22 +45,39 @@ class _ConnectionPageState extends State<ConnectionPage> {
   Widget build(BuildContext context) {
     final dependencies = AppScope.of(context);
     final controller = dependencies.connection;
-    return Scaffold(
-      body: SafeArea(
-        child: SingleChildScrollView(
-          child: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(
-                maxWidth: LumaLayout.formMaxWidth,
-              ),
-              child: ListenableBuilder(
-                listenable: Listenable.merge([
-                  controller,
-                  dependencies.restoring,
-                ]),
-                builder: (context, _) {
-                  final restoring = dependencies.restoring.value;
-                  return Column(
+    final proxy = dependencies.proxy;
+    return ListenableBuilder(
+      listenable: Listenable.merge([
+        controller,
+        dependencies.restoring,
+        ?proxy,
+      ]),
+      builder: (context, _) {
+        final restoring = dependencies.restoring.value;
+        return Scaffold(
+          appBar: proxy == null
+              ? null
+              : AppBar(
+                  automaticallyImplyLeading: false,
+                  actions: [
+                    VmessProxyAppBarAction(
+                      controller: proxy,
+                      enabled: dependencies.canConfigureProxy,
+                      onStart: dependencies.startProxy,
+                      onStop: dependencies.stopProxy,
+                      onImport: dependencies.importProxyProfile,
+                      onDelete: dependencies.deleteProxyProfile,
+                    ),
+                  ],
+                ),
+          body: SafeArea(
+            child: SingleChildScrollView(
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(
+                    maxWidth: LumaLayout.formMaxWidth,
+                  ),
+                  child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       const ConnectionBrandHeader(),
@@ -79,6 +97,7 @@ class _ConnectionPageState extends State<ConnectionPage> {
                               portController: _port,
                               usernameController: _username,
                               passwordController: _password,
+                              proxied: proxy?.isActive ?? false,
                               enabled: !restoring,
                               onConnect: () {
                                 FocusScope.of(context).unfocus();
@@ -104,13 +123,13 @@ class _ConnectionPageState extends State<ConnectionPage> {
                         ),
                       ),
                     ],
-                  );
-                },
+                  ),
+                ),
               ),
             ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 

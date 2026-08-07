@@ -8,6 +8,7 @@ import 'package:media_kit/media_kit.dart';
 import 'app/app_dependencies.dart';
 import 'app/app_metadata.g.dart';
 import 'app/app_router.dart';
+import 'app/open_source_licenses.dart';
 import 'app/app_scope.dart';
 import 'app/app_window_controller.dart';
 import 'core/theme.dart';
@@ -17,6 +18,7 @@ import 'shared/branding/brand_mark.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   MediaKit.ensureInitialized();
+  registerBundledLicenses();
   final imageCache = PaintingBinding.instance.imageCache;
   final view = WidgetsBinding.instance.platformDispatcher.views.first;
   final logicalShortestSide =
@@ -27,6 +29,7 @@ Future<void> main() async {
   imageCache.maximumSizeBytes =
       (AppWindowController.isWindows ? 96 : (isLargeScreen ? 64 : 48)) << 20;
   final dependencies = AppDependencies.create();
+  await dependencies.initialize();
   final appWindow = AppWindowController();
   await appWindow.initialize();
   runApp(LumaApp(dependencies: dependencies, ownsDependencies: true));
@@ -82,6 +85,7 @@ class _LumaAppState extends State<LumaApp> {
           widget.dependencies.session,
           widget.dependencies.settings,
           widget.dependencies.restoring,
+          if (widget.dependencies.proxy != null) widget.dependencies.proxy!,
         ]),
         builder: (context, _) => MaterialApp.router(
           debugShowCheckedModeBanner: false,

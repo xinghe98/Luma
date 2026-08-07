@@ -39,6 +39,16 @@ void main(List<String> arguments) {
     ),
     _join(mobileDirectory.path, 'windows', 'app_metadata.cmake'):
         _windowsCmakeMetadata(metadata),
+    _join(
+      mobileDirectory.path,
+      'windows',
+      'CMakeLists.txt',
+    ): _windowsCmakeLists(
+      File(
+        _join(mobileDirectory.path, 'windows', 'CMakeLists.txt'),
+      ).readAsStringSync(),
+      metadata,
+    ),
     _join(mobileDirectory.path, 'windows', 'runner', 'app_metadata.h'):
         _windowsHeaderMetadata(metadata),
     _join(mobileDirectory.path, 'windows', 'WINDOWS-README.txt'):
@@ -89,6 +99,22 @@ String _pubspec(String current, _AppMetadata metadata) {
       .replaceFirst(namePattern, 'name: ${metadata.projectName}')
       .replaceFirst(metadataCommentPattern, _generatedComment(metadata, '#'))
       .replaceFirst(versionPattern, 'version: ${metadata.version}');
+}
+
+String _windowsCmakeLists(String current, _AppMetadata metadata) {
+  final binaryNamePattern = RegExp(
+    r'^set\(BINARY_NAME\s+"[^"]+"\)$',
+    multiLine: true,
+  );
+  if (binaryNamePattern.allMatches(current).length != 1) {
+    throw const FormatException(
+      'windows/CMakeLists.txt 必须且只能包含一个 BINARY_NAME 字段。',
+    );
+  }
+  return current.replaceFirst(
+    binaryNamePattern,
+    'set(BINARY_NAME "${_cmakeString(metadata.windowsExecutableName)}")',
+  );
 }
 
 String _dartMetadata(_AppMetadata metadata) =>

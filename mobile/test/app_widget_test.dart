@@ -13,6 +13,7 @@ import 'package:luma/data/models/api_catalog.dart';
 import 'package:luma/data/models/server_profile.dart';
 import 'package:luma/data/repositories/catalog_repository.dart';
 import 'package:luma/data/services/connection_service.dart';
+import 'package:luma/data/storage/credential_store.dart';
 import 'package:luma/data/storage/server_alias_store.dart';
 import 'package:luma/features/catalog/catalog_page.dart';
 import 'package:luma/features/catalog/widgets/catalog_card.dart';
@@ -256,10 +257,7 @@ void main() {
     final photoScroll = find.byKey(
       const PageStorageKey('library-scroll-image-all'),
     );
-    expect(
-      tester.widget<CustomScrollView>(photoScroll).cacheExtent,
-      0,
-    );
+    expect(tester.widget<CustomScrollView>(photoScroll).cacheExtent, 0);
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 110));
     final movingIndicatorLeft = _indicatorPaintLeft(tester);
@@ -400,9 +398,7 @@ void main() {
     expect(
       tester
           .widget<TweenAnimationBuilder<double>>(
-            find.byKey(
-              const ValueKey('bottom-navigation-indicator-animation'),
-            ),
+            find.byKey(const ValueKey('bottom-navigation-indicator-animation')),
           )
           .duration,
       Duration.zero,
@@ -460,10 +456,7 @@ void main() {
       final catalogScroll = find.byKey(
         const PageStorageKey('catalog-overview-scroll'),
       );
-      expect(
-        tester.widget<CustomScrollView>(catalogScroll).cacheExtent,
-        0,
-      );
+      expect(tester.widget<CustomScrollView>(catalogScroll).cacheExtent, 0);
       expect(catalog.calls, isEmpty);
       await tester.pump(LumaMotion.navigation);
       await tester.pump();
@@ -607,6 +600,57 @@ void main() {
     expect(find.text('设置'), findsOneWidget);
   });
 
+  testWidgets('failed credential cleanup remains retryable after disconnect', (
+    tester,
+  ) async {
+    final credentials = _FailOnceCredentialStore();
+    final service = _CredentialDisconnectService(credentials);
+    final dependencies = AppDependencies(
+      mediaRepository: MockMediaRepository(),
+      connectionService: service,
+      credentialStore: credentials,
+    );
+    addTearDown(dependencies.dispose);
+    dependencies.session.connect(
+      const ServerProfile(
+        name: 'server.local',
+        address: 'http://server.local:8080',
+        token: 'token',
+        hostName: 'server.local',
+      ),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: AppScope(
+          dependencies: dependencies,
+          child: ListenableBuilder(
+            listenable: dependencies.session,
+            builder: (context, _) => dependencies.session.isConnected
+                ? const SettingsPage()
+                : const ConnectionPage(),
+          ),
+        ),
+      ),
+    );
+    await tester.ensureVisible(find.text('断开服务器'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('断开服务器'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, '断开'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(ConnectionPage), findsOneWidget);
+    expect(find.text('已断开服务器，但本机凭据未清除'), findsOneWidget);
+    expect(find.text('重试'), findsOneWidget);
+    expect(credentials.clearCalls, 1);
+
+    await tester.tap(find.text('重试'));
+    await tester.pumpAndSettle();
+    expect(find.text('本机凭据已清除'), findsOneWidget);
+    expect(credentials.clearCalls, 2);
+  });
+
   testWidgets('cancelling the server alias dialog does not throw', (
     tester,
   ) async {
@@ -725,9 +769,7 @@ class _WidgetAliasStore implements ServerAliasStore {
 }
 
 double _indicatorPaintLeft(WidgetTester tester) {
-  final finder = find.byKey(
-    const ValueKey('bottom-navigation-indicator'),
-  );
+  final finder = find.byKey(const ValueKey('bottom-navigation-indicator'));
   final translation = tester
       .widget<Transform>(finder)
       .transform
@@ -758,6 +800,61 @@ class _RecordingConnectionService implements ConnectionService {
         address,
         const LoginCredentials(username: 'test', password: 'test-password'),
       );
+}
+
+final class _FailOnceCredentialStore implements CredentialStore {
+  StoredCredentials? current = const StoredCredentials(
+    origin: 'http://server.local:8080',
+    sessionToken: 'token',
+  );
+  int clearCalls = 0;
+
+  @override
+  Future<void> clear() async {
+    clearCalls++;
+    if (clearCalls == 1) {
+      throw StateError('secure storage clear failed');
+    }
+    current = null;
+  }
+
+  @override
+  Future<StoredCredentials?> read() async => current;
+
+  @override
+  Future<void> write(StoredCredentials credentials) async {
+    current = credentials;
+  }
+}
+
+final class _CredentialDisconnectService implements ConnectionService {
+  _CredentialDisconnectService(this.credentials);
+
+  final CredentialStore credentials;
+
+  @override
+  ServerProfile? connectedProfile = const ServerProfile(
+    name: 'server.local',
+    address: 'http://server.local:8080',
+    token: 'token',
+    hostName: 'server.local',
+  );
+
+  @override
+  Future<void> disconnect() async {
+    connectedProfile = null;
+    await credentials.clear();
+  }
+
+  @override
+  Future<ConnectionResult> login(
+    String address,
+    LoginCredentials credentials,
+  ) async => ConnectionResult.unreachable;
+
+  @override
+  Future<ConnectionResult> restore(String address, String sessionToken) async =>
+      ConnectionResult.unauthorized;
 }
 
 class _CountingCatalogRepository implements CatalogRepository {

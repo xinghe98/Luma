@@ -20,12 +20,14 @@ final class ApiConnectionService implements ConnectionService {
     SourceRepository? sourceRepository,
     DeviceNameResolver? deviceNameResolver,
     DeviceKeyStore? deviceKeyStore,
+    String? Function()? activeProxyProfileId,
   }) : _client = client,
        _apiSession = apiSession,
        _credentialStore = credentialStore,
        _aliasStore = aliasStore,
        _sourceRepository = sourceRepository,
        _deviceNameResolver = deviceNameResolver ?? PlatformDeviceNameResolver(),
+       _activeProxyProfileId = activeProxyProfileId,
        _deviceKeyStore = deviceKeyStore ?? SecureDeviceKeyStore();
 
   final ApiClient _client;
@@ -35,6 +37,7 @@ final class ApiConnectionService implements ConnectionService {
   final SourceRepository? _sourceRepository;
   final DeviceNameResolver _deviceNameResolver;
   final DeviceKeyStore _deviceKeyStore;
+  final String? Function()? _activeProxyProfileId;
   final SystemInfoDecoder _systemDecoder = const SystemInfoDecoder();
   int _operation = 0;
   Future<void> _credentialQueue = Future<void>.value();
@@ -138,7 +141,11 @@ final class ApiConnectionService implements ConnectionService {
       );
       final persisted = await _enqueueCredentialActivation(
         operation,
-        StoredCredentials(origin: origin, sessionToken: sessionToken),
+        StoredCredentials(
+          origin: origin,
+          sessionToken: sessionToken,
+          proxyProfileId: _activeProxyProfileId?.call(),
+        ),
       );
       if (!persisted || operation != _operation) {
         return ConnectionResult.unreachable;

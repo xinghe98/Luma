@@ -6,6 +6,7 @@ import 'package:luma/app/controllers/media_controller.dart';
 import 'package:luma/app/controllers/session_controller.dart';
 import 'package:luma/app/controllers/settings_controller.dart';
 import 'package:luma/app/app_dependencies.dart';
+import 'package:luma/data/api/api_session.dart';
 import 'package:luma/data/mock/mock_connection_service.dart';
 import 'package:luma/data/mock/mock_media_repository.dart';
 import 'package:luma/data/fixtures/media_fixtures.dart';
@@ -125,6 +126,59 @@ void main() {
     expect(await restore, isFalse);
     expect(dependencies.restoring.value, isFalse);
   });
+
+  test(
+    'disconnect saves final progress before converging after failure',
+    () async {
+      final events = <String>[];
+      final failure = StateError('credential clear failed');
+      final apiSession = ApiSession(
+        origin: 'http://server.local:8080',
+        token: 'token',
+      );
+      final service = _FailingDisconnectService(
+        apiSession: apiSession,
+        events: events,
+        failure: failure,
+      );
+      final repository = _RecordingProgressMediaRepository(events);
+      final dependencies = AppDependencies(
+        mediaRepository: repository,
+        connectionService: service,
+        apiSession: apiSession,
+      );
+      addTearDown(dependencies.dispose);
+      await dependencies.connection.connect(
+        'http://server.local:8080',
+        const LoginCredentials(username: 'user', password: 'password'),
+      );
+      expect(dependencies.connection.phase, ConnectionPhase.failure);
+      dependencies.session.connect(
+        const ServerProfile(
+          name: 'Server',
+          address: 'http://server.local:8080',
+          token: 'token',
+          hostName: 'server.local',
+        ),
+      );
+      final item = buildMediaFixtures()
+          .firstWhere((item) => item.type == MediaType.video)
+          .copyWith(status: 'processing');
+      dependencies.playerSession.start(item);
+      expect(dependencies.playerSession.player, isNotNull);
+
+      await expectLater(dependencies.disconnect(), throwsA(same(failure)));
+
+      expect(events, ['progress', 'disconnect']);
+      expect(apiSession.origin, isEmpty);
+      expect(apiSession.token, isNull);
+      expect(service.connectedProfile, isNull);
+      expect(dependencies.session.server, isNull);
+      expect(dependencies.playerSession.player, isNull);
+      expect(dependencies.connection.phase, ConnectionPhase.idle);
+      expect(dependencies.media.items, isEmpty);
+    },
+  );
 
   test('saved-session restore contains credential read failures', () async {
     final credentials = _PendingCredentialStore();
@@ -878,6 +932,56 @@ MediaItem _pagingItem(String id) => MediaItem(
   thumbnailUrl: '/thumbnail',
   cardThumbnailUrl: '/thumbnail?variant=card',
 );
+
+final class _RecordingProgressMediaRepository extends MockMediaRepository {
+  _RecordingProgressMediaRepository(this.events);
+
+  final List<String> events;
+
+  @override
+  Future<MediaItem> updateProgress(String id, int positionMs) async {
+    events.add('progress');
+    return super.updateProgress(id, positionMs);
+  }
+}
+
+final class _FailingDisconnectService implements ConnectionService {
+  _FailingDisconnectService({
+    required this.apiSession,
+    required this.events,
+    required this.failure,
+  });
+
+  final ApiSession apiSession;
+  final List<String> events;
+  final Object failure;
+
+  @override
+  ServerProfile? connectedProfile = const ServerProfile(
+    name: 'Server',
+    address: 'http://server.local:8080',
+    token: 'token',
+    hostName: 'server.local',
+  );
+
+  @override
+  Future<void> disconnect() async {
+    events.add('disconnect');
+    connectedProfile = null;
+    apiSession.clear();
+    throw failure;
+  }
+
+  @override
+  Future<ConnectionResult> login(
+    String address,
+    LoginCredentials credentials,
+  ) async => ConnectionResult.unreachable;
+
+  @override
+  Future<ConnectionResult> restore(String address, String sessionToken) async =>
+      ConnectionResult.unauthorized;
+}
 
 class _ImmediateConnectionService implements ConnectionService {
   @override

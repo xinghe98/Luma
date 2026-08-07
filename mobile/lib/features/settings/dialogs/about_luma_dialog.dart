@@ -57,9 +57,28 @@ void showAboutLumaDialog(BuildContext context) {
                 color: theme.colorScheme.onSurfaceVariant,
               ),
             ),
+            const SizedBox(height: LumaSpacing.sm),
+            Text(
+              'Xray-core v26.7.28 源码：'
+              'https://github.com/XTLS/Xray-core/tree/v26.7.28',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
           ],
         ),
         actions: [
+          TextButton(
+            onPressed: () {
+              showLicensePage(
+                context: context,
+                applicationName: AppMetadata.displayName,
+                applicationVersion: AppMetadata.version,
+                applicationLegalese: 'libXray v26.7.28 · Xray-core v26.7.28',
+              );
+            },
+            child: const Text('开源许可'),
+          ),
           FilledButton(
             onPressed: () => Navigator.pop(context),
             child: const Text('知道了'),

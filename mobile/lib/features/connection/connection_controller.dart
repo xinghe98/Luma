@@ -15,16 +15,19 @@ class ConnectionController extends ChangeNotifier {
     required SessionController sessionController,
     required MediaController mediaController,
     Future<void> Function()? onConnected,
+    bool Function()? isProxyActive,
     this.successDelay = const Duration(milliseconds: 500),
   }) : _service = connectionService,
        _session = sessionController,
        _media = mediaController,
+       _isProxyActive = isProxyActive ?? _alwaysDirect,
        _onConnected = onConnected;
 
   final ConnectionService _service;
   final SessionController _session;
   final MediaController _media;
   final Future<void> Function()? _onConnected;
+  final bool Function() _isProxyActive;
   final Duration successDelay;
   ConnectionPhase _phase = ConnectionPhase.idle;
   String? _message;
@@ -71,7 +74,9 @@ class ConnectionController extends ChangeNotifier {
         _message = '用户名或密码错误，或账号已停用';
       case ConnectionResult.unreachable:
         _phase = ConnectionPhase.failure;
-        _message = '无法连接服务器，请检查地址和内网状态';
+        _message = _isProxyActive()
+            ? '无法通过 VMess 代理连接服务器，请检查节点和内网地址'
+            : '无法连接服务器，请检查地址和内网状态';
     }
     notifyListeners();
   }
@@ -100,6 +105,8 @@ class ConnectionController extends ChangeNotifier {
     _message = null;
     notifyListeners();
   }
+
+  static bool _alwaysDirect() => false;
 
   @override
   void dispose() {

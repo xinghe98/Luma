@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
@@ -41,6 +43,7 @@ class _SettingsPageState extends State<SettingsPage> {
         settings,
         dependencies.media,
         dependencies.session,
+        if (dependencies.proxy != null) dependencies.proxy!,
       ]),
       builder: (context, _) {
         final server = dependencies.session.server;
@@ -107,6 +110,23 @@ class _SettingsPageState extends State<SettingsPage> {
                 },
                 onEditAlias: () => _editAlias(context),
                 canScan: server.can('scans.manage'),
+              ),
+              ListTile(
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: LumaSpacing.xxs,
+                ),
+                leading: Icon(
+                  dependencies.proxy?.isActive == true
+                      ? Icons.shield_rounded
+                      : Icons.lan_outlined,
+                ),
+                title: Text(
+                  dependencies.proxy?.isActive == true
+                      ? '网络：VMess · '
+                            '${dependencies.proxy!.profile?.displayName ?? '已启动'}'
+                      : '网络：直连',
+                ),
+                subtitle: const Text('当前服务器会话的网络通道'),
               ),
               const SizedBox(height: LumaSpacing.xl),
               const SectionHeader(title: '媒体库整理'),
@@ -175,7 +195,48 @@ class _SettingsPageState extends State<SettingsPage> {
       confirmLabel: '断开',
     );
     if (!confirmed || !context.mounted) return;
-    await AppScope.of(context).disconnect();
+    final dependencies = AppScope.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await dependencies.disconnect();
+    } on Object {
+      _showCredentialCleanupFailure(messenger, dependencies.disconnect);
+    }
+  }
+
+  void _showCredentialCleanupFailure(
+    ScaffoldMessengerState messenger,
+    Future<void> Function() disconnect,
+  ) {
+    if (!messenger.mounted) return;
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: const Text('已断开服务器，但本机凭据未清除'),
+          action: SnackBarAction(
+            label: '重试',
+            onPressed: () {
+              unawaited(_retryCredentialCleanup(messenger, disconnect));
+            },
+          ),
+        ),
+      );
+  }
+
+  Future<void> _retryCredentialCleanup(
+    ScaffoldMessengerState messenger,
+    Future<void> Function() disconnect,
+  ) async {
+    try {
+      await disconnect();
+      if (!messenger.mounted) return;
+      messenger
+        ..hideCurrentSnackBar()
+        ..showSnackBar(const SnackBar(content: Text('本机凭据已清除')));
+    } on Object {
+      _showCredentialCleanupFailure(messenger, disconnect);
+    }
   }
 
   Future<void> _editAlias(BuildContext context) async {

@@ -8,6 +8,7 @@ import 'package:media_kit_video/media_kit_video.dart';
 
 import '../../app/controllers/media_controller.dart';
 import '../../data/api/api_session.dart';
+import '../../data/proxy/loopback_media_relay.dart';
 import '../../data/models/media_item.dart';
 
 class PlayerController extends ChangeNotifier {
@@ -16,10 +17,13 @@ class PlayerController extends ChangeNotifier {
     required this.item,
     required MediaController media,
     ApiSession? apiSession,
+    MediaRequestRouter? mediaRequestRouter,
     this.startFromBeginning = false,
     this.autoHideDelay = const Duration(seconds: 4),
   }) : _media = media,
        _apiSession = apiSession,
+       _mediaRequestRouter =
+           mediaRequestRouter ?? const DirectMediaRequestRouter(),
        _startAtZero = startFromBeginning,
        _pendingResumePosition = startFromBeginning || item.progress <= 0
            ? null
@@ -31,6 +35,7 @@ class PlayerController extends ChangeNotifier {
   final MediaItem item;
   final MediaController _media;
   final ApiSession? _apiSession;
+  final MediaRequestRouter _mediaRequestRouter;
   final bool startFromBeginning;
   final Duration autoHideDelay;
   bool _startAtZero;
@@ -43,6 +48,7 @@ class PlayerController extends ChangeNotifier {
   Player? _player;
   VideoController? _videoController;
   final List<StreamSubscription<dynamic>> _playerSubscriptions = [];
+  String? _mediaRouteToken;
   String? _error;
   bool _disposed = false;
   bool _initialized = false;
@@ -110,6 +116,8 @@ class PlayerController extends ChangeNotifier {
   Future<void> _initializeVideo(ApiSession session, String streamUrl) async {
     final generation = ++_initializationGeneration;
     final access = session.resolveResource(streamUrl);
+    _mediaRequestRouter.revoke(_mediaRouteToken);
+    _mediaRouteToken = null;
     final previous = _player;
     _player = null;
     _videoController = null;
@@ -123,12 +131,14 @@ class PlayerController extends ChangeNotifier {
     _videoController = VideoController(player);
     _listenToPlayer(player, generation);
     try {
+      final mediaRoute = _mediaRequestRouter.route(access.url, access.headers);
+      _mediaRouteToken = mediaRoute.token;
       final initial = _startAtZero ? Duration.zero : _position;
       _pendingResumePosition = initial > Duration.zero ? initial : null;
       await player.open(
         Media(
-          access.url,
-          httpHeaders: access.headers,
+          mediaRoute.url,
+          httpHeaders: mediaRoute.headers,
           start: _pendingResumePosition,
         ),
         play: false,
@@ -533,6 +543,8 @@ class PlayerController extends ChangeNotifier {
     _saveTimer?.cancel();
     _syncThrottle?.cancel();
     _lockHintTimer?.cancel();
+    _mediaRequestRouter.revoke(_mediaRouteToken);
+    _mediaRouteToken = null;
     final player = _player;
     _player = null;
     _videoController = null;

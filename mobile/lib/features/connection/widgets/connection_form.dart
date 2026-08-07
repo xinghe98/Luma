@@ -15,6 +15,7 @@ class ConnectionForm extends StatelessWidget {
     required this.usernameController,
     required this.passwordController,
     required this.enabled,
+    this.proxied = false,
     required this.onConnect,
   });
 
@@ -24,6 +25,7 @@ class ConnectionForm extends StatelessWidget {
   final TextEditingController usernameController;
   final TextEditingController passwordController;
   final bool enabled;
+  final bool proxied;
   final VoidCallback onConnect;
 
   @override
@@ -38,7 +40,7 @@ class ConnectionForm extends StatelessWidget {
               flex: 3,
               child: TextField(
                 controller: hostController,
-                autofocus: true,
+                autofocus: false,
                 enabled: enabled && !controller.isLoading,
                 keyboardType: TextInputType.url,
                 textInputAction: TextInputAction.next,
@@ -96,9 +98,13 @@ class ConnectionForm extends StatelessWidget {
         ),
         const SizedBox(height: LumaSpacing.sm),
         Text(
-          '当前服务器使用 HTTP，用户名和密码仅应在可信局域网内传输。',
+          proxied
+              ? '用户名和密码将通过 VMess 通道发送到内网服务器。'
+              : '当前服务器使用 HTTP，用户名和密码仅应在可信局域网内传输。',
           style: Theme.of(context).textTheme.bodySmall?.copyWith(
-            color: Theme.of(context).colorScheme.error,
+            color: proxied
+                ? Theme.of(context).colorScheme.onSurfaceVariant
+                : Theme.of(context).colorScheme.error,
           ),
         ),
         const SizedBox(height: LumaSpacing.md),

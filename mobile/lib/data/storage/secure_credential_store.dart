@@ -10,7 +10,8 @@ final class SecureCredentialStore implements CredentialStore {
   static const _originKey = 'luma.api.origin';
   static const _legacyTokenKey = 'luma.api.token';
   static const _sessionKey = 'luma.api.session';
-  static const _credentialsKey = 'luma.api.credentials.v2';
+  static const _credentialsV2Key = 'luma.api.credentials.v2';
+  static const _credentialsKey = 'luma.api.credentials.v3';
 
   final FlutterSecureStorage _storage;
 
@@ -18,21 +19,13 @@ final class SecureCredentialStore implements CredentialStore {
   @override
   Future<StoredCredentials?> read() async {
     final values = await _storage.readAll();
-    final encoded = values[_credentialsKey];
-    if (encoded != null) {
-      final decoded = jsonDecode(encoded);
-      if (decoded is! Map) {
-        throw const FormatException('安全凭据格式无效');
-      }
-      final origin = decoded['origin'];
-      final sessionToken = decoded['session_token'];
-      if (origin is! String || origin.isEmpty) {
-        throw const FormatException('安全凭据缺少服务地址');
-      }
-      if (sessionToken != null && sessionToken is! String) {
-        throw const FormatException('安全凭据 token 格式无效');
-      }
-      return StoredCredentials(origin: origin, sessionToken: sessionToken);
+    final encodedV3 = values[_credentialsKey];
+    if (encodedV3 != null) {
+      return _decodeCredentials(encodedV3, hasProxyProfileId: true);
+    }
+    final encodedV2 = values[_credentialsV2Key];
+    if (encodedV2 != null) {
+      return _decodeCredentials(encodedV2, hasProxyProfileId: false);
     }
 
     final origin = values[_originKey];
@@ -48,13 +41,41 @@ final class SecureCredentialStore implements CredentialStore {
   /// 以单条安全存储记录写入 origin/token；写入失败不会发布部分新凭据。
   @override
   Future<void> write(StoredCredentials credentials) async {
-    // 单条安全存储写入避免 origin/token 分步更新产生部分凭据。
+    // 单条安全存储写入避免 origin/token/profile ID 分步更新产生部分凭据。
     await _storage.write(
       key: _credentialsKey,
       value: jsonEncode({
         'origin': credentials.origin,
         'session_token': credentials.sessionToken,
+        'proxy_profile_id': credentials.proxyProfileId,
       }),
+    );
+  }
+
+  static StoredCredentials _decodeCredentials(
+    String encoded, {
+    required bool hasProxyProfileId,
+  }) {
+    final decoded = jsonDecode(encoded);
+    if (decoded is! Map) throw const FormatException('安全凭据格式无效');
+    final origin = decoded['origin'];
+    final sessionToken = decoded['session_token'];
+    final proxyProfileId = decoded['proxy_profile_id'];
+    if (origin is! String || origin.isEmpty) {
+      throw const FormatException('安全凭据缺少服务地址');
+    }
+    if (sessionToken != null && sessionToken is! String) {
+      throw const FormatException('安全凭据 token 格式无效');
+    }
+    if (hasProxyProfileId &&
+        proxyProfileId != null &&
+        (proxyProfileId is! String || proxyProfileId.isEmpty)) {
+      throw const FormatException('安全凭据代理配置格式无效');
+    }
+    return StoredCredentials(
+      origin: origin,
+      sessionToken: sessionToken,
+      proxyProfileId: hasProxyProfileId ? proxyProfileId as String? : null,
     );
   }
 
@@ -66,6 +87,7 @@ final class SecureCredentialStore implements CredentialStore {
       _storage.delete(key: _legacyTokenKey),
       _storage.delete(key: _sessionKey),
       _storage.delete(key: _credentialsKey),
+      _storage.delete(key: _credentialsV2Key),
     ]);
   }
 }

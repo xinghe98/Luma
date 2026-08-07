@@ -1,9 +1,14 @@
 /// 已保存的会话只包含可撤销的会话凭据，绝不保存用户密码。
 final class StoredCredentials {
-  const StoredCredentials({required this.origin, required this.sessionToken});
+  const StoredCredentials({
+    required this.origin,
+    required this.sessionToken,
+    this.proxyProfileId,
+  });
 
   final String origin;
   final String? sessionToken;
+  final String? proxyProfileId;
 }
 
 abstract interface class CredentialStore {

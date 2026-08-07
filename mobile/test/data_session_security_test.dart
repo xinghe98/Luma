@@ -10,6 +10,7 @@ import 'package:luma/data/api/api_exception.dart';
 import 'package:luma/data/api/api_session.dart';
 import 'package:luma/data/api/api_session_interceptor.dart';
 import 'package:luma/data/repositories/api_source_repository.dart';
+import 'package:luma/data/models/server_profile.dart';
 import 'package:luma/data/services/api_connection_service.dart';
 import 'package:luma/data/services/connection_service.dart';
 import 'package:luma/data/services/device_key_store.dart';
@@ -283,6 +284,33 @@ void main() {
       expect(credentials.current?.sessionToken, 'new-token');
     },
   );
+
+  test(
+    'credential clear failure still invalidates in-memory session',
+    () async {
+      final session = ApiSession(
+        origin: 'http://server.local:8080',
+        token: null,
+      );
+      final dio = Dio()..interceptors.add(ApiSessionInterceptor(session));
+      addTearDown(dio.close);
+      final credentials = _ClearThrowingCredentialStore();
+      final service = _connectionService(dio, session, credentials);
+      service.connectedProfile = const ServerProfile(
+        name: 'Server',
+        address: 'http://server.local:8080',
+        token: '',
+        hostName: 'server.local',
+      );
+
+      final disconnect = service.disconnect();
+      expect(session.origin, isEmpty);
+      expect(session.token, isNull);
+      expect(service.connectedProfile, isNull);
+      await expectLater(disconnect, throwsA(isA<StateError>()));
+      expect(credentials.clearCalled, isTrue);
+    },
+  );
 }
 
 ApiConnectionService _connectionService(
@@ -379,6 +407,22 @@ final class _ThrowingCredentialStore implements CredentialStore {
   Future<void> write(StoredCredentials credentials) async {
     throw StateError('secure storage failed');
   }
+}
+
+final class _ClearThrowingCredentialStore implements CredentialStore {
+  bool clearCalled = false;
+
+  @override
+  Future<void> clear() async {
+    clearCalled = true;
+    throw StateError('secure storage clear failed');
+  }
+
+  @override
+  Future<StoredCredentials?> read() async => null;
+
+  @override
+  Future<void> write(StoredCredentials credentials) async {}
 }
 
 final class _MemoryAliasStore implements ServerAliasStore {
