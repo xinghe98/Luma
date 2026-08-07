@@ -270,9 +270,12 @@ class _CatalogPageState extends State<CatalogPage>
                       SliverToBoxAdapter(
                         child: KeyedSubtree(
                           key: _personalSectionKey,
-                          child: _SectionHeading(
-                            title: '个人视频',
-                            onOpenAll: openPersonalVideos,
+                          child: Padding(
+                            padding: const EdgeInsets.only(top: LumaSpacing.lg),
+                            child: _SectionHeading(
+                              title: '个人视频',
+                              onOpenAll: openPersonalVideos,
+                            ),
                           ),
                         ),
                       ),

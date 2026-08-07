@@ -63,6 +63,7 @@ class _LibraryPageState extends State<LibraryPage>
   LibraryController? _controller;
   final _scroll = ScrollController();
   bool _entrySettled = false;
+  bool _loadMoreCheckScheduled = false;
 
   @override
   bool get wantKeepAlive => true;
@@ -90,6 +91,7 @@ class _LibraryPageState extends State<LibraryPage>
       pageSize: widget.pageSize,
     );
     _controller = controller;
+    controller.addListener(_scheduleLoadMoreCheck);
     final entryGate = _waitForEntrySettle();
     unawaited(controller.ensureLoadedAfter(entryGate));
     unawaited(_restoreScrollCacheAfter(entryGate));
@@ -100,11 +102,27 @@ class _LibraryPageState extends State<LibraryPage>
     _scroll
       ..removeListener(_onScroll)
       ..dispose();
-    _controller?.dispose();
+    _controller
+      ?..removeListener(_scheduleLoadMoreCheck)
+      ..dispose();
     super.dispose();
   }
 
-  void _onScroll() {
+  void _onScroll() => _maybeLoadMore();
+
+  /// 内容不足以产生滚动量时（如 Windows 最大化首屏），滚动监听不会触发，
+  /// 需在布局稳定后主动检查是否仍需追加下一页。
+  void _scheduleLoadMoreCheck() {
+    if (_loadMoreCheckScheduled) return;
+    _loadMoreCheckScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadMoreCheckScheduled = false;
+      if (!mounted) return;
+      _maybeLoadMore();
+    });
+  }
+
+  void _maybeLoadMore() {
     final controller = _controller;
     if (controller == null ||
         !controller.hasMore ||
@@ -115,7 +133,7 @@ class _LibraryPageState extends State<LibraryPage>
     if (!_scroll.hasClients) return;
     final position = _scroll.position;
     if (position.pixels >= position.maxScrollExtent - 720) {
-      controller.loadMore();
+      unawaited(controller.loadMore());
     }
   }
 
