@@ -176,11 +176,11 @@ abstract final class LumaLayout {
   static const pagePaddingWideH = 32.0;
   static const pagePaddingTop = 12.0;
   static const pagePaddingBottom = 40.0;
-  static const buttonHeight = 52.0;
+  static const buttonHeight = 40.0;
   static const navigationBarHeight = 68.0;
   static const minTapTarget = 48.0;
   static const inputHeight = 52.0;
-  static const compactControlHeight = 48.0;
+  static const compactControlHeight = 40.0;
   static const chipHeight = 40.0;
   static const actionWidthBreakpoint = 600.0;
   static const actionMaxWidth = 360.0;

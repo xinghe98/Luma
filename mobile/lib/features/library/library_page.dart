@@ -303,7 +303,7 @@ class _LibraryPageState extends State<LibraryPage>
           return Column(
             children: [
               SizedBox(
-                height: LumaLayout.buttonHeight,
+                height: LumaLayout.minTapTarget,
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.end,
                   children: _actions(),

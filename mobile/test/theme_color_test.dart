@@ -54,7 +54,7 @@ void main() {
           ?.resolve(<WidgetState>{});
 
       expect(theme.inputDecorationTheme.constraints?.minHeight, 52);
-      expect(filledMinimum?.height, 52);
+      expect(filledMinimum?.height, LumaLayout.buttonHeight);
       expect(iconMinimum, const Size(48, 48));
       expect(LumaRadii.medium, 16);
       expect(LumaIconSize.action, 24);

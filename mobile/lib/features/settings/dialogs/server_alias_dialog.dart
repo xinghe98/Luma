@@ -60,24 +60,30 @@ class _ServerAliasDialogState extends State<_ServerAliasDialog> {
     actions: [
       TextButton(
         style: TextButton.styleFrom(
-          minimumSize: const Size.square(LumaLayout.minTapTarget),
-          padding: const EdgeInsets.symmetric(horizontal: LumaSpacing.xxs),
+          minimumSize: const Size(0, LumaLayout.buttonHeight),
+          padding: const EdgeInsets.symmetric(horizontal: LumaSpacing.sm),
+          visualDensity: VisualDensity.standard,
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
         ),
         onPressed: () => Navigator.pop(context, ''),
         child: const Text('恢复默认'),
       ),
       TextButton(
         style: TextButton.styleFrom(
-          minimumSize: const Size.square(LumaLayout.minTapTarget),
-          padding: const EdgeInsets.symmetric(horizontal: LumaSpacing.xxs),
+          minimumSize: const Size(0, LumaLayout.buttonHeight),
+          padding: const EdgeInsets.symmetric(horizontal: LumaSpacing.sm),
+          visualDensity: VisualDensity.standard,
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
         ),
         onPressed: () => Navigator.pop(context),
         child: const Text('取消'),
       ),
       FilledButton(
         style: FilledButton.styleFrom(
-          minimumSize: const Size.square(LumaLayout.minTapTarget),
-          padding: const EdgeInsets.symmetric(horizontal: LumaSpacing.xxs),
+          minimumSize: const Size(0, LumaLayout.buttonHeight),
+          padding: const EdgeInsets.symmetric(horizontal: LumaSpacing.md),
+          visualDensity: VisualDensity.standard,
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
         ),
         onPressed: () => Navigator.pop(context, _controller.text),
         child: const Text('保存'),

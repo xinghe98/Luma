@@ -34,9 +34,10 @@ void main() {
   );
 
   Future<void> dismissLaunchOverlay(WidgetTester tester) async {
-    // 先让品牌资源预缓存完成，再推进最短展示时间。
+    // 推进最短展示时间并应用 setState，确保开屏 AbsorbPointer 卸下。
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 1100));
+    await tester.pump();
   }
 
   testWidgets('production app disposes the dependencies it creates', (
@@ -114,6 +115,8 @@ void main() {
 
     // IP 为空时拼不出合法地址。
     await tester.enterText(find.byType(TextField).at(0), '');
+    await tester.ensureVisible(find.text('立即连接'));
+    await tester.pump();
     await tester.tap(find.text('立即连接'));
     await tester.pump();
     expect(find.text('正在连接'), findsOneWidget);
@@ -159,6 +162,8 @@ void main() {
     await tester.enterText(find.byType(TextField).at(0), '192.168.1.10');
     await tester.enterText(find.byType(TextField).at(1), '8080');
     await tester.enterText(find.byType(TextField).at(2), 'test-token');
+    await tester.ensureVisible(find.text('立即连接'));
+    await tester.pump();
     await tester.tap(find.text('立即连接'));
     await tester.pump();
 
@@ -203,6 +208,8 @@ void main() {
     await tester.enterText(find.byType(TextField).at(1), '8080');
     await tester.enterText(find.byType(TextField).at(2), 'test-user');
     await tester.enterText(find.byType(TextField).at(3), 'test-password');
+    await tester.ensureVisible(find.text('立即连接'));
+    await tester.pump();
     await tester.tap(find.text('立即连接'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 1500));

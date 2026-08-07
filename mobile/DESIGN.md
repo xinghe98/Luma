@@ -52,7 +52,7 @@ components:
     backgroundColor: "{colors.light-primary}"
     textColor: "{colors.paper}"
     rounded: "{rounded.md}"
-    height: "52px"
+    height: "40px"
   surface-card:
     backgroundColor: "{colors.surface}"
     textColor: "{colors.paper}"
@@ -66,7 +66,7 @@ components:
 layout:
   page-padding-h: "20px"
   page-padding-bottom: "40px"
-  button-height: "52px"
+  button-height: "40px"
   navigation-bar-height: "68px"
   min-tap-target: "48px"
 brand:
@@ -141,7 +141,7 @@ MiSans 以官方原始可变字体随应用发布，许可协议保存在 `asset
 
 ### Buttons
 
-- **Shape:** 清晰柔和的中圆角（12px），主要按钮高度至少 52px。
+- **Shape:** 清晰柔和的中圆角（12px），主要按钮高度 40px。
 - **Primary:** 雾青背景配高对比文字；图标和标签共同说明行为。
 - **Hover / Focus:** 使用 Material 状态层和明确焦点，不改变布局尺寸。
 - **Secondary / Ghost:** 保持标准 Material 3 轮廓或文字按钮语义。

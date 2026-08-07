@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:luma/app/app_dependencies.dart';
 import 'package:luma/app/app_scope.dart';
 import 'package:luma/app/controllers/media_controller.dart';
+import 'package:luma/core/theme.dart';
 import 'package:luma/data/fixtures/media_fixtures.dart';
 import 'package:luma/data/mock/mock_connection_service.dart';
 import 'package:luma/data/mock/mock_media_repository.dart';
@@ -49,8 +50,8 @@ void main() {
     );
     expect(play.center.dy, favorite.center.dy);
     expect(play.right, lessThan(favorite.left));
-    expect(favorite.width, 52);
-    expect(favorite.height, 52);
+    expect(favorite.width, LumaLayout.buttonHeight);
+    expect(favorite.height, LumaLayout.buttonHeight);
   });
 
   testWidgets('video metadata cards are centered as a group', (tester) async {

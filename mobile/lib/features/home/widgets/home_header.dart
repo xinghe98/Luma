@@ -131,7 +131,7 @@ class _HomeSearchButton extends StatelessWidget {
           onTap: onPressed,
           borderRadius: radius,
           child: SizedBox(
-            height: LumaLayout.buttonHeight,
+            height: LumaLayout.inputHeight,
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: LumaSpacing.md),
               child: Row(

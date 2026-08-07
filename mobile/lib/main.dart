@@ -142,16 +142,15 @@ class _LaunchBrandOverlayState extends State<_LaunchBrandOverlay> {
   void didChangeDependencies() {
     super.didChangeDependencies();
     if (_dismissTimer != null) return;
+    // 最短展示时间与资源预缓存并行；不因解码阻塞计时，避免遮罩长期吞掉点击。
+    _startDismissTimer();
     final lockup = AssetImage(
       BrandMark.assetFor(
         variant: BrandMarkVariant.horizontal,
         brightness: Theme.of(context).brightness,
       ),
     );
-    precacheImage(lockup, context).then<void>(
-      (_) => _startDismissTimer(),
-      onError: (_, _) => _startDismissTimer(),
-    );
+    unawaited(precacheImage(lockup, context).catchError((_) {}));
   }
 
   void _startDismissTimer() {

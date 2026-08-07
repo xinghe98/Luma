@@ -4,6 +4,9 @@ import '../../app/app_scope.dart';
 import '../../core/extensions.dart';
 import '../../core/theme.dart';
 import '../../data/services/connection_service.dart';
+import '../../data/storage/connection_form_store.dart';
+import 'connection_controller.dart';
+
 import 'widgets/connection_brand_header.dart';
 import 'widgets/connection_form.dart';
 import 'widgets/recent_servers.dart';
@@ -22,6 +25,15 @@ class _ConnectionPageState extends State<ConnectionPage> {
   final _username = TextEditingController();
   final _password = TextEditingController();
   static const _connectionScheme = 'http';
+  var _formHydrated = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_formHydrated) return;
+    _formHydrated = true;
+    _hydrateSavedForm();
+  }
 
   @override
   void dispose() {
@@ -39,6 +51,54 @@ class _ConnectionPageState extends State<ConnectionPage> {
     if (host.isEmpty) return '';
     if (port.isEmpty) return '$_connectionScheme://$host';
     return '$_connectionScheme://$host:$port';
+  }
+
+  Future<void> _hydrateSavedForm() async {
+    final saved = await AppScope.of(context).loadSavedConnectionForm();
+    if (!mounted || saved == null) return;
+    // 用户已开始输入时不覆盖。
+    if (_host.text.trim().isNotEmpty ||
+        _username.text.trim().isNotEmpty ||
+        (_port.text.trim().isNotEmpty && _port.text.trim() != '8080')) {
+      return;
+    }
+    setState(() {
+      _host.value = TextEditingValue(
+        text: saved.host,
+        selection: TextSelection.collapsed(offset: saved.host.length),
+      );
+      _port.value = TextEditingValue(
+        text: saved.port.isEmpty ? '8080' : saved.port,
+        selection: TextSelection.collapsed(
+          offset: (saved.port.isEmpty ? '8080' : saved.port).length,
+        ),
+      );
+      _username.value = TextEditingValue(
+        text: saved.username,
+        selection: TextSelection.collapsed(offset: saved.username.length),
+      );
+    });
+  }
+
+  Future<void> _connect() async {
+    FocusScope.of(context).unfocus();
+    final dependencies = AppScope.of(context);
+    final host = _host.text.trim();
+    final port = _port.text.trim();
+    final username = _username.text.trim();
+    await dependencies.connection.connect(
+      _serverAddress,
+      LoginCredentials(username: _username.text, password: _password.text),
+    );
+    // 成功后路由可能已卸载连接页，表单记忆不依赖 mounted。
+    if (dependencies.isDisposed || host.isEmpty) return;
+    final connected =
+        dependencies.session.isConnected ||
+        dependencies.connection.phase == ConnectionPhase.success;
+    if (!connected) return;
+    await dependencies.rememberConnectionForm(
+      SavedConnectionForm(host: host, port: port, username: username),
+    );
   }
 
   @override
@@ -100,14 +160,8 @@ class _ConnectionPageState extends State<ConnectionPage> {
                               proxied: proxy?.isActive ?? false,
                               enabled: !restoring,
                               onConnect: () {
-                                FocusScope.of(context).unfocus();
-                                controller.connect(
-                                  _serverAddress,
-                                  LoginCredentials(
-                                    username: _username.text,
-                                    password: _password.text,
-                                  ),
-                                );
+                                // ignore: discarded_futures
+                                _connect();
                               },
                             ),
                             if (restoring) ...[

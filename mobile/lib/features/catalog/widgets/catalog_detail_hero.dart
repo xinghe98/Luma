@@ -213,7 +213,7 @@ class _SecondaryActions extends StatelessWidget {
   ButtonStyle _secondaryActionStyle() => OutlinedButton.styleFrom(
     foregroundColor: CatalogDetailPalette.text,
     side: const BorderSide(color: CatalogDetailPalette.outline),
-    minimumSize: const Size(0, 52),
+    minimumSize: const Size(0, LumaLayout.buttonHeight),
     shape: RoundedRectangleBorder(
       borderRadius: BorderRadius.circular(LumaRadii.medium),
     ),
@@ -348,10 +348,10 @@ class _PrimaryPlayButton extends StatelessWidget {
         style: FilledButton.styleFrom(
           backgroundColor: CatalogDetailPalette.accent,
           foregroundColor: CatalogDetailPalette.onAccent,
-          minimumSize: const Size(0, 56),
+          minimumSize: const Size(0, LumaLayout.buttonHeight),
           textStyle: Theme.of(
             context,
-          ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+          ).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w700),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(LumaRadii.medium),
           ),

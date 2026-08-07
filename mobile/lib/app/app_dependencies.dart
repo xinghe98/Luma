@@ -29,6 +29,9 @@ import '../data/storage/credential_store.dart';
 import '../data/storage/secure_credential_store.dart';
 import '../data/storage/secure_server_alias_store.dart';
 import '../data/storage/server_alias_store.dart';
+import '../data/storage/connection_form_store.dart';
+import '../data/storage/secure_connection_form_store.dart';
+
 import '../features/connection/connection_controller.dart';
 import '../features/catalog/catalog_store.dart';
 import '../features/player/player_session_controller.dart';
@@ -45,6 +48,7 @@ class AppDependencies {
     SettingsController? settingsController,
     Dio? dio,
     CredentialStore? credentialStore,
+    ConnectionFormStore? connectionFormStore,
     ServerAliasStore? aliasStore,
     CatalogRepository? catalogRepository,
     SourceRepository? sourceRepository,
@@ -69,6 +73,7 @@ class AppDependencies {
            mediaRequestRouter ?? mediaRelay ?? const DirectMediaRequestRouter(),
        _connectionService = connectionService,
        _credentialStore = credentialStore,
+       _connectionFormStore = connectionFormStore,
        _aliasStore = aliasStore,
        _dio = dio {
     mediaBranchPrewarmer = MediaBranchPrewarmer(
@@ -129,6 +134,7 @@ class AppDependencies {
     final client = ApiClient(dio, apiPrefix: apiPrefix);
     const secureStorage = FlutterSecureStorage();
     final credentials = SecureCredentialStore(secureStorage);
+    final connectionForms = SecureConnectionFormStore(secureStorage);
     final aliases = SecureServerAliasStore(secureStorage);
     final sources = ApiSourceRepository(client);
     final connectionService = ApiConnectionService(
@@ -148,6 +154,7 @@ class AppDependencies {
       ),
       dio: dio,
       credentialStore: credentials,
+      connectionFormStore: connectionForms,
       aliasStore: aliases,
       catalogRepository: ApiCatalogRepository(client),
       sourceRepository: sources,
@@ -177,6 +184,7 @@ class AppDependencies {
   final SourceRepository? sources;
   final ConnectionService _connectionService;
   final CredentialStore? _credentialStore;
+  final ConnectionFormStore? _connectionFormStore;
   final ServerAliasStore? _aliasStore;
   final Dio? _dio;
   final VmessProxyController? proxy;
@@ -200,6 +208,30 @@ class AppDependencies {
       session.server == null &&
       !connection.isLoading &&
       !restoring.value;
+
+  /// 读取上次成功连接的 IP / 端口 / 用户名；失败时返回 null，不阻塞连接页。
+  Future<SavedConnectionForm?> loadSavedConnectionForm() async {
+    if (_disposed) return null;
+    final store = _connectionFormStore;
+    if (store == null) return null;
+    try {
+      return await store.read();
+    } on Object {
+      return null;
+    }
+  }
+
+  /// 登录成功后记忆表单字段；密码永不写入。写入失败静默忽略。
+  Future<void> rememberConnectionForm(SavedConnectionForm form) async {
+    if (_disposed) return;
+    final store = _connectionFormStore;
+    if (store == null) return;
+    try {
+      await store.write(form);
+    } on Object {
+      // 表单记忆失败不影响已建立的会话。
+    }
+  }
 
   Future<void> initialize() async {
     if (_disposed) return;

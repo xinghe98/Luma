@@ -96,7 +96,9 @@ ThemeData applyLumaComponentThemes({
     filledButtonTheme: FilledButtonThemeData(
       style: FilledButton.styleFrom(
         minimumSize: const Size(0, LumaLayout.buttonHeight),
-        padding: const EdgeInsets.symmetric(horizontal: LumaSpacing.lg),
+        padding: const EdgeInsets.symmetric(horizontal: LumaSpacing.md),
+        visualDensity: VisualDensity.standard,
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
         shape: buttonShape,
         textStyle: textTheme.labelLarge,
       ),
@@ -105,6 +107,8 @@ ThemeData applyLumaComponentThemes({
       style: OutlinedButton.styleFrom(
         minimumSize: const Size(0, LumaLayout.buttonHeight),
         padding: const EdgeInsets.symmetric(horizontal: LumaSpacing.md),
+        visualDensity: VisualDensity.standard,
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
         shape: buttonShape,
         textStyle: textTheme.labelLarge,
       ),
@@ -112,6 +116,9 @@ ThemeData applyLumaComponentThemes({
     textButtonTheme: TextButtonThemeData(
       style: TextButton.styleFrom(
         minimumSize: const Size(0, LumaLayout.compactControlHeight),
+        padding: const EdgeInsets.symmetric(horizontal: LumaSpacing.sm),
+        visualDensity: VisualDensity.standard,
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
         shape: buttonShape,
         textStyle: textTheme.labelLarge,
       ),
