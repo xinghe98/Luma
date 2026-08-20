@@ -316,7 +316,18 @@ class _PlayerStatusState extends State<_PlayerStatus> {
       liveRegion: true,
       child: IgnorePointer(
         child: Center(
-          child: CircularProgressIndicator(color: extras.onPlayerInk),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(color: extras.onPlayerInk),
+              const SizedBox(height: LumaSpacing.md),
+              Text(
+                _buffering ? '正在缓冲' : '正在准备播放',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: extras.onPlayerInkMuted),
+              ),
+            ],
+          ),
         ),
       ),
     );

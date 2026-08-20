@@ -20,6 +20,7 @@ class PlayerController extends ChangeNotifier {
     MediaRequestRouter? mediaRequestRouter,
     this.startFromBeginning = false,
     this.autoHideDelay = const Duration(seconds: 4),
+    this.bufferingTimeout = const Duration(seconds: 45),
   }) : _media = media,
        _apiSession = apiSession,
        _mediaRequestRouter =
@@ -38,6 +39,7 @@ class PlayerController extends ChangeNotifier {
   final MediaRequestRouter _mediaRequestRouter;
   final bool startFromBeginning;
   final Duration autoHideDelay;
+  final Duration bufferingTimeout;
   bool _startAtZero;
   Duration? _pendingResumePosition;
   late Duration _position;
@@ -45,6 +47,7 @@ class PlayerController extends ChangeNotifier {
   Timer? _saveTimer;
   Timer? _syncThrottle;
   Timer? _lockHintTimer;
+  Timer? _bufferingWatchdog;
   Player? _player;
   VideoController? _videoController;
   final List<StreamSubscription<dynamic>> _playerSubscriptions = [];
@@ -126,11 +129,26 @@ class PlayerController extends ChangeNotifier {
     if (previous != null) await previous.dispose();
     if (_disposed || generation != _initializationGeneration) return;
 
-    final player = Player();
+    final player = Player(
+      configuration: const PlayerConfiguration(
+        title: '轻影',
+        bufferSize: 128 * 1024 * 1024,
+      ),
+    );
     _player = player;
     _videoController = VideoController(player);
     _listenToPlayer(player, generation);
     try {
+      final platform = player.platform;
+      if (platform is NativePlayer) {
+        await platform.setProperty('network-timeout', '60');
+        await platform.setProperty('force-seekable', 'yes');
+        await platform.setProperty('demuxer-readahead-secs', '20');
+      }
+      if (_disposed || generation != _initializationGeneration) {
+        await player.dispose();
+        return;
+      }
       final mediaRoute = _mediaRequestRouter.route(access.url, access.headers);
       _mediaRouteToken = mediaRoute.token;
       final initial = _startAtZero ? Duration.zero : _position;
@@ -187,7 +205,7 @@ class PlayerController extends ChangeNotifier {
       }),
       player.stream.buffering.listen((value) {
         if (_disposed || generation != _initializationGeneration) return;
-        _buffering = value;
+        _setBuffering(value);
         _notifyPlaybackState();
       }),
       player.stream.volume.listen((value) {
@@ -230,6 +248,34 @@ class PlayerController extends ChangeNotifier {
     });
   }
 
+  void _setBuffering(bool value) {
+    _buffering = value;
+    _bufferingWatchdog?.cancel();
+    _bufferingWatchdog = null;
+    if (value) {
+      final generation = _initializationGeneration;
+      _bufferingWatchdog = Timer(bufferingTimeout, () {
+        if (_disposed || generation != _initializationGeneration) return;
+        _onBufferingTimedOut();
+      });
+    }
+  }
+
+  void _onBufferingTimedOut() {
+    if (_disposed) return;
+    _error = '播放缓冲超时，请稍后重试';
+    _playing = false;
+    unawaited(_player?.pause());
+    _notifyPlaybackState(immediate: true);
+  }
+
+  /// 测试注入缓冲状态，不经过 media_kit。
+  @visibleForTesting
+  void debugSetBuffering(bool value) {
+    _setBuffering(value);
+    _notifyPlaybackState(immediate: true);
+  }
+
   Future<void> _cancelPlayerSubscriptions() async {
     final subscriptions = List<StreamSubscription<dynamic>>.from(
       _playerSubscriptions,
@@ -257,6 +303,8 @@ class PlayerController extends ChangeNotifier {
     if (_disposed) return;
     final session = _apiSession;
     final streamUrl = item.streamUrl;
+    _bufferingWatchdog?.cancel();
+    _bufferingWatchdog = null;
     _error = null;
     _initializationFailed = false;
     _playing = false;
@@ -543,6 +591,7 @@ class PlayerController extends ChangeNotifier {
     _saveTimer?.cancel();
     _syncThrottle?.cancel();
     _lockHintTimer?.cancel();
+    _bufferingWatchdog?.cancel();
     _mediaRequestRouter.revoke(_mediaRouteToken);
     _mediaRouteToken = null;
     final player = _player;

@@ -115,6 +115,65 @@ void main() {
     }
   });
 
+  testWidgets('buffering overlay shows Chinese status text', (
+    tester,
+  ) async {
+    final harness = _WidgetHarness.create();
+    try {
+      harness.player.debugSetBuffering(true);
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: ThemeData.dark(),
+          home: Scaffold(
+            body: PlayerScene(
+              controller: harness.player,
+              interaction: harness.interaction,
+              onBack: () {},
+              onMinimize: () {},
+              onRotate: null,
+            ),
+          ),
+        ),
+      );
+
+      expect(find.text('正在缓冲'), findsOneWidget);
+      expect(find.text('重试播放'), findsNothing);
+    } finally {
+      harness.dispose();
+    }
+  });
+
+  testWidgets('buffering timeout upgrades to retryable error', (
+    tester,
+  ) async {
+    final harness = _WidgetHarness.create(
+      bufferingTimeout: const Duration(milliseconds: 20),
+    );
+    try {
+      harness.player.debugSetBuffering(true);
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: ThemeData.dark(),
+          home: Scaffold(
+            body: PlayerScene(
+              controller: harness.player,
+              interaction: harness.interaction,
+              onBack: () {},
+              onMinimize: () {},
+              onRotate: null,
+            ),
+          ),
+        ),
+      );
+
+      await tester.pump(const Duration(milliseconds: 30));
+      expect(find.text('播放缓冲超时，请稍后重试'), findsOneWidget);
+      expect(find.text('重试播放'), findsOneWidget);
+    } finally {
+      harness.dispose();
+    }
+  });
+
   testWidgets('desktop player exposes volume and keyboard controls', (
     tester,
   ) async {
@@ -167,11 +226,18 @@ class _WidgetHarness {
   final PlayerController player;
   final PlayerInteractionController interaction;
 
-  static _WidgetHarness create({String? status}) {
+  static _WidgetHarness create({
+    String? status,
+    Duration bufferingTimeout = const Duration(seconds: 45),
+  }) {
     final media = MediaController(MockMediaRepository());
     final baseItem = buildMediaFixtures().first;
     final item = status == null ? baseItem : baseItem.copyWith(status: status);
-    final player = PlayerController(item: item, media: media);
+    final player = PlayerController(
+      item: item,
+      media: media,
+      bufferingTimeout: bufferingTimeout,
+    );
     final interaction = PlayerInteractionController(
       player: player,
       deviceControls: _NoopDeviceControls(),
