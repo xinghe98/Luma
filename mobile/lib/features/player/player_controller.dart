@@ -173,6 +173,9 @@ class PlayerController extends ChangeNotifier {
       _initializationFailed = false;
       _error = null;
       _playing = true;
+      if (_buffering) {
+        _setBuffering(true);
+      }
       notifyListeners();
     } on Object catch (error) {
       if (_disposed || generation != _initializationGeneration) return;
@@ -248,11 +251,11 @@ class PlayerController extends ChangeNotifier {
     });
   }
 
-  void _setBuffering(bool value) {
+  void _setBuffering(bool value, {bool armWatchdog = false}) {
     _buffering = value;
     _bufferingWatchdog?.cancel();
     _bufferingWatchdog = null;
-    if (value) {
+    if (value && (_initialized || armWatchdog)) {
       final generation = _initializationGeneration;
       _bufferingWatchdog = Timer(bufferingTimeout, () {
         if (_disposed || generation != _initializationGeneration) return;
@@ -272,7 +275,7 @@ class PlayerController extends ChangeNotifier {
   /// 测试注入缓冲状态，不经过 media_kit。
   @visibleForTesting
   void debugSetBuffering(bool value) {
-    _setBuffering(value);
+    _setBuffering(value, armWatchdog: true);
     _notifyPlaybackState(immediate: true);
   }
 

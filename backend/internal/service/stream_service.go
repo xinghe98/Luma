@@ -24,12 +24,19 @@ type ContentOpener interface {
 	OpenContent(context.Context, string, string) (domain.OpenedContent, error)
 }
 
+// StreamPreparer 在打开原始文件后按需替换为更适合 HTTP Range 的副本。
+type StreamPreparer interface {
+	Prepare(context.Context, domain.StreamLocation, domain.OpenedContent) (domain.OpenedContent, error)
+}
+
 // StreamService 安全打开可见原始媒体并生成 HTTP 内容元数据。
 type StreamService struct {
 	// repository 提供原始媒体内容定位信息。
 	repository StreamRepository
 	// opener 安全打开来源中的媒体内容。
 	opener ContentOpener
+	// preparer 可选；视频打开后用于 faststart 缓存 remux。
+	preparer StreamPreparer
 }
 
 // NewStreamService 创建原始媒体服务。
@@ -38,6 +45,11 @@ func NewStreamService(repository StreamRepository, opener ContentOpener) (*Strea
 		return nil, errors.New("原始媒体 Repository 和内容打开器不能为空")
 	}
 	return &StreamService{repository: repository, opener: opener}, nil
+}
+
+// SetPreparer 设置打开后的流预处理；允许为空。
+func (s *StreamService) SetPreparer(preparer StreamPreparer) {
+	s.preparer = preparer
 }
 
 // Open 返回可交给 http.ServeContent 的原始视频。
@@ -69,6 +81,14 @@ func (s *StreamService) open(ctx context.Context, id, userID, expectedMediaType 
 	}
 	if err != nil {
 		return domain.StreamContent{}, err
+	}
+	if s.preparer != nil && expectedMediaType == domain.MediaTypeVideo {
+		prepared, prepErr := s.preparer.Prepare(ctx, location, content)
+		if prepErr != nil {
+			_ = content.Reader.Close()
+			return domain.StreamContent{}, prepErr
+		}
+		content = prepared
 	}
 	reader := newSizedReader(content.Reader, content.Size)
 	mimeType, err := resolveMIME(location.MIMEType, location.Filename, reader)

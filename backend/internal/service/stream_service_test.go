@@ -283,3 +283,44 @@ func (storageFileID) Identify(string) (string, error) { return "file:test", nil 
 type storageClock struct{}
 
 func (storageClock) Now() time.Time { return time.Unix(0, 0).UTC() }
+
+type stubStreamPreparer struct {
+	called bool
+	out    domain.OpenedContent
+}
+
+func (p *stubStreamPreparer) Prepare(_ context.Context, _ domain.StreamLocation, source domain.OpenedContent) (domain.OpenedContent, error) {
+	p.called = true
+	_ = source.Reader.Close()
+	return p.out, nil
+}
+
+func TestStreamServiceServesPreparedFaststartCopy(t *testing.T) {
+	original := &testStreamReader{Reader: bytes.NewReader([]byte("original"))}
+	prepared := &testStreamReader{Reader: bytes.NewReader([]byte("faststart-copy"))}
+	modified := time.Unix(50, 0).UTC()
+	service, err := NewStreamService(fakeStreamRepository{location: domain.StreamLocation{
+		ID: "media", Filename: "clip.mp4", MediaType: domain.MediaTypeVideo, MIMEType: "video/mp4",
+		SourceType: domain.SourceTypeLocal, RootPath: "/media", RelativePath: "clip.mp4",
+	}}, fakeContentOpener{content: domain.OpenedContent{Reader: original, Size: 8, ModifiedAt: time.Unix(1, 0)}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	preparer := &stubStreamPreparer{out: domain.OpenedContent{Reader: prepared, Size: 14, ModifiedAt: modified}}
+	service.SetPreparer(preparer)
+	content, err := service.Open(context.Background(), "media", "user_local")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer content.Reader.Close()
+	if !preparer.called || !original.closed {
+		t.Fatalf("preparer.called=%v original.closed=%v", preparer.called, original.closed)
+	}
+	if content.Size != 14 || content.ETag != `W/"e-32"` {
+		t.Fatalf("content=%#v", content)
+	}
+	body, err := io.ReadAll(content.Reader)
+	if err != nil || string(body) != "faststart-copy" {
+		t.Fatalf("body=%q err=%v", body, err)
+	}
+}

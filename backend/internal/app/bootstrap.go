@@ -13,6 +13,7 @@ import (
 	"github.com/xinghe98/Luma/backend/internal/api/handler"
 	"github.com/xinghe98/Luma/backend/internal/config"
 	"github.com/xinghe98/Luma/backend/internal/jobs"
+	"github.com/xinghe98/Luma/backend/internal/media"
 	"github.com/xinghe98/Luma/backend/internal/platform"
 	"github.com/xinghe98/Luma/backend/internal/presence"
 	dbrepo "github.com/xinghe98/Luma/backend/internal/repository/sqlite"
@@ -218,6 +219,11 @@ func (b *bootstrap) build(ctx context.Context) (*App, error) {
 	if err != nil {
 		return nil, fmt.Errorf("创建原始媒体服务: %w", err)
 	}
+	faststartCache, err := media.NewFaststartCache(b.config.Media.FFmpegPath, b.config.Storage.CacheDir)
+	if err != nil {
+		return nil, fmt.Errorf("创建 faststart 缓存: %w", err)
+	}
+	streamService.SetPreparer(faststartCache)
 	userDataService, err := service.NewUserDataService(userDataRepository, clock)
 	if err != nil {
 		return nil, fmt.Errorf("创建用户数据服务: %w", err)
