@@ -1230,7 +1230,8 @@ CREATE TABLE media_items (
 
 ```text
 file_modified_at_ms：原文件修改时间
-discovered_at_ms：第一次进入媒体库的时间，用于“最近添加”
+file_created_at_ms：本地磁盘文件创建时间，供客户端卡片日期与“最近添加”排序
+discovered_at_ms：第一次进入媒体库的时间；文件创建时间未知时作为排序回退
 indexed_at_ms：最近一次成功提取元数据的时间
 created_at_ms / updated_at_ms：数据库记录时间
 last_seen_scan_id：最近一次成功发现该文件的扫描 ID
@@ -1593,10 +1594,10 @@ limit（1-100，默认 50）
 
 `next_cursor` 没有下一页时为 `null`。默认列表排除 `status = missing` 的媒体，同时排除已禁用或软删除来源下的媒体。`watch_status=unwatched` 返回进度为 0 且未完成的媒体（包括没有用户数据的媒体），`watching` 返回进度大于 0 且未完成的媒体，`completed` 返回已完成媒体。视频的 `stream_url` 指向阶段 5 Direct Play 接口且 `original_url` 为 `null`；图片的 `original_url` 指向原图接口且 `stream_url` 为 `null`。`favorite`、`progress_ms`、`completed`、`last_played_at` 和 `user_data_revision` 来自当前用户数据；无记录时使用默认值。没有 `status=ready` 的默认缩略图资产时，`thumbnail_url` 为空字符串。
 
-`created_at` 在 API 中表示 `discovered_at_ms`。所有排序必须追加 `id` 作为稳定的第二排序键，例如：
+`created_at` 在 API 中表示 `discovered_at_ms`。`file_created_at` 表示 `file_created_at_ms`。`sort=created_at` 按 `COALESCE(file_created_at_ms, discovered_at_ms)` 排序。所有排序必须追加 `id` 作为稳定的第二排序键，例如：
 
 ```text
-discovered_at_ms DESC, id DESC
+COALESCE(file_created_at_ms, discovered_at_ms) DESC, id DESC
 ```
 
 为降低处理过程中可变排序键导致的翻页漏项：

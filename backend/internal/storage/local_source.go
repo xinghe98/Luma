@@ -128,7 +128,7 @@ func (s *LocalSource) Walk(ctx context.Context, visit func(FileEntry) error) err
 		fileID, _ := s.identifiers.Identify(resolved)
 		return visit(FileEntry{
 			RelativePath: relative, Filename: entry.Name(), Size: info.Size(),
-			ModifiedAt: info.ModTime().UTC(), FileID: fileID,
+			ModifiedAt: info.ModTime().UTC(), CreatedAt: platform.FileCreatedAt(resolved, info), FileID: fileID,
 		})
 	})
 }

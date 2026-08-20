@@ -107,6 +107,7 @@ void main() {
 
       expect(items, hasLength(1));
       expect(items.single.title, 'Sample');
+      expect(items.single.addedAt, DateTime.parse('2026-08-20T09:00:00.000Z'));
       expect(items.single.addedAt.isUtc, isTrue);
       expect(watched, hasLength(1));
       expect(mediaRequests, 4);
@@ -554,6 +555,7 @@ final _summary = {
   'user_data_revision': 1,
   'status': 'ready',
   'created_at': '2024-06-01T12:00:00.000Z',
+  'file_created_at': '2026-08-20T09:00:00.000Z',
 };
 
 final _detail = {

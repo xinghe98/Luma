@@ -236,7 +236,7 @@ paths:
           schema: { type: string, enum: [unwatched, watching, completed] }
         - in: query
           name: sort
-          description: created_at/filename 含处理中媒体；duration/file_size 仅含排序键已稳定的行。
+          description: created_at 按磁盘文件创建时间，未知时回退首次进库时间；filename 含处理中媒体；duration/file_size 仅含排序键已稳定的行。
           schema:
             type: string
             enum: [created_at, filename, duration, file_size]
@@ -1238,6 +1238,10 @@ components:
         user_data_revision: { type: integer, format: int64, minimum: 0 }
         status: { type: string, enum: [discovered, probing, thumbnailing, ready, failed] }
         created_at: { type: string, format: date-time, description: 媒体首次进入媒体库的时间。 }
+        file_created_at:
+          type: [string, "null"]
+          format: date-time
+          description: 本地磁盘文件创建时间；文件系统未提供或尚未扫描写入时为 null。
     MediaDetail:
       allOf:
         - $ref: "#/components/schemas/MediaSummary"

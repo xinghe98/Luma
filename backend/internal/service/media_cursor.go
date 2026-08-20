@@ -30,7 +30,7 @@ type mediaCursor struct {
 }
 
 func encodeMediaCursor(query domain.MediaListQuery, item domain.Media) (string, error) {
-	payload := mediaCursor{Version: 3, Sort: query.Sort, Order: query.Order, ID: item.ID, FilterHash: mediaFilterHash(query)}
+	payload := mediaCursor{Version: 4, Sort: query.Sort, Order: query.Order, ID: item.ID, FilterHash: mediaFilterHash(query)}
 	switch query.Sort {
 	case domain.MediaSortFilename:
 		payload.StringValue = item.Filename
@@ -47,7 +47,7 @@ func encodeMediaCursor(query domain.MediaListQuery, item domain.Media) (string, 
 		}
 		payload.IntValue = item.LastPlayedAt.UnixMilli()
 	default:
-		payload.IntValue = item.DiscoveredAt.UnixMilli()
+		payload.IntValue = item.AddedAtMS()
 	}
 	encoded, err := json.Marshal(payload)
 	if err != nil {
@@ -65,7 +65,7 @@ func decodeMediaCursor(value string, query domain.MediaListQuery) (*domain.Media
 	if err := json.Unmarshal(decoded, &payload); err != nil {
 		return nil, fmt.Errorf("%w: cursor 格式无效", domain.ErrInvalidRequest)
 	}
-	if payload.Version != 3 || payload.ID == "" || payload.Sort != query.Sort || payload.Order != query.Order || payload.FilterHash != mediaFilterHash(query) {
+	if payload.Version != 4 || payload.ID == "" || payload.Sort != query.Sort || payload.Order != query.Order || payload.FilterHash != mediaFilterHash(query) {
 		return nil, fmt.Errorf("%w: cursor 与当前查询不匹配", domain.ErrInvalidRequest)
 	}
 	return &domain.MediaPageKey{StringValue: payload.StringValue, IntValue: payload.IntValue, Null: payload.Null, ID: payload.ID}, nil

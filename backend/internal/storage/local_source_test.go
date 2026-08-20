@@ -202,3 +202,32 @@ func TestLocalFactoryOpenContentUnavailableRoot(t *testing.T) {
 		t.Fatalf("error = %v", err)
 	}
 }
+
+// TestLocalSourceWalkRecordsCreatedAt 验证遍历会带上磁盘文件创建时间。
+func TestLocalSourceWalkRecordsCreatedAt(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "video.mp4"), []byte("video"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	factory, err := NewLocalFactory(fakeFileIdentifier{}, fakeStorageClock{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	source, err := factory.Local(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var entries []FileEntry
+	if err := source.Walk(context.Background(), func(entry FileEntry) error {
+		entries = append(entries, entry)
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("entries=%#v", entries)
+	}
+	if entries[0].CreatedAt == nil {
+		t.Skip("当前文件系统未提供文件创建时间")
+	}
+}

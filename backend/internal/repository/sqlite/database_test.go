@@ -39,8 +39,8 @@ func TestOpenMigratesAndCreatesDefaultUser(t *testing.T) {
 	if err := db.QueryRow("SELECT MAX(version) FROM schema_migrations").Scan(&version); err != nil {
 		t.Fatal(err)
 	}
-	if version != 20 {
-		t.Fatalf("migration version = %d, want 20", version)
+	if version != 22 {
+		t.Fatalf("migration version = %d, want 22", version)
 	}
 	var missingChecksums int
 	if err := db.QueryRow(`SELECT COUNT(*) FROM schema_migrations WHERE checksum IS NULL OR checksum = ''`).Scan(&missingChecksums); err != nil {
@@ -112,7 +112,7 @@ func TestMigrationUpgradesLegacyTableAndExpiresPermanentSessions(t *testing.T) {
 		WHERE checksum IS NOT NULL AND checksum <> ''`).Scan(&checksummed, &version); err != nil {
 		t.Fatal(err)
 	}
-	if checksummed != len(allMigrations) || version != 20 {
+	if checksummed != len(allMigrations) || version != 22 {
 		t.Fatalf("checksummed=%d version=%d", checksummed, version)
 	}
 	var expiresAt int64

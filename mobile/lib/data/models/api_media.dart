@@ -22,6 +22,7 @@ class MediaSummary {
     required this.userDataRevision,
     required this.status,
     required this.createdAt,
+    this.fileCreatedAt,
   });
 
   final String id;
@@ -44,6 +45,7 @@ class MediaSummary {
   final int userDataRevision;
   final String status;
   final DateTime createdAt;
+  final DateTime? fileCreatedAt;
 }
 
 final class MediaDetail extends MediaSummary {
@@ -68,6 +70,7 @@ final class MediaDetail extends MediaSummary {
     required super.userDataRevision,
     required super.status,
     required super.createdAt,
+    super.fileCreatedAt,
     required this.sourceId,
     required this.mimeType,
     required this.fileSize,

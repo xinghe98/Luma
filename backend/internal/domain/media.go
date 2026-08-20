@@ -82,6 +82,8 @@ type Media struct {
 	Orientation *int
 	// CapturedAt 是媒体拍摄时间。
 	CapturedAt *time.Time
+	// FileCreatedAt 是本地磁盘文件创建时间；文件系统未提供时为 nil。
+	FileCreatedAt *time.Time
 	// IndexedAt 是媒体索引完成时间。
 	IndexedAt *time.Time
 	// DiscoveredAt 是媒体发现时间。
@@ -100,6 +102,14 @@ type Media struct {
 	HasThumbnail bool
 	// HasCardThumbnail 表示存在 status=ready 的卡片裁剪缩略图资产。
 	HasCardThumbnail bool
+}
+
+// AddedAtMS 是日期排序键：优先磁盘创建时间，否则首次进库时间。
+func (m Media) AddedAtMS() int64 {
+	if m.FileCreatedAt != nil {
+		return m.FileCreatedAt.UnixMilli()
+	}
+	return m.DiscoveredAt.UnixMilli()
 }
 
 // MediaPageKey 表示 keyset 分页中上一页最后一项的稳定排序位置。
@@ -223,6 +233,8 @@ type DiscoveredFile struct {
 	Size int64
 	// ModifiedAt 写入 media_items.file_modified_at_ms，原文件最后修改时间。
 	ModifiedAt time.Time
+	// CreatedAt 写入 media_items.file_created_at_ms，本地磁盘文件创建时间；不可得时为 nil。
+	CreatedAt *time.Time
 	// FileID 写入 media_items.file_id，平台稳定文件身份；不可得时为空。
 	FileID string
 	// QuickHash 写入 media_items.quick_hash，头尾快速指纹；仅在需要身份匹配时计算。

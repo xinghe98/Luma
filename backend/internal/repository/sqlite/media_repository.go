@@ -33,7 +33,7 @@ const mediaSelect = `SELECT m.id, m.source_id, s.library_kind,
     m.media_type, COALESCE(m.mime_type, ''), m.file_size, m.duration_ms, m.width, m.height,
     COALESCE(m.video_codec, ''), COALESCE(m.audio_codec, ''), COALESCE(m.container, ''),
     COALESCE(m.bitrate, 0), m.frame_rate_num, m.frame_rate_den, m.audio_track_count,
-    m.orientation, m.captured_at_ms, m.status, m.discovered_at_ms, m.indexed_at_ms,
+    m.orientation, m.captured_at_ms, m.status, m.discovered_at_ms, m.file_created_at_ms, m.indexed_at_ms,
     COALESCE(u.favorite, 0), COALESCE(u.progress_ms, 0), COALESCE(u.completed, 0),
     u.last_played_at_ms, COALESCE(u.revision, 0),
     EXISTS (
@@ -274,9 +274,11 @@ func mediaOrderBy(sort, order string) string {
 	case domain.MediaSortLastPlayedAt:
 		return "u.last_played_at_ms " + direction + ", m.id " + direction
 	default:
-		return "m.discovered_at_ms " + direction + ", m.id " + direction
+		return mediaAddedAtExpr + " " + direction + ", m.id " + direction
 	}
 }
+
+const mediaAddedAtExpr = "COALESCE(m.file_created_at_ms, m.discovered_at_ms)"
 
 func mediaAfterClause(sort, order string, key domain.MediaPageKey) (string, []any) {
 	op := "<"
@@ -302,7 +304,7 @@ func mediaAfterClause(sort, order string, key domain.MediaPageKey) (string, []an
 		return fmt.Sprintf(`u.last_played_at_ms %s ? OR (u.last_played_at_ms = ? AND m.id %s ?)`, op, op),
 			[]any{key.IntValue, key.IntValue, key.ID}
 	default:
-		return fmt.Sprintf(`m.discovered_at_ms %s ? OR (m.discovered_at_ms = ? AND m.id %s ?)`, op, op),
+		return fmt.Sprintf(`%s %s ? OR (%s = ? AND m.id %s ?)`, mediaAddedAtExpr, op, mediaAddedAtExpr, op),
 			[]any{key.IntValue, key.IntValue, key.ID}
 	}
 }
@@ -310,13 +312,13 @@ func mediaAfterClause(sort, order string, key domain.MediaPageKey) (string, []an
 func scanMedia(row rowScanner) (domain.Media, error) {
 	var item domain.Media
 	var duration, width, height, frameNum, frameDen, tracks, orientation sql.NullInt64
-	var captured, indexed, lastPlayed sql.NullInt64
+	var captured, fileCreated, indexed, lastPlayed sql.NullInt64
 	var discoveredMS int64
 	var favorite, completed, hasThumbnail, hasCardThumbnail int
 	err := row.Scan(&item.ID, &item.SourceID, &item.LibraryKind, &item.CatalogItemID, &item.Filename, &item.Title, &item.MediaType,
 		&item.MIMEType, &item.FileSize, &duration, &width, &height, &item.VideoCodec,
 		&item.AudioCodec, &item.Container, &item.Bitrate, &frameNum, &frameDen, &tracks,
-		&orientation, &captured, &item.Status, &discoveredMS, &indexed, &favorite, &item.ProgressMS,
+		&orientation, &captured, &item.Status, &discoveredMS, &fileCreated, &indexed, &favorite, &item.ProgressMS,
 		&completed, &lastPlayed, &item.UserDataRevision,
 		&hasThumbnail, &hasCardThumbnail)
 	if err != nil {
@@ -330,6 +332,7 @@ func scanMedia(row rowScanner) (domain.Media, error) {
 	item.AudioTrackCount = nullInt(tracks)
 	item.Orientation = nullInt(orientation)
 	item.CapturedAt = nullTime(captured)
+	item.FileCreatedAt = nullTime(fileCreated)
 	item.IndexedAt = nullTime(indexed)
 	item.DiscoveredAt = time.UnixMilli(discoveredMS).UTC()
 	item.Favorite = favorite == 1

@@ -273,7 +273,7 @@ final class ApiMediaRepository
       fileSize: existing?.fileSize ?? '',
       directory: existing?.directory ?? '',
       tags: existing?.tags ?? const [],
-      addedAt: value.createdAt,
+      addedAt: value.fileCreatedAt ?? value.createdAt,
       artSeed: value.id.hashCode.abs(),
       aspectRatio: width == null || height == null || height == 0
           ? 16 / 9
@@ -314,7 +314,7 @@ final class ApiMediaRepository
             ? _extension(detail.filename)
             : detail.container,
         fileSize: _formatBytes(detail.fileSize),
-        addedAt: detail.createdAt,
+        addedAt: detail.fileCreatedAt ?? detail.createdAt,
         mimeType: detail.mimeType,
         sourceId: detail.sourceId,
         sourceName: sourceName,

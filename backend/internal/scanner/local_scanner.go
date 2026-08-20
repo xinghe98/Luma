@@ -52,7 +52,7 @@ func (s *LocalScanner) Scan(ctx context.Context, source storage.MediaSource, vis
 		return visit(domain.DiscoveredFile{
 			RelativePath: entry.RelativePath, Filename: entry.Filename,
 			MediaType: mediaType, Size: entry.Size,
-			ModifiedAt: entry.ModifiedAt, FileID: entry.FileID,
+			ModifiedAt: entry.ModifiedAt, CreatedAt: entry.CreatedAt, FileID: entry.FileID,
 		})
 	})
 }

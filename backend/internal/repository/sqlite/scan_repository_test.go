@@ -435,3 +435,37 @@ func TestFailedMediaNeedsProbeOnRescan(t *testing.T) {
 		t.Fatalf("status = %s, want discovered", status)
 	}
 }
+
+// TestReconcileStoresFileCreatedAt 验证扫描写入并在身份复用时刷新磁盘创建时间。
+func TestReconcileStoresFileCreatedAt(t *testing.T) {
+	sources, scans := newStage2Repositories(t)
+	now := time.Unix(1000, 0).UTC()
+	source := createTestSource(t, sources, now)
+	job := createAndClaimScan(t, scans, source.ID, "scan_created", now)
+	created := time.Date(2026, 8, 20, 8, 0, 0, 0, time.UTC)
+	file := domain.DiscoveredFile{
+		RelativePath: "clip.mp4", Filename: "clip.mp4", MediaType: domain.MediaTypeVideo,
+		Size: 10, ModifiedAt: now, CreatedAt: &created, FileID: "clip-id",
+	}
+	if _, err := scans.ReconcileFile(context.Background(), job.ID, source.ID, "media_created", file, now); err != nil {
+		t.Fatal(err)
+	}
+	var stored int64
+	if err := scans.db.QueryRow(`SELECT file_created_at_ms FROM media_items WHERE id = 'media_created'`).Scan(&stored); err != nil {
+		t.Fatal(err)
+	}
+	if stored != created.UnixMilli() {
+		t.Fatalf("file_created_at_ms = %d, want %d", stored, created.UnixMilli())
+	}
+	later := created.Add(time.Hour)
+	file.CreatedAt = &later
+	if _, err := scans.ReconcileFile(context.Background(), job.ID, source.ID, "media_unused", file, now.Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if err := scans.db.QueryRow(`SELECT file_created_at_ms FROM media_items WHERE id = 'media_created'`).Scan(&stored); err != nil {
+		t.Fatal(err)
+	}
+	if stored != later.UnixMilli() {
+		t.Fatalf("updated file_created_at_ms = %d, want %d", stored, later.UnixMilli())
+	}
+}

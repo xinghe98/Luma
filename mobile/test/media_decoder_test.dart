@@ -18,6 +18,15 @@ void main() {
     expect(item.thumbnailUrl, isNotEmpty);
   });
 
+  test('file created at is optional and decoded when present', () {
+    expect(decoder.decodeSummary(_summary).fileCreatedAt, isNull);
+    final item = decoder.decodeSummary({
+      ..._summary,
+      'file_created_at': '2026-08-20T01:02:03.000Z',
+    });
+    expect(item.fileCreatedAt, DateTime.utc(2026, 8, 20, 1, 2, 3));
+  });
+
   test('matched media decodes its catalog route ID', () {
     final item = decoder.decodeSummary({
       ..._summary,

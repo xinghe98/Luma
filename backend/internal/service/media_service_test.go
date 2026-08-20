@@ -163,7 +163,7 @@ func TestMediaServiceCursorCannotBeReusedAcrossFilters(t *testing.T) {
 	}
 }
 
-func TestMediaServiceValidatesWatchStatusAndUsesCursorV3(t *testing.T) {
+func TestMediaServiceValidatesWatchStatusAndUsesCursorV4(t *testing.T) {
 	repository := &fakeMediaRepository{}
 	service, err := NewMediaService(repository, countingThumbnailReader{})
 	if err != nil {
@@ -190,8 +190,26 @@ func TestMediaServiceValidatesWatchStatusAndUsesCursorV3(t *testing.T) {
 	if err := json.Unmarshal(decoded, &payload); err != nil {
 		t.Fatal(err)
 	}
-	if payload.Version != 3 {
+	if payload.Version != 4 {
 		t.Fatalf("cursor version = %d", payload.Version)
+	}
+}
+
+func TestEncodeMediaCursorUsesFileCreatedAt(t *testing.T) {
+	created := time.UnixMilli(90)
+	query := domain.MediaListQuery{UserID: "user_local", Sort: domain.MediaSortCreatedAt, Order: domain.SortDescending}
+	cursor, err := encodeMediaCursor(query, domain.Media{
+		ID: "media", DiscoveredAt: time.UnixMilli(10), FileCreatedAt: &created,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	key, err := decodeMediaCursor(cursor, query)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if key.IntValue != 90 || key.ID != "media" {
+		t.Fatalf("key=%#v", key)
 	}
 }
 

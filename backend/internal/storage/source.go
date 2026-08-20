@@ -23,6 +23,8 @@ type FileEntry struct {
 	Size int64
 	// ModifiedAt 是文件最后修改时间。
 	ModifiedAt time.Time
+	// CreatedAt 是文件创建时间；文件系统未提供时为 nil。
+	CreatedAt *time.Time
 	// FileID 是平台可选的稳定文件身份。
 	FileID string
 }

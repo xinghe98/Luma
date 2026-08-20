@@ -60,6 +60,20 @@ func TestMediaSummaryIncludesCreatedAt(t *testing.T) {
 	if summary.CreatedAt != created.Format(time.RFC3339Nano) {
 		t.Fatalf("created_at = %q", summary.CreatedAt)
 	}
+	if summary.FileCreatedAt != nil {
+		t.Fatalf("file_created_at = %#v", summary.FileCreatedAt)
+	}
+}
+
+func TestMediaSummaryIncludesFileCreatedAt(t *testing.T) {
+	created := time.Date(2024, 6, 1, 12, 0, 0, 0, time.UTC)
+	fileCreated := time.Date(2026, 8, 20, 9, 0, 0, 0, time.UTC)
+	summary := presentMediaSummary(domain.Media{
+		ID: "media-1", MediaType: domain.MediaTypeVideo, DiscoveredAt: created, FileCreatedAt: &fileCreated,
+	})
+	if summary.FileCreatedAt == nil || *summary.FileCreatedAt != fileCreated.Format(time.RFC3339Nano) {
+		t.Fatalf("file_created_at = %#v", summary.FileCreatedAt)
+	}
 }
 
 func TestMediaSummaryIncludesCardThumbnailWhenReady(t *testing.T) {

@@ -90,6 +90,16 @@ var SessionDeviceKey string
 //go:embed 020_expire_permanent_sessions.sql
 var ExpirePermanentSessions string
 
+// FileCreatedAt 保存媒体文件磁盘创建时间列。
+//
+//go:embed 021_file_created_at.sql
+var FileCreatedAt string
+
+// MediaAddedAtIndex 为按磁盘创建时间排序提供表达式索引。
+//
+//go:embed 022_media_added_at_index.sql
+var MediaAddedAtIndex string
+
 // CatalogMetadata 保存可扩展 Provider 刮削、候选与丰富作品资料结构。
 //
 //go:embed 013_catalog_metadata.sql

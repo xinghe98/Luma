@@ -27,6 +27,7 @@ final class MediaDecoder {
       userDataRevision: requiredValue(json, 'user_data_revision'),
       status: requiredValue(json, 'status'),
       createdAt: requiredDate(json, 'created_at'),
+      fileCreatedAt: optionalDate(json, 'file_created_at'),
     );
   }
 
@@ -53,6 +54,7 @@ final class MediaDecoder {
       userDataRevision: summary.userDataRevision,
       status: summary.status,
       createdAt: summary.createdAt,
+      fileCreatedAt: summary.fileCreatedAt,
       sourceId: requiredValue(json, 'source_id'),
       mimeType: requiredValue(json, 'mime_type'),
       fileSize: requiredValue(json, 'file_size'),

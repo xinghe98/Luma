@@ -76,6 +76,45 @@ func TestMediaRepositoryStableCursorAndVisibility(t *testing.T) {
 	}
 }
 
+func TestMediaRepositorySortsByFileCreatedAt(t *testing.T) {
+	repository, sources := newMediaRepositoryTest(t)
+	now := time.UnixMilli(1000).UTC()
+	if err := sources.Create(context.Background(), domain.Source{
+		ID: "source_on", Name: "启用", Type: domain.SourceTypeLocal, RootPath: "/on",
+		Enabled: true, Status: domain.SourceStatusOnline, CreatedAt: now, UpdatedAt: now,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	insertMedia(t, repository, "old_disk", "source_on", "old.mp4", domain.MediaTypeVideo, domain.MediaStatusReady, 3000, nil)
+	insertMedia(t, repository, "new_disk", "source_on", "new.mp4", domain.MediaTypeVideo, domain.MediaStatusReady, 1000, nil)
+	if _, err := repository.db.Exec(`UPDATE media_items SET file_created_at_ms = 1000 WHERE id = 'old_disk'`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repository.db.Exec(`UPDATE media_items SET file_created_at_ms = 3000 WHERE id = 'new_disk'`); err != nil {
+		t.Fatal(err)
+	}
+	items, err := repository.List(context.Background(), domain.MediaListQuery{
+		UserID: "user_local", Sort: domain.MediaSortCreatedAt, Order: domain.SortDescending, Limit: 10,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 2 || items[0].ID != "new_disk" || items[1].ID != "old_disk" {
+		t.Fatalf("items=%#v", items)
+	}
+	query := domain.MediaListQuery{
+		UserID: "user_local", Sort: domain.MediaSortCreatedAt, Order: domain.SortDescending, Limit: 1,
+		After: &domain.MediaPageKey{IntValue: items[0].FileCreatedAt.UnixMilli(), ID: items[0].ID},
+	}
+	second, err := repository.List(context.Background(), query)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(second) != 1 || second[0].ID != "old_disk" {
+		t.Fatalf("second=%#v", second)
+	}
+}
+
 func TestMediaRepositoryStreamLocationVisibility(t *testing.T) {
 	repository, sources := newMediaRepositoryTest(t)
 	now := time.UnixMilli(1000).UTC()

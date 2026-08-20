@@ -64,11 +64,11 @@ func (r *ScanRepository) ReconcileFile(
 			return domain.ReconcileResult{}, err
 		}
 		_, err := tx.ExecContext(ctx, `INSERT INTO media_items(
-            id, source_id, relative_path, filename, media_type, file_size, file_modified_at_ms,
+            id, source_id, relative_path, filename, media_type, file_size, file_modified_at_ms, file_created_at_ms,
             file_id, quick_hash, status, last_seen_scan_id, discovered_at_ms, created_at_ms, updated_at_ms
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'discovered', ?, ?, ?, ?)`,
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'discovered', ?, ?, ?, ?)`,
 			newMediaID, sourceID, file.RelativePath, file.Filename, file.MediaType, file.Size,
-			file.ModifiedAt.UnixMilli(), nullableText(file.FileID), nullableText(file.QuickHash), scanID,
+			file.ModifiedAt.UnixMilli(), nullableTimeMS(file.CreatedAt), nullableText(file.FileID), nullableText(file.QuickHash), scanID,
 			now.UnixMilli(), now.UnixMilli(), now.UnixMilli())
 		if err != nil {
 			return domain.ReconcileResult{}, fmt.Errorf("创建媒体索引: %w", err)
@@ -116,7 +116,8 @@ func (r *ScanRepository) ReconcileFile(
 		}
 	}
 	_, err = tx.ExecContext(ctx, `UPDATE media_items SET relative_path = ?, filename = ?, media_type = ?,
-        file_size = ?, file_modified_at_ms = ?, file_id = ?, quick_hash = ?, status = ?,
+        file_size = ?, file_modified_at_ms = ?, file_created_at_ms = COALESCE(?, file_created_at_ms),
+        file_id = ?, quick_hash = ?, status = ?,
 		detected_title = CASE WHEN ? THEN NULL ELSE detected_title END,
 		mime_type = CASE WHEN ? THEN NULL ELSE mime_type END,
 		duration_ms = CASE WHEN ? THEN NULL ELSE duration_ms END,
@@ -132,7 +133,7 @@ func (r *ScanRepository) ReconcileFile(
 		indexed_at_ms = CASE WHEN ? THEN NULL ELSE indexed_at_ms END,
         error_code = NULL, error_message = NULL, last_seen_scan_id = ?, missing_at_ms = NULL, updated_at_ms = ?
         WHERE id = ?`, file.RelativePath, file.Filename, file.MediaType, file.Size,
-		file.ModifiedAt.UnixMilli(), nullableText(fileID), nullableText(quickHash), status,
+		file.ModifiedAt.UnixMilli(), nullableTimeMS(file.CreatedAt), nullableText(fileID), nullableText(quickHash), status,
 		needsProbe, needsProbe, needsProbe, needsProbe, needsProbe, needsProbe, needsProbe, needsProbe,
 		needsProbe, needsProbe, needsProbe, needsProbe, needsProbe, needsProbe, needsProbe, needsProbe,
 		scanID, now.UnixMilli(), existing.ID)

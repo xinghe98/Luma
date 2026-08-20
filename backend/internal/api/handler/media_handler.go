@@ -100,6 +100,8 @@ type mediaSummaryJSON struct {
 	Status string `json:"status"`
 	// CreatedAt 是媒体首次进入媒体库的时间。
 	CreatedAt string `json:"created_at"`
+	// FileCreatedAt 是本地磁盘文件创建时间。
+	FileCreatedAt *string `json:"file_created_at"`
 }
 
 type mediaDetailJSON struct {
@@ -228,6 +230,10 @@ func presentMediaSummary(item domain.Media) mediaSummaryJSON {
 		Favorite: item.Favorite, ProgressMS: item.ProgressMS, Completed: item.Completed,
 		UserDataRevision: item.UserDataRevision, Status: item.Status,
 		CreatedAt: item.DiscoveredAt.UTC().Format(time.RFC3339Nano),
+	}
+	if item.FileCreatedAt != nil {
+		value := item.FileCreatedAt.UTC().Format(time.RFC3339Nano)
+		summary.FileCreatedAt = &value
 	}
 	if item.CatalogItemID != "" {
 		value := item.CatalogItemID

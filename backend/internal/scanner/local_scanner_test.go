@@ -58,7 +58,7 @@ func TestLocalScannerFiltersAndClassifiesMedia(t *testing.T) {
 		t.Fatal(err)
 	}
 	source := memorySource{entries: []storage.FileEntry{
-		{RelativePath: "视频.MP4", Filename: "视频.MP4", ModifiedAt: time.Unix(1, 0)},
+		{RelativePath: "视频.MP4", Filename: "视频.MP4", ModifiedAt: time.Unix(1, 0), CreatedAt: ptrTime(time.Unix(2, 0))},
 		{RelativePath: "cover.jpg", Filename: "cover.jpg", ModifiedAt: time.Unix(1, 0)},
 		{RelativePath: "._broken.mp4", Filename: "._broken.mp4", ModifiedAt: time.Unix(1, 0)},
 		{RelativePath: "notes.txt", Filename: "notes.txt", ModifiedAt: time.Unix(1, 0)},
@@ -73,6 +73,13 @@ func TestLocalScannerFiltersAndClassifiesMedia(t *testing.T) {
 	if len(files) != 2 || files[0].MediaType != domain.MediaTypeVideo || files[1].MediaType != domain.MediaTypeImage {
 		t.Fatalf("扫描结果不符合预期: %#v", files)
 	}
+	if files[0].CreatedAt == nil || !files[0].CreatedAt.Equal(time.Unix(2, 0)) {
+		t.Fatalf("createdAt = %#v", files[0].CreatedAt)
+	}
+}
+
+func ptrTime(value time.Time) *time.Time {
+	return &value
 }
 
 // TestSHA256QuickHasherUsesHeadAndTail 验证快速指纹能够区分尾部内容变化。
