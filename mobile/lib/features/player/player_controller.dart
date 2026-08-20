@@ -132,7 +132,7 @@ class PlayerController extends ChangeNotifier {
     final player = Player(
       configuration: const PlayerConfiguration(
         title: '轻影',
-        bufferSize: 128 * 1024 * 1024,
+        bufferSize: 64 * 1024 * 1024,
       ),
     );
     _player = player;
@@ -143,7 +143,9 @@ class PlayerController extends ChangeNotifier {
       if (platform is NativePlayer) {
         await platform.setProperty('network-timeout', '60');
         await platform.setProperty('force-seekable', 'yes');
-        await platform.setProperty('demuxer-readahead-secs', '20');
+        // 开播只预读约 2 秒；max-bytes 仍允许播放中继续填缓存。
+        await platform.setProperty('demuxer-readahead-secs', '2');
+        await platform.setProperty('cache-pause-initial', 'no');
       }
       if (_disposed || generation != _initializationGeneration) {
         await player.dispose();
