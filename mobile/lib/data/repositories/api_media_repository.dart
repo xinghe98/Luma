@@ -130,6 +130,14 @@ final class ApiMediaRepository
     );
   }
 
+  /// 使用现有流接口的 HEAD 请求触发服务端预热，并拒绝旧会话回包。
+  @override
+  Future<void> warmStream(String id) async {
+    final epoch = _captureSessionEpoch();
+    await _client.headStream(id);
+    _client.ensureSessionEpoch(epoch);
+  }
+
   @override
   Future<MediaItem> setFavorite(String id, bool value) =>
       _updateUserData(id, {'favorite': value});

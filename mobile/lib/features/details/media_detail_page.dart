@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../app/app_scope.dart';
@@ -56,11 +58,16 @@ class _MediaDetailPageState extends State<MediaDetailPage> {
     }
   }
 
-  /// 路由与 Hero 完全结束后再刷新，避免共享封面飞行期间替换图片来源。
+  /// 路由与 Hero 完全结束后先预热视频，再刷新详情并覆盖深链首帧。
   Future<void> _refreshAfterTransition() async {
     await waitForRouteTransition(context);
     if (!mounted) return;
-    await _controller?.reload();
+    final controller = _controller;
+    if (controller == null) return;
+    unawaited(controller.warmPlayback());
+    await controller.reload();
+    if (!mounted) return;
+    unawaited(controller.warmPlayback());
   }
 
   @override

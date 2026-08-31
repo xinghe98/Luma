@@ -593,7 +593,75 @@ void main() {
     expect(dependencies.session.server!.name, '127.0.0.1');
     expect(await aliases.read('http://127.0.0.1:8080'), isNull);
   });
+  test('stream warmup merges requests and does not notify media state', () async {
+    final repository = _WarmupMediaRepository();
+    repository.blockFirst = true;
+    final media = MediaController(repository);
+    var notifications = 0;
+    media.addListener(() => notifications++);
+    final first = media.warmStream('media-1');
+    final second = media.warmStream('media-1');
+    await repository.started.future;
+    expect(repository.calls, ['media-1']);
+    repository.release.complete();
+    await Future.wait([first, second]);
+    expect(notifications, 0);
+    await media.warmStream('media-1');
+    expect(repository.calls, ['media-1']);
+    media.dispose();
+  });
+
+  test('stream warmup failures can retry and clear invalidates old replies', () async {
+    final repository = _WarmupMediaRepository();
+    final media = MediaController(repository);
+    repository.fail = true;
+    await media.warmStream('media-1');
+    expect(repository.calls, ['media-1']);
+
+    repository.fail = false;
+    await media.warmStream('media-1');
+    expect(repository.calls, ['media-1', 'media-1']);
+
+    final gate = Completer<void>();
+    repository.gates.add(gate);
+    final stale = media.warmStream('media-2');
+    await repository.startedFor('media-2');
+    media.clear();
+    gate.complete();
+    await stale;
+    await media.warmStream('media-2');
+    expect(repository.calls, ['media-1', 'media-1', 'media-2', 'media-2']);
+    media.dispose();
+  });
 }
+
+class _WarmupMediaRepository extends MockMediaRepository {
+  final calls = <String>[];
+  final _starts = <String, Completer<void>>{};
+  final gates = <Completer<void>>[];
+  final release = Completer<void>();
+  var fail = false;
+
+  var blockFirst = false;
+  @override
+  Future<void> warmStream(String id) async {
+    calls.add(id);
+    final started = _starts.putIfAbsent(id, () => Completer<void>());
+    if (!started.isCompleted) started.complete();
+    if (id == 'media-1' && blockFirst && calls.length == 1) {
+      await release.future;
+    } else if (gates.isNotEmpty) {
+      await gates.removeAt(0).future;
+    }
+    if (fail) throw StateError('warmup failed');
+  }
+
+  Future<void> startedFor(String id) => _starts[id]!.future;
+
+  Completer<void> get started =>
+      _starts.putIfAbsent('media-1', () => Completer<void>());
+}
+
 
 class _ImmediateScanRepository implements ScanRepository {
   final _job = ScanJob(

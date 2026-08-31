@@ -25,6 +25,7 @@ class CatalogDetailPage extends StatefulWidget {
     required this.repository,
     required this.onOpenMedia,
     required this.onOpenMediaFromStart,
+    required this.onWarmStream,
   });
 
   final String catalogId;
@@ -34,6 +35,9 @@ class CatalogDetailPage extends StatefulWidget {
   final CatalogRepository repository;
   final ValueChanged<String> onOpenMedia;
   final ValueChanged<String> onOpenMediaFromStart;
+
+  /// 路由过渡后预热当前作品的可播放媒体，不应阻塞详情页。
+  final Future<void> Function(String) onWarmStream;
 
   @override
   State<CatalogDetailPage> createState() => _CatalogDetailPageState();
@@ -47,6 +51,8 @@ class _CatalogDetailPageState extends State<CatalogDetailPage> {
   var _favorite = false;
   var _favoriteRevision = 0;
   var _loadDetailArtwork = false;
+  String? _warmedMediaId;
+  var _routeTransitionSettled = false;
   var _loadGeneration = 0;
   var _favoriteGeneration = 0;
   var _initialLoadStarted = false;
@@ -75,10 +81,12 @@ class _CatalogDetailPageState extends State<CatalogDetailPage> {
     _loadInitialDetail();
   }
 
-  /// 等待真实路由动画后分别启动背景图与资料刷新，网络请求不会阻塞背景图。
+  /// 等待真实路由动画后先预热当前媒体，再启动背景图与资料刷新。
   Future<void> _loadInitialDetail() async {
     await waitForRouteTransition(context);
     if (!mounted) return;
+    _routeTransitionSettled = true;
+    _warmCurrentPlayback();
     if (!_loadDetailArtwork && _item != null) {
       setState(() => _loadDetailArtwork = true);
     }
@@ -108,12 +116,32 @@ class _CatalogDetailPageState extends State<CatalogDetailPage> {
         }
         _loading = false;
       });
+      if (_routeTransitionSettled) {
+        _warmCurrentPlayback();
+      }
     } on Object catch (error) {
       if (!mounted || generation != _loadGeneration) return;
       setState(() {
         _error = error;
         _loading = false;
       });
+    }
+  }
+
+  void _warmCurrentPlayback() {
+    final mediaId = _item?.playableMediaId;
+    if (mediaId == null || mediaId.isEmpty || mediaId == _warmedMediaId) {
+      return;
+    }
+    _warmedMediaId = mediaId;
+    unawaited(_warmMedia(mediaId));
+  }
+
+  Future<void> _warmMedia(String mediaId) async {
+    try {
+      await widget.onWarmStream(mediaId);
+    } on Object {
+      // 预热失败不改变详情页内容、加载或错误状态。
     }
   }
 

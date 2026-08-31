@@ -219,11 +219,19 @@ func (b *bootstrap) build(ctx context.Context) (*App, error) {
 	if err != nil {
 		return nil, fmt.Errorf("创建原始媒体服务: %w", err)
 	}
-	faststartCache, err := media.NewFaststartCache(b.config.Media.FFmpegPath, b.config.Storage.CacheDir)
+	faststartCache, err := media.NewFaststartCache(
+		b.config.Media.FFmpegPath,
+		b.config.Storage.CacheDir,
+		b.config.Storage.FaststartCacheMaxMB*1024*1024,
+		b.logger,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("创建 faststart 缓存: %w", err)
 	}
 	streamService.SetPreparer(faststartCache)
+	if err := workerGroup.Add(faststartCache); err != nil {
+		return nil, fmt.Errorf("注册 faststart Worker: %w", err)
+	}
 	userDataService, err := service.NewUserDataService(userDataRepository, clock)
 	if err != nil {
 		return nil, fmt.Errorf("创建用户数据服务: %w", err)

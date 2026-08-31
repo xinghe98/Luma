@@ -217,6 +217,84 @@ void main() {
       harness.dispose();
     }
   });
+  test('NativePlayer policy keeps short startup and rebuffer reserve', () {
+    expect(
+      PlayerController.nativeBufferingProperties,
+      allOf([
+        containsPair('demuxer-readahead-secs', '2'),
+        containsPair('cache-pause-initial', 'no'),
+        containsPair('cache-pause', 'yes'),
+        containsPair('cache-pause-wait', '3'),
+      ]),
+    );
+  });
+
+  testWidgets('initialization timeout shows retry copy and cannot notify later', (
+    tester,
+  ) async {
+    final harness = _WidgetHarness.create(
+      initializationTimeout: const Duration(milliseconds: 20),
+    );
+    var notifications = 0;
+    harness.player.addListener(() => notifications++);
+    try {
+      harness.player.debugBeginInitialization();
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: ThemeData.dark(),
+          home: Scaffold(
+            body: PlayerScene(
+              controller: harness.player,
+              interaction: harness.interaction,
+              onBack: () {},
+              onMinimize: () {},
+              onRotate: null,
+            ),
+          ),
+        ),
+      );
+      await tester.pump(const Duration(milliseconds: 25));
+      expect(find.text('视频准备时间过长，请重试'), findsOneWidget);
+      expect(find.text('重试播放'), findsOneWidget);
+      final notifiedBeforeDispose = notifications;
+      harness.player.dispose();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(notifications, notifiedBeforeDispose);
+    } finally {
+      harness.dispose();
+    }
+  });
+
+  testWidgets('initialization does not arm the rebuffer watchdog', (tester) async {
+    final harness = _WidgetHarness.create(
+      initializationTimeout: const Duration(seconds: 1),
+      bufferingTimeout: const Duration(milliseconds: 20),
+    );
+    try {
+      harness.player.debugBeginInitialization();
+      harness.player.debugSetBuffering(true);
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: ThemeData.dark(),
+          home: Scaffold(
+            body: PlayerScene(
+              controller: harness.player,
+              interaction: harness.interaction,
+              onBack: () {},
+              onMinimize: () {},
+              onRotate: null,
+            ),
+          ),
+        ),
+      );
+      await tester.pump(const Duration(milliseconds: 30));
+      expect(find.text('播放缓冲超时，请稍后重试'), findsNothing);
+      expect(find.text('视频准备时间过长，请重试'), findsNothing);
+      expect(find.text('正在缓冲'), findsOneWidget);
+    } finally {
+      harness.dispose();
+    }
+  });
 }
 
 class _WidgetHarness {
@@ -229,6 +307,7 @@ class _WidgetHarness {
   static _WidgetHarness create({
     String? status,
     Duration bufferingTimeout = const Duration(seconds: 45),
+    Duration initializationTimeout = const Duration(seconds: 20),
   }) {
     final media = MediaController(MockMediaRepository());
     final baseItem = buildMediaFixtures().first;
@@ -237,6 +316,7 @@ class _WidgetHarness {
       item: item,
       media: media,
       bufferingTimeout: bufferingTimeout,
+      initializationTimeout: initializationTimeout,
     );
     final interaction = PlayerInteractionController(
       player: player,

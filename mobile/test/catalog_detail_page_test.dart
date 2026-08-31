@@ -129,6 +129,7 @@ void main() {
           repository: _CatalogDetailRepository(item),
           onOpenMedia: (_) {},
           onOpenMediaFromStart: (_) {},
+          onWarmStream: (_) async {},
         ),
       ),
     );
@@ -209,6 +210,7 @@ void main() {
           repository: repository,
           onOpenMedia: (_) {},
           onOpenMediaFromStart: (_) {},
+          onWarmStream: (_) async {},
         ),
       ),
     );
@@ -261,6 +263,7 @@ void main() {
                       repository: repository,
                       onOpenMedia: (_) {},
                       onOpenMediaFromStart: (_) {},
+                      onWarmStream: (id) async => repository.warmCalls.add(id),
                     ),
                   ),
                 ),
@@ -277,6 +280,7 @@ void main() {
 
     expect(find.text('延迟刷新剧集'), findsOneWidget);
     expect(repository.detailCalls, 0);
+    expect(repository.warmCalls, isEmpty);
     expect(
       find.byWidgetPredicate(
         (widget) =>
@@ -295,6 +299,7 @@ void main() {
     expect(repository.detailCalls, 0);
     await tester.pumpAndSettle();
     expect(repository.detailCalls, 1);
+    expect(repository.warmCalls, [item.playableMediaId]);
     expect(
       find.byWidgetPredicate(
         (widget) =>
@@ -350,6 +355,7 @@ void main() {
           repository: _CatalogDetailRepository(item),
           onOpenMedia: (_) {},
           onOpenMediaFromStart: (_) {},
+          onWarmStream: (_) async {},
         ),
       ),
     );
@@ -376,6 +382,7 @@ void main() {
             repository: repository,
             onOpenMedia: (_) {},
             onOpenMediaFromStart: (_) {},
+            onWarmStream: (_) async {},
           ),
         ),
       );
@@ -407,6 +414,7 @@ void main() {
             repository: repository,
             onOpenMedia: (_) {},
             onOpenMediaFromStart: (_) {},
+            onWarmStream: (_) async {},
           ),
         ),
       );
@@ -448,6 +456,7 @@ void main() {
               repository: _CatalogDetailRepository(item),
               onOpenMedia: (_) {},
               onOpenMediaFromStart: (_) {},
+              onWarmStream: (_) async {},
             ),
           ),
         ),
@@ -458,9 +467,108 @@ void main() {
       expect(find.text('很长的作品标题也必须完整适配窄屏'), findsOneWidget);
     },
   );
+  testWidgets('catalog warmup failure does not show a refresh banner', (
+    tester,
+  ) async {
+    final item = _compactCatalogItem('预热失败仍可浏览');
+    await tester.pumpWidget(
+      MaterialApp(
+        home: CatalogDetailPage(
+          catalogId: item.id,
+          initialItem: item,
+          repository: _CatalogDetailRepository(item),
+          onOpenMedia: (_) {},
+          onOpenMediaFromStart: (_) {},
+          onWarmStream: (_) async => throw StateError('warmup failed'),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byType(MaterialBanner), findsNothing);
+    expect(find.text('作品资料刷新失败，当前仍显示上次内容。'), findsNothing);
+  });
+
+  testWidgets('catalog deep link warms after detail reload', (tester) async {
+    final item = _compactCatalogItem('深链作品');
+    final repository = _CatalogDetailRepository(item)
+      ..detailCompleter = Completer<CatalogItem>();
+    final warmCalls = repository.warmCalls;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: CatalogDetailPage(
+          catalogId: item.id,
+          repository: repository,
+          onOpenMedia: (_) {},
+          onOpenMediaFromStart: (_) {},
+          onWarmStream: (id) async => warmCalls.add(id),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+    expect(repository.detailCalls, 1);
+    expect(warmCalls, isEmpty);
+
+    repository.detailCompleter!.complete(item);
+    await tester.pump();
+    await tester.pump();
+    expect(warmCalls, [item.playableMediaId]);
+  });
+
+  testWidgets('catalog hero scales its row for phone and wide layouts', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final item = _compactCatalogItem(
+      '响应式作品',
+      posterUrl: '/poster',
+      thumbnailUrl: '/thumbnail',
+    );
+    final repository = _CatalogDetailRepository(item);
+
+    tester.view.physicalSize = const Size(390, 844);
+    addTearDown(tester.view.resetPhysicalSize);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: CatalogDetailPage(
+          catalogId: item.id,
+          initialItem: item,
+          repository: repository,
+          onOpenMedia: (_) {},
+          onOpenMediaFromStart: (_) {},
+          onWarmStream: (_) async {},
+        ),
+      ),
+    );
+    await tester.pump();
+    final phonePoster = tester.getRect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is AuthenticatedMediaImage && widget.path == '/poster',
+      ),
+    );
+    expect(phonePoster.width, closeTo(128, 0.1));
+    expect(find.byType(CatalogDetailHero), findsOneWidget);
+
+    tester.view.physicalSize = const Size(1200, 800);
+    await tester.pump();
+    final widePoster = tester.getRect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is AuthenticatedMediaImage && widget.path == '/poster',
+      ),
+    );
+    expect(widePoster.width, closeTo(208, 0.1));
+    expect(find.byType(CatalogDetailHero), findsOneWidget);
+  });
 }
 
-CatalogItem _compactCatalogItem(String title) => CatalogItem(
+CatalogItem _compactCatalogItem(
+  String title, {
+  String thumbnailUrl = '',
+  String posterUrl = '',
+}) => CatalogItem(
   id: 'catalog-compact',
   sourceId: 'source-1',
   kind: CatalogKind.movie,
@@ -470,8 +578,8 @@ CatalogItem _compactCatalogItem(String title) => CatalogItem(
   episodeCount: 0,
   completedCount: 0,
   playableMediaId: 'media-1',
-  thumbnailUrl: '',
-  posterUrl: '',
+  thumbnailUrl: thumbnailUrl,
+  posterUrl: posterUrl,
   durationMs: 3600000,
   resolution: '1080p',
   progressMs: 0,
@@ -483,6 +591,7 @@ class _CatalogDetailRepository implements CatalogRepository {
   _CatalogDetailRepository(this.item);
 
   final CatalogItem item;
+  final warmCalls = <String>[];
   var favoriteCalls = 0;
   var detailCalls = 0;
   var failDetail = false;

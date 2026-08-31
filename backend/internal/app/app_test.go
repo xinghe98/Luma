@@ -167,7 +167,9 @@ func TestAppStartsServesHealthAndShutsDown(t *testing.T) {
 			Path: filepath.Join(base, "media.db"), BusyTimeoutMS: 1000, WAL: true,
 		},
 		Storage: config.StorageConfig{
-			ThumbnailDir: filepath.Join(base, "thumbnails"), CacheDir: filepath.Join(base, "cache"),
+			ThumbnailDir: filepath.Join(base, "thumbnails"),
+			CacheDir: filepath.Join(base, "cache"),
+			FaststartCacheMaxMB: 20480,
 		},
 		Media: config.MediaConfig{
 			FFmpegPath: "ffmpeg", FFprobePath: "ffprobe", ThumbnailWidth: 640,

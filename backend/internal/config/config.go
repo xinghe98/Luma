@@ -77,6 +77,8 @@ type StorageConfig struct {
 	ThumbnailDir string `yaml:"thumbnail_dir"`
 	// CacheDir 是临时缓存目录。
 	CacheDir string `yaml:"cache_dir"`
+	// FaststartCacheMaxMB 是 faststart 缓存允许使用的最大 MiB 数。
+	FaststartCacheMaxMB int64 `yaml:"faststart_cache_max_mb"`
 }
 
 // MediaConfig 表示媒体工具和扫描策略配置。

@@ -61,6 +61,7 @@ List<RouteBase> buildMediaRoutes(
         onOpenMedia: context.openPlayer,
         onOpenMediaFromStart: (mediaId) =>
             context.openPlayer(mediaId, startFromBeginning: true),
+        onWarmStream: dependencies.media.warmStream,
       );
       return routeData.heroTag == null
           ? _detailFadePage(context, state.pageKey, child)

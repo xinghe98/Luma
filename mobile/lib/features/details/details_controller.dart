@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 
 import '../../app/controllers/media_controller.dart';
 import '../../data/models/media_item.dart';
+import '../../data/models/media_types.dart';
 
 class DetailsController extends ChangeNotifier {
   /// 绑定媒体详情状态；页面可关闭自动加载，并在路由过渡完成后主动刷新。
@@ -46,6 +47,12 @@ class DetailsController extends ChangeNotifier {
         notifyListeners();
       }
     }
+  }
+
+  /// 当前详情是视频时触发流预热；失败由媒体控制器吞掉且不改变详情状态。
+  Future<void> warmPlayback() async {
+    if (_disposed || item?.type != MediaType.video) return;
+    await media.warmStream(mediaId);
   }
 
   Future<void> toggleFavorite() => media.toggleFavorite(mediaId);

@@ -21,9 +21,14 @@ abstract interface class MediaRepository {
   Future<List<MediaItem>> loadContinueWatching();
   Future<List<Tag>> loadTags();
   Future<MediaItem> loadDetail(String id);
+
+  /// 以受认证的 HEAD 请求异步触发媒体流预热，不读取响应体。
+  Future<void> warmStream(String id);
+
   Future<MediaItem> setFavorite(String id, bool value);
   Future<MediaItem> saveNote(String id, String note);
   Future<MediaItem> updateProgress(String id, int positionMs);
+
 }
 
 /// 带本地缓存的实现可在切换服务器时清除旧会话数据。

@@ -34,11 +34,61 @@ storage:
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Server.Port != 8080 || cfg.Server.ReadTimeout != 30*time.Second || cfg.Media.ThumbnailWidth != 640 {
+	if cfg.Server.Port != 8080 || cfg.Server.ReadTimeout != 30*time.Second || cfg.Media.ThumbnailWidth != 640 || cfg.Storage.FaststartCacheMaxMB != 20480 {
 		t.Fatal("defaults were not applied")
 	}
 	if !filepath.IsAbs(cfg.Database.Path) || cfg.Security.AllowedRoots[0] != media {
 		t.Fatal("paths were not resolved relative to the config file")
+	}
+}
+// TestLoadAcceptsExplicitFaststartCacheQuota 验证 YAML 可覆盖 faststart 缓存配额。
+func TestLoadAcceptsExplicitFaststartCacheQuota(t *testing.T) {
+	base := t.TempDir()
+	media := filepath.Join(base, "media")
+	if err := os.Mkdir(media, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	content := `
+security:
+  admin_username: admin
+  admin_password_file: data/admin_password
+  allowed_roots: [media]
+database:
+  path: data/media.db
+storage:
+  thumbnail_dir: data/thumbnails
+  cache_dir: data/cache
+  faststart_cache_max_mb: 128
+`
+	path := filepath.Join(base, "config.yaml")
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Storage.FaststartCacheMaxMB != 128 {
+		t.Fatalf("faststart cache quota = %d, want 128", cfg.Storage.FaststartCacheMaxMB)
+	}
+}
+
+// TestValidateFaststartCacheQuota 验证配额必须为正数且换算字节不能溢出。
+func TestValidateFaststartCacheQuota(t *testing.T) {
+	cfg := validTestConfig(t)
+	for _, value := range []int64{0, -1} {
+		cfg.Storage.FaststartCacheMaxMB = value
+		if err := Validate(cfg); err == nil || !strings.Contains(err.Error(), "faststart_cache_max_mb") {
+			t.Fatalf("quota %d validation error = %v", value, err)
+		}
+	}
+	cfg.Storage.FaststartCacheMaxMB = maxFaststartCacheMaxMB + 1
+	if err := Validate(cfg); err == nil || !strings.Contains(err.Error(), "faststart_cache_max_mb") {
+		t.Fatalf("overflow quota validation error = %v", err)
+	}
+	cfg.Storage.FaststartCacheMaxMB = maxFaststartCacheMaxMB
+	if err := Validate(cfg); err != nil {
+		t.Fatalf("maximum representable quota rejected: %v", err)
 	}
 }
 

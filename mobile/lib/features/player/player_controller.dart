@@ -21,6 +21,7 @@ class PlayerController extends ChangeNotifier {
     this.startFromBeginning = false,
     this.autoHideDelay = const Duration(seconds: 4),
     this.bufferingTimeout = const Duration(seconds: 45),
+    this.initializationTimeout = const Duration(seconds: 20),
   }) : _media = media,
        _apiSession = apiSession,
        _mediaRequestRouter =
@@ -40,6 +41,21 @@ class PlayerController extends ChangeNotifier {
   final bool startFromBeginning;
   final Duration autoHideDelay;
   final Duration bufferingTimeout;
+
+  /// 初始化播放器等待底层属性、媒体和首个播放命令完成的最长时间。
+  final Duration initializationTimeout;
+
+  /// NativePlayer 在 Android 与 Windows 共用的首播和再缓冲策略。
+  @visibleForTesting
+  static const Map<String, String> nativeBufferingProperties = {
+    'network-timeout': '60',
+    'force-seekable': 'yes',
+    'demuxer-readahead-secs': '2',
+    'cache-pause-initial': 'no',
+    'cache-pause': 'yes',
+    'cache-pause-wait': '3',
+  };
+
   bool _startAtZero;
   Duration? _pendingResumePosition;
   late Duration _position;
@@ -47,9 +63,11 @@ class PlayerController extends ChangeNotifier {
   Timer? _saveTimer;
   Timer? _syncThrottle;
   Timer? _lockHintTimer;
+  Timer? _initializationWatchdog;
   Timer? _bufferingWatchdog;
   Player? _player;
   VideoController? _videoController;
+  final List<Player> _disposingPlayers = [];
   final List<StreamSubscription<dynamic>> _playerSubscriptions = [];
   String? _mediaRouteToken;
   String? _error;
@@ -118,37 +136,39 @@ class PlayerController extends ChangeNotifier {
 
   Future<void> _initializeVideo(ApiSession session, String streamUrl) async {
     final generation = ++_initializationGeneration;
-    final access = session.resolveResource(streamUrl);
-    _mediaRequestRouter.revoke(_mediaRouteToken);
-    _mediaRouteToken = null;
-    final previous = _player;
-    _player = null;
-    _videoController = null;
-    _initialized = false;
-    await _cancelPlayerSubscriptions();
-    if (previous != null) await previous.dispose();
-    if (_disposed || generation != _initializationGeneration) return;
-
-    final player = Player(
-      configuration: const PlayerConfiguration(
-        title: '轻影',
-        bufferSize: 64 * 1024 * 1024,
-      ),
-    );
-    _player = player;
-    _videoController = VideoController(player);
-    _listenToPlayer(player, generation);
+    _armInitializationWatchdog(generation);
     try {
+      final access = session.resolveResource(streamUrl);
+      _mediaRequestRouter.revoke(_mediaRouteToken);
+      _mediaRouteToken = null;
+      final previous = _player;
+      _player = null;
+      _videoController = null;
+      _initialized = false;
+      _bufferingWatchdog?.cancel();
+      _bufferingWatchdog = null;
+      await _cancelPlayerSubscriptions();
+      if (previous != null) await _disposePlayer(previous);
+      if (_disposed || generation != _initializationGeneration) return;
+
+      final player = Player(
+        configuration: const PlayerConfiguration(
+          title: '轻影',
+          bufferSize: 64 * 1024 * 1024,
+        ),
+      );
+      _player = player;
+      _videoController = VideoController(player);
+      _listenToPlayer(player, generation);
+
       final platform = player.platform;
       if (platform is NativePlayer) {
-        await platform.setProperty('network-timeout', '60');
-        await platform.setProperty('force-seekable', 'yes');
-        // 开播只预读约 2 秒；max-bytes 仍允许播放中继续填缓存。
-        await platform.setProperty('demuxer-readahead-secs', '2');
-        await platform.setProperty('cache-pause-initial', 'no');
+        for (final entry in nativeBufferingProperties.entries) {
+          await platform.setProperty(entry.key, entry.value);
+        }
       }
       if (_disposed || generation != _initializationGeneration) {
-        await player.dispose();
+        await _disposePlayer(player);
         return;
       }
       final mediaRoute = _mediaRequestRouter.route(access.url, access.headers);
@@ -164,12 +184,14 @@ class PlayerController extends ChangeNotifier {
         play: false,
       );
       if (_disposed || generation != _initializationGeneration) {
-        await player.dispose();
+        await _disposePlayer(player);
         return;
       }
       await player.setVolume(_volume * 100);
       await player.play();
       if (_disposed || generation != _initializationGeneration) return;
+      _initializationWatchdog?.cancel();
+      _initializationWatchdog = null;
       _startAtZero = false;
       _initialized = true;
       _initializationFailed = false;
@@ -181,10 +203,86 @@ class PlayerController extends ChangeNotifier {
       notifyListeners();
     } on Object catch (error) {
       if (_disposed || generation != _initializationGeneration) return;
-      _initializationFailed = true;
-      _error = error.toString();
-      _playing = false;
-      notifyListeners();
+      _collapseInitialization(generation, error.toString());
+    }
+  }
+
+  void _armInitializationWatchdog(int generation) {
+    _initializationWatchdog?.cancel();
+    _initializationWatchdog = Timer(initializationTimeout, () {
+      if (_disposed ||
+          generation != _initializationGeneration ||
+          _initialized) {
+        return;
+      }
+      _collapseInitialization(generation, '视频准备时间过长，请重试');
+    });
+  }
+
+  void _invalidateInitializationGeneration() {
+    _initializationGeneration++;
+    _initializationWatchdog?.cancel();
+    _initializationWatchdog = null;
+    _bufferingWatchdog?.cancel();
+    _bufferingWatchdog = null;
+  }
+
+  /// 初始化失败或超时时收束资源，先撤销旧会话，再异步释放底层播放器。
+  void _collapseInitialization(int generation, String error) {
+    if (_disposed || generation != _initializationGeneration) return;
+    _initializationGeneration++;
+    _initializationWatchdog?.cancel();
+    _initializationWatchdog = null;
+    _bufferingWatchdog?.cancel();
+    _bufferingWatchdog = null;
+    _mediaRequestRouter.revoke(_mediaRouteToken);
+    _syncThrottle?.cancel();
+    _syncThrottle = null;
+    _mediaRouteToken = null;
+    final player = _player;
+    _player = null;
+    _videoController = null;
+    _detachPlayerSubscriptions();
+    _initialized = false;
+    _initializationFailed = true;
+    _buffering = false;
+    _playing = false;
+    _error = error;
+    if (player != null) unawaited(_disposePlayer(player));
+    notifyListeners();
+  }
+
+  Future<void> _disposePlayer(Player player) async {
+    if (_disposingPlayers.any((item) => identical(item, player))) {
+      return;
+    }
+    _disposingPlayers.add(player);
+    try {
+      await player.dispose();
+    } on Object {
+      // 失败播放器已经脱离当前会话，释放失败不能阻止重试。
+    } finally {
+      _disposingPlayers.removeWhere((item) => identical(item, player));
+    }
+  }
+
+  void _detachPlayerSubscriptions() {
+    final subscriptions = List<StreamSubscription<dynamic>>.from(
+      _playerSubscriptions,
+    );
+    _playerSubscriptions.clear();
+    for (final subscription in subscriptions) {
+      unawaited(_cancelSubscription(subscription));
+    }
+  }
+
+  Future<void> _cancelSubscription(
+    StreamSubscription<dynamic> subscription,
+  ) async {
+    try {
+      await subscription.cancel();
+    } on Object {
+      // 订阅属于已失效播放器，取消失败不影响新会话。
     }
   }
 
@@ -274,10 +372,29 @@ class PlayerController extends ChangeNotifier {
     _notifyPlaybackState(immediate: true);
   }
 
+  /// 测试注入初始化状态，复用生产 generation 与 watchdog 生命周期。
+  @visibleForTesting
+  void debugBeginInitialization() {
+    if (_disposed) return;
+    _invalidateInitializationGeneration();
+    final generation = ++_initializationGeneration;
+    _initialized = false;
+    _initializationFailed = false;
+    _buffering = false;
+    _playing = false;
+    _error = null;
+    _armInitializationWatchdog(generation);
+    notifyListeners();
+  }
+
   /// 测试注入缓冲状态，不经过 media_kit。
   @visibleForTesting
   void debugSetBuffering(bool value) {
-    _setBuffering(value, armWatchdog: true);
+    // 没有初始化 watchdog 时允许单独验证再缓冲超时；生产事件只在已初始化后计时。
+    _setBuffering(
+      value,
+      armWatchdog: !_initialized && _initializationWatchdog == null,
+    );
     _notifyPlaybackState(immediate: true);
   }
 
@@ -287,7 +404,7 @@ class PlayerController extends ChangeNotifier {
     );
     _playerSubscriptions.clear();
     for (final subscription in subscriptions) {
-      await subscription.cancel();
+      await _cancelSubscription(subscription);
     }
   }
 
@@ -308,8 +425,8 @@ class PlayerController extends ChangeNotifier {
     if (_disposed) return;
     final session = _apiSession;
     final streamUrl = item.streamUrl;
-    _bufferingWatchdog?.cancel();
-    _bufferingWatchdog = null;
+    _invalidateInitializationGeneration();
+    _initialized = false;
     _error = null;
     _initializationFailed = false;
     _playing = false;
@@ -596,14 +713,17 @@ class PlayerController extends ChangeNotifier {
     _saveTimer?.cancel();
     _syncThrottle?.cancel();
     _lockHintTimer?.cancel();
+    _initializationWatchdog?.cancel();
+    _initializationWatchdog = null;
     _bufferingWatchdog?.cancel();
+    _bufferingWatchdog = null;
     _mediaRequestRouter.revoke(_mediaRouteToken);
     _mediaRouteToken = null;
     final player = _player;
     _player = null;
     _videoController = null;
-    unawaited(_cancelPlayerSubscriptions());
-    if (player != null) unawaited(player.dispose());
+    _detachPlayerSubscriptions();
+    if (player != null) unawaited(_disposePlayer(player));
     super.dispose();
   }
 }

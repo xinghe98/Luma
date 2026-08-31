@@ -211,8 +211,12 @@ func (fakeManagedSourceUseCase) ListAvailableRoots() ([]string, error) {
 }
 
 // testRouter 创建注入测试替身的完整 Router。
-func testRouter(t *testing.T) http.Handler {
+func testRouter(t *testing.T, streamUseCase ...handler.StreamUseCase) http.Handler {
 	t.Helper()
+	var streamUC handler.StreamUseCase = fakeStreamUseCase{}
+	if len(streamUseCase) > 0 && streamUseCase[0] != nil {
+		streamUC = streamUseCase[0]
+	}
 	useCase := fakeSystemUseCase{}
 	health, err := handler.NewHealthHandler(useCase)
 	if err != nil {
@@ -234,7 +238,7 @@ func testRouter(t *testing.T) http.Handler {
 	if err != nil {
 		t.Fatal(err)
 	}
-	stream, err := handler.NewStreamHandler(fakeStreamUseCase{})
+	stream, err := handler.NewStreamHandler(streamUC)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -332,6 +336,104 @@ func TestStreamRouteSupportsRangeHeadAndConditionalRequests(t *testing.T) {
 				t.Fatalf("cache-control=%q", recorder.Header().Get("Cache-Control"))
 			}
 		})
+	}
+}
+
+type blockedFaststartPreparer struct {
+	started chan struct{}
+	release chan struct{}
+}
+
+func (p *blockedFaststartPreparer) Prepare(_ context.Context, _ domain.StreamLocation, source domain.OpenedContent) (domain.OpenedContent, error) {
+	select {
+	case p.started <- struct{}{}:
+	default:
+	}
+	go func() { <-p.release }()
+	return source, nil
+}
+
+type repeatingStreamOpener struct {
+	payload  []byte
+	modified time.Time
+}
+
+func (o repeatingStreamOpener) OpenContent(context.Context, string, string) (domain.OpenedContent, error) {
+	return domain.OpenedContent{
+		Reader:     &memoryStream{bytes.NewReader(o.payload)},
+		Size:       int64(len(o.payload)),
+		ModifiedAt: o.modified,
+	}, nil
+}
+
+type snapshotStreamRepository struct{}
+
+func (snapshotStreamRepository) GetStreamLocation(context.Context, string, string) (domain.StreamLocation, error) {
+	return domain.StreamLocation{
+		ID: "media_test", Filename: "test.mp4", MediaType: domain.MediaTypeVideo, MIMEType: "video/mp4",
+		SourceType: domain.SourceTypeLocal, RootPath: "/media", RelativePath: "test.mp4",
+	}, nil
+}
+
+// TestStreamRouteReturnsWhileFaststartRemuxBlocked 验证 HEAD/Range 在 remux 仍阻塞时已按原文件快照返回。
+func TestStreamRouteReturnsWhileFaststartRemuxBlocked(t *testing.T) {
+	payload := []byte("video-stream")
+	modified := time.Unix(1, 0).UTC()
+	preparer := &blockedFaststartPreparer{
+		started: make(chan struct{}, 8),
+		release: make(chan struct{}),
+	}
+	streamService, err := service.NewStreamService(snapshotStreamRepository{}, repeatingStreamOpener{payload: payload, modified: modified})
+	if err != nil {
+		t.Fatal(err)
+	}
+	streamService.SetPreparer(preparer)
+	router := testRouter(t, streamService)
+
+	type result struct {
+		headStatus int
+		headBody   int
+		headLength string
+		headETag   string
+		getStatus  int
+		getBody    string
+		getRange   string
+	}
+	done := make(chan result, 1)
+	go func() {
+		head := httptest.NewRequest(http.MethodHead, "/api/v1/media/media_test/stream", nil)
+		head.Header.Set("Authorization", "Bearer test-session")
+		headRecorder := httptest.NewRecorder()
+		router.ServeHTTP(headRecorder, head)
+
+		get := httptest.NewRequest(http.MethodGet, "/api/v1/media/media_test/stream", nil)
+		get.Header.Set("Authorization", "Bearer test-session")
+		get.Header.Set("Range", "bytes=2-6")
+		getRecorder := httptest.NewRecorder()
+		router.ServeHTTP(getRecorder, get)
+		done <- result{
+			headStatus: headRecorder.Code,
+			headBody:   headRecorder.Body.Len(),
+			headLength: headRecorder.Header().Get("Content-Length"),
+			headETag:   headRecorder.Header().Get("ETag"),
+			getStatus:  getRecorder.Code,
+			getBody:    getRecorder.Body.String(),
+			getRange:   getRecorder.Header().Get("Content-Range"),
+		}
+	}()
+
+	var got result
+	select {
+	case got = <-done:
+	case <-time.After(200 * time.Millisecond):
+		t.Fatal("HEAD/Range waited for blocked faststart remux")
+	}
+	close(preparer.release)
+	if got.headStatus != http.StatusOK || got.headBody != 0 || got.headLength != "12" || got.headETag != `W/"c-1"` {
+		t.Fatalf("HEAD status=%d body=%d length=%q etag=%q", got.headStatus, got.headBody, got.headLength, got.headETag)
+	}
+	if got.getStatus != http.StatusPartialContent || got.getBody != "deo-s" || got.getRange != "bytes 2-6/12" {
+		t.Fatalf("Range status=%d body=%q range=%q", got.getStatus, got.getBody, got.getRange)
 	}
 }
 

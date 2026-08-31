@@ -30,6 +30,7 @@ database:
 storage:
   thumbnail_dir: ../data/thumbnails
   cache_dir: ../data/cache
+  faststart_cache_max_mb: 20480
 
 # 外部媒体工具按参数数组调用，不经过 Shell 拼接。
 media:

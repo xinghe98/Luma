@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:luma/app/app_dependencies.dart';
 import 'package:luma/app/app_scope.dart';
@@ -13,6 +16,7 @@ import 'package:luma/features/details/details_controller.dart';
 import 'package:luma/features/details/dialogs/image_preview_dialog.dart';
 import 'package:luma/features/details/media_detail_page.dart';
 import 'package:luma/features/details/widgets/detail_actions.dart';
+import 'package:luma/features/details/widgets/detail_information.dart';
 import 'package:luma/features/details/widgets/media_metadata.dart';
 import 'package:luma/shared/layout/surface_card.dart';
 import 'package:luma/shared/media/authenticated_media_image.dart';
@@ -119,10 +123,82 @@ void main() {
     await tester.tap(find.text('打开媒体详情'));
     await tester.pump();
     expect(repository.detailCalls, 0);
+    expect(repository.warmCalls, isEmpty);
     await tester.pump(const Duration(milliseconds: 500));
     expect(repository.detailCalls, 0);
     await tester.pumpAndSettle();
     expect(repository.detailCalls, 1);
+    expect(repository.warmCalls, [item.id]);
+  });
+  testWidgets('deep-linked video warms only after detail loading', (
+    tester,
+  ) async {
+    final repository = _CountingDetailRepository()
+      ..detailCompleter = Completer<MediaItem>();
+    final dependencies = AppDependencies(
+      mediaRepository: repository,
+      connectionService: MockConnectionService(),
+    );
+    addTearDown(dependencies.dispose);
+    final item = buildMediaFixtures().firstWhere(
+      (entry) => entry.type == MediaType.video,
+    );
+
+    await tester.pumpWidget(
+      AppScope(
+        dependencies: dependencies,
+        child: MaterialApp(
+          home: MediaDetailPage(mediaId: item.id),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+    expect(repository.detailCalls, 1);
+    expect(repository.warmCalls, isEmpty);
+
+    repository.detailCompleter!.complete(item);
+    await tester.pump();
+    await tester.pump();
+    expect(repository.warmCalls, [item.id]);
+    expect(find.byType(MaterialBanner), findsNothing);
+  });
+
+
+  testWidgets('media detail keeps narrow stack and wide split layout', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final dependencies = AppDependencies(
+      mediaRepository: MockMediaRepository(),
+      connectionService: MockConnectionService(),
+    );
+    addTearDown(dependencies.dispose);
+    final item = buildMediaFixtures().firstWhere(
+      (entry) => entry.type == MediaType.video,
+    );
+
+    await tester.pumpWidget(
+      AppScope(
+        dependencies: dependencies,
+        child: MaterialApp(
+          home: MediaDetailPage(mediaId: item.id, initialItem: item),
+        ),
+      ),
+    );
+    await tester.pump();
+    final narrowArtwork = tester.getRect(find.byType(MediaArtwork));
+    final narrowInfo = tester.getRect(find.byType(DetailInformation));
+    expect(narrowInfo.top, greaterThan(narrowArtwork.bottom));
+
+    tester.view.physicalSize = const Size(1200, 800);
+    await tester.pump();
+    final wideArtwork = tester.getRect(find.byType(MediaArtwork));
+    final wideInfo = tester.getRect(find.byType(DetailInformation));
+    expect(wideInfo.left, greaterThan(wideArtwork.right));
   });
 
   testWidgets('image hero source and detail reuse the thumbnail cache key', (
@@ -131,8 +207,9 @@ void main() {
     final item = buildMediaFixtures()
         .firstWhere((entry) => entry.type == MediaType.image)
         .copyWith(thumbnailUrl: '/thumbnail');
+    final repository = _CountingDetailRepository();
     final dependencies = AppDependencies(
-      mediaRepository: MockMediaRepository(),
+      mediaRepository: repository,
       connectionService: MockConnectionService(),
     );
     addTearDown(dependencies.dispose);
@@ -178,6 +255,8 @@ void main() {
     );
     expect(target.cacheWidth, MediaArtwork.heroThumbnailCacheWidth);
     expect(target.cacheHeight, isNull);
+    await tester.pumpAndSettle();
+    expect(repository.warmCalls, isEmpty);
   });
 
   testWidgets('image preview uses the source Hero without a colored barrier', (
@@ -255,10 +334,19 @@ void main() {
 
 class _CountingDetailRepository extends MockMediaRepository {
   var detailCalls = 0;
+  final warmCalls = <String>[];
+  Completer<MediaItem>? detailCompleter;
 
   @override
   Future<MediaItem> loadDetail(String id) {
     detailCalls++;
+    final completer = detailCompleter;
+    if (completer != null) return completer.future;
     return super.loadDetail(id);
+  }
+
+  @override
+  Future<void> warmStream(String id) async {
+    warmCalls.add(id);
   }
 }

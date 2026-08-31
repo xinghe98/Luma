@@ -43,6 +43,10 @@ class MediaController extends ChangeNotifier {
   // 连接断开后使旧服务器的 mutation 回包和排队操作全部失效。
   int _mutationGeneration = 0;
   final Map<String, Future<void>> _inflight = {};
+
+  /// 当前会话内去重的流预热请求与已成功媒体 ID。
+  final Map<String, Future<void>> _warmInflight = {};
+  final Set<String> _warmedStreamIds = {};
   Future<void>? _catalogCountRequest;
   bool _disposed = false;
 
@@ -175,6 +179,38 @@ class MediaController extends ChangeNotifier {
     }
   }
 
+  /// 在当前会话内合并流预热请求；失败只允许后续调用重试，不污染页面错误状态。
+  Future<void> warmStream(String id) async {
+    if (_disposed || id.isEmpty || _warmedStreamIds.contains(id)) return;
+    final pending = _warmInflight[id];
+    if (pending != null) {
+      await pending;
+      return;
+    }
+    final sessionGeneration = _sessionGeneration;
+    late final Future<void> request;
+    request = _warmRepositoryStream(id, sessionGeneration).whenComplete(() {
+      if (identical(_warmInflight[id], request)) {
+        _warmInflight.remove(id);
+      }
+    });
+    _warmInflight[id] = request;
+    await request;
+  }
+
+  Future<void> _warmRepositoryStream(
+    String id,
+    int sessionGeneration,
+  ) async {
+    try {
+      await _repository.warmStream(id);
+      if (_disposed || sessionGeneration != _sessionGeneration) return;
+      _warmedStreamIds.add(id);
+    } on Object {
+      // 预热是首帧优化，失败不能覆盖详情或媒体加载错误。
+    }
+  }
+
   Future<void> _runLoad(
     Future<_MediaBundle> Function() request, {
     bool showLoading = true,
@@ -246,6 +282,8 @@ class MediaController extends ChangeNotifier {
     _sessionGeneration++;
     _mutationGeneration++;
     _inflight.clear();
+    _warmInflight.clear();
+    _warmedStreamIds.clear();
     _catalogCountRequest = null;
     // 清除 repository 中按 id 保留的详情，避免换服后复用旧服务器数据。
     if (_repository case SessionResettableMediaRepository resettable) {
@@ -269,6 +307,8 @@ class MediaController extends ChangeNotifier {
     _loadGeneration++;
     _sessionGeneration++;
     _mutationGeneration++;
+    _warmInflight.clear();
+    _warmedStreamIds.clear();
     super.dispose();
   }
 

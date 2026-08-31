@@ -32,6 +32,7 @@ database:
 storage:
   thumbnail_dir: 'C:\ProgramData\Luma\thumbnails'
   cache_dir: 'C:\ProgramData\Luma\cache'
+  faststart_cache_max_mb: 20480
 
 # 后台服务不依赖用户 PATH，因此显式指定媒体工具路径。
 media:

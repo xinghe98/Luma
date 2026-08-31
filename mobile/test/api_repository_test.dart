@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:luma/data/api/api_client.dart';
+import 'package:luma/data/api/api_exception.dart';
 import 'package:luma/data/api/api_session.dart';
 import 'package:luma/data/api/api_session_interceptor.dart';
 import 'package:luma/data/models/api_source.dart';
@@ -467,6 +468,65 @@ void main() {
       expect(started, 2);
     },
   );
+  test('warmStream uses authenticated HEAD and rejects stale sessions', () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    addTearDown(() => server.close(force: true));
+    final methods = <String>[];
+    final paths = <String>[];
+    final authorizations = <String?>[];
+    final bodies = <String>[];
+    final secondStarted = Completer<void>();
+    final releaseSecond = Completer<void>();
+    var calls = 0;
+    server.listen((request) async {
+      calls++;
+      methods.add(request.method);
+      paths.add(request.uri.path);
+      authorizations.add(
+        request.headers.value(HttpHeaders.authorizationHeader),
+      );
+      bodies.add(await utf8.decoder.bind(request).join());
+      if (calls == 2) {
+        secondStarted.complete();
+        await releaseSecond.future;
+      }
+      request.response.statusCode = HttpStatus.ok;
+      await request.response.close();
+    });
+
+    final origin = 'http://${server.address.host}:${server.port}';
+    final session = ApiSession(origin: origin, token: 'secret-token');
+    final dio = Dio()..interceptors.add(ApiSessionInterceptor(session));
+    addTearDown(dio.close);
+    final repository = ApiMediaRepository(
+      ApiClient(dio, apiPrefix: '/custom/'),
+      _TestSourceRepository(),
+    );
+
+    await repository.warmStream('media-1');
+    final stale = repository.warmStream('media-1');
+    await secondStarted.future;
+    session.update(origin: origin, token: 'new-token');
+    releaseSecond.complete();
+    await expectLater(
+      stale,
+      throwsA(
+        isA<ApiException>().having(
+          (error) => error.code,
+          'code',
+          'SESSION_CHANGED',
+        ),
+      ),
+    );
+
+    expect(methods, ['HEAD', 'HEAD']);
+    expect(paths, [
+      '/custom/media/media-1/stream',
+      '/custom/media/media-1/stream',
+    ]);
+    expect(authorizations, ['Bearer secret-token', 'Bearer secret-token']);
+    expect(bodies, ['', '']);
+  });
 }
 
 final class _TestSourceRepository implements SourceRepository {

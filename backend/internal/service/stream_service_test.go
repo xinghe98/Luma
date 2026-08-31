@@ -324,3 +324,61 @@ func TestStreamServiceServesPreparedFaststartCopy(t *testing.T) {
 		t.Fatalf("body=%q err=%v", body, err)
 	}
 }
+type snapshotStreamPreparer struct {
+	hit  bool
+	out  domain.OpenedContent
+}
+
+func (p snapshotStreamPreparer) Prepare(_ context.Context, _ domain.StreamLocation, source domain.OpenedContent) (domain.OpenedContent, error) {
+	if p.hit {
+		_ = source.Reader.Close()
+		return p.out, nil
+	}
+	return source, nil
+}
+
+// TestStreamServiceFaststartSnapshotMetadata 验证 miss 使用源快照、hit 使用缓存大小和源修改时间。
+func TestStreamServiceFaststartSnapshotMetadata(t *testing.T) {
+	sourceModified := time.Unix(1700000000, int64(987*time.Millisecond)).UTC()
+	for _, test := range []struct {
+		name          string
+		hit           bool
+		sourceSize    int64
+		preparedSize  int64
+		wantSize      int64
+	}{
+		{name: "miss", sourceSize: 8, preparedSize: 8, wantSize: 8},
+		{name: "hit", hit: true, sourceSize: 8, preparedSize: 14, wantSize: 14},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			original := &testStreamReader{Reader: bytes.NewReader(bytes.Repeat([]byte{'o'}, int(test.sourceSize)))}
+			prepared := &testStreamReader{Reader: bytes.NewReader(bytes.Repeat([]byte{'c'}, int(test.preparedSize)))}
+			service, err := NewStreamService(fakeStreamRepository{location: domain.StreamLocation{
+				ID: "media_snapshot", Filename: "clip.mp4", MediaType: domain.MediaTypeVideo, MIMEType: "video/mp4",
+				SourceType: domain.SourceTypeLocal, RootPath: "/media", RelativePath: "clip.mp4",
+			}}, fakeContentOpener{content: domain.OpenedContent{
+				Reader: original, Size: test.sourceSize, ModifiedAt: sourceModified,
+			}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			service.SetPreparer(snapshotStreamPreparer{
+				hit: test.hit,
+				out: domain.OpenedContent{Reader: prepared, Size: test.preparedSize, ModifiedAt: sourceModified},
+			})
+			content, err := service.Open(context.Background(), "media_snapshot", "user_local")
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer content.Reader.Close()
+			if !test.hit {
+				defer prepared.Close()
+			}
+			wantModified := sourceModified.Truncate(time.Second)
+			wantETag := fmt.Sprintf(`W/"%x-%x"`, test.wantSize, wantModified.Unix())
+			if content.Size != test.wantSize || !content.ModifiedAt.Equal(wantModified) || content.ETag != wantETag {
+				t.Fatalf("content=%#v want size=%d modified=%v etag=%s", content, test.wantSize, wantModified, wantETag)
+			}
+		})
+	}
+}

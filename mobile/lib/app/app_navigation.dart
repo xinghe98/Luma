@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
@@ -68,7 +70,7 @@ extension AppNavigation on BuildContext {
         extra: CatalogDetailRouteData(initialItem: item, heroTag: heroTag),
       );
 
-  /// 立即打开播放器；有来源条目时首帧直接使用，缺失时由播放器页加载。
+  /// 立即打开播放器，并在推送路由前异步触发流预热。
   Future<void> openPlayer(
     String mediaId, {
     MediaItem? initialItem,
@@ -77,6 +79,7 @@ extension AppNavigation on BuildContext {
     final media = AppScope.of(this).media;
     final item = initialItem ?? media.findById(mediaId);
     if (item != null) media.remember(item, notify: false);
+    unawaited(media.warmStream(mediaId));
     await pushNamed<void>(
       AppRoute.player,
       pathParameters: {'mediaId': mediaId},

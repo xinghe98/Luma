@@ -18,6 +18,11 @@ import (
 
 var providerConfigIDPattern = regexp.MustCompile(`^[a-z][a-z0-9_-]{1,31}$`)
 
+const (
+	defaultFaststartCacheMaxMB int64 = 20480
+	maxFaststartCacheMaxMB     int64 = (1<<63 - 1) / (1024 * 1024)
+)
+
 // defaultExtensions 保存未显式配置时支持的媒体扩展名。
 var defaultExtensions = []string{
 	"mp4", "mkv", "mov", "avi", "webm", "m4v", "ts",
@@ -71,6 +76,7 @@ func defaults() Config {
 			ShutdownTimeout:   30 * time.Second,
 		},
 		Database: DatabaseConfig{BusyTimeoutMS: 5000, WAL: true},
+		Storage:  StorageConfig{FaststartCacheMaxMB: defaultFaststartCacheMaxMB},
 		Media: MediaConfig{
 			FFmpegPath: "ffmpeg", FFprobePath: "ffprobe",
 			ThumbnailWidth: 640, ScanExtensions: append([]string(nil), defaultExtensions...),
@@ -180,6 +186,11 @@ func Validate(cfg Config) error {
 	}
 	if cfg.Storage.ThumbnailDir == "" || cfg.Storage.CacheDir == "" {
 		problems = append(problems, "storage.thumbnail_dir and storage.cache_dir are required")
+	}
+	if cfg.Storage.FaststartCacheMaxMB <= 0 {
+		problems = append(problems, "storage.faststart_cache_max_mb must be positive")
+	} else if cfg.Storage.FaststartCacheMaxMB > maxFaststartCacheMaxMB {
+		problems = append(problems, "storage.faststart_cache_max_mb is too large")
 	}
 	if cfg.Media.FFmpegPath == "" || cfg.Media.FFprobePath == "" {
 		problems = append(problems, "media.ffmpeg_path and media.ffprobe_path are required")

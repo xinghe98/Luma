@@ -23,6 +23,7 @@ database:
 storage:
   thumbnail_dir: /data/thumbnails
   cache_dir: /data/cache
+  faststart_cache_max_mb: 20480
 media:
   ffmpeg_path: ffmpeg
   ffprobe_path: ffprobe

@@ -84,6 +84,10 @@ class MockMediaRepository implements MediaRepository {
   Future<MediaItem> loadDetail(String id) async =>
       _items.firstWhere((item) => item.id == id);
 
+  /// Mock 仓储无需访问服务端，直接将预热视为成功。
+  @override
+  Future<void> warmStream(String id) async {}
+
   Future<MediaItem> _replace(
     String id,
     MediaItem Function(MediaItem item) update,
