@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"path"
 
 	"github.com/gin-gonic/gin"
 
@@ -13,7 +14,9 @@ import (
 
 // StreamUseCase 定义原始媒体 Handler 所需的业务能力。
 type StreamUseCase interface {
-	Open(context.Context, string, string) (domain.StreamContent, error)
+	Plan(context.Context, string, string) (domain.StreamTarget, error)
+	OpenSource(context.Context, string, string) (domain.StreamContent, error)
+	OpenFaststart(context.Context, string, string, string) (domain.StreamContent, error)
 	OpenOriginal(context.Context, string, string) (domain.StreamContent, error)
 }
 
@@ -32,8 +35,31 @@ func NewStreamHandler(service StreamUseCase) (*StreamHandler, error) {
 }
 
 // Stream 处理 GET 和 HEAD /api/v1/media/:id/stream。
+// 入口只决定本次播放的固定表示并跳转到该表示的地址，不再直接返回字节。
 func (h *StreamHandler) Stream(c *gin.Context) {
-	content, err := h.service.Open(c.Request.Context(), c.Param("id"), c.GetString("user_id"))
+	target, err := h.service.Plan(c.Request.Context(), c.Param("id"), c.GetString("user_id"))
+	if err != nil {
+		response.FromError(c, err)
+		return
+	}
+	// 同一媒体在预热前后会跳转到不同表示，因此这次跳转不能被任何中间层缓存。
+	c.Header("Cache-Control", "no-store")
+	c.Header("Location", streamTargetPath(c.Request.URL.Path, target))
+	c.Status(http.StatusFound)
+}
+
+// Source 处理 GET 和 HEAD /api/v1/media/:id/stream/source。
+// 该表示始终读取原始媒体文件，与预热进度无关。
+func (h *StreamHandler) Source(c *gin.Context) {
+	content, err := h.service.OpenSource(c.Request.Context(), c.Param("id"), c.GetString("user_id"))
+	h.serve(c, content, err)
+}
+
+// Faststart 处理 GET 和 HEAD /api/v1/media/:id/stream/faststart/:fingerprint。
+// 该表示始终读取入口固定的 faststart 副本，副本失效时明确失败。
+func (h *StreamHandler) Faststart(c *gin.Context) {
+	content, err := h.service.OpenFaststart(
+		c.Request.Context(), c.Param("id"), c.GetString("user_id"), c.Param("fingerprint"))
 	h.serve(c, content, err)
 }
 
@@ -41,6 +67,15 @@ func (h *StreamHandler) Stream(c *gin.Context) {
 func (h *StreamHandler) Original(c *gin.Context) {
 	content, err := h.service.OpenOriginal(c.Request.Context(), c.Param("id"), c.GetString("user_id"))
 	h.serve(c, content, err)
+}
+
+// streamTargetPath 保留相对引用，让剥离路径前缀的反向代理也能正确定位内容地址。
+func streamTargetPath(entryPath string, target domain.StreamTarget) string {
+	entryPath = path.Base(entryPath)
+	if target.Representation == domain.StreamRepresentationFaststart {
+		return path.Join(entryPath, string(domain.StreamRepresentationFaststart), target.Fingerprint)
+	}
+	return path.Join(entryPath, string(domain.StreamRepresentationSource))
 }
 
 func (h *StreamHandler) serve(c *gin.Context, content domain.StreamContent, err error) {

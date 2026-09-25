@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -58,7 +59,7 @@ func TestStreamServiceOpensVideoAndBuildsMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	content, err := service.Open(context.Background(), "media", "user_local")
+	content, err := service.OpenSource(context.Background(), "media", "user_local")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -97,7 +98,7 @@ func TestStreamServiceRejectsImagesAndUnavailableContent(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if _, err := service.Open(context.Background(), "media", "user_local"); !errors.Is(err, test.want) {
+			if _, err := service.OpenSource(context.Background(), "media", "user_local"); !errors.Is(err, test.want) {
 				t.Fatalf("error = %v, want %v", err, test.want)
 			}
 		})
@@ -167,7 +168,7 @@ func TestStreamServiceDetectsMIMEAndRewindsReader(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	content, err := service.Open(context.Background(), "media", "user_local")
+	content, err := service.OpenSource(context.Background(), "media", "user_local")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -195,7 +196,7 @@ func TestStreamServiceUsesStableContainerMIMETypes(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			content, err := service.Open(context.Background(), "media", "user_local")
+			content, err := service.OpenSource(context.Background(), "media", "user_local")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -255,7 +256,7 @@ func TestStreamServiceRealFileRangeMatchesSnapshot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	content, err := service.Open(context.Background(), "media_real", "user_local")
+	content, err := service.OpenSource(context.Background(), "media_real", "user_local")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -284,21 +285,72 @@ type storageClock struct{}
 
 func (storageClock) Now() time.Time { return time.Unix(0, 0).UTC() }
 
-type stubStreamPreparer struct {
-	called bool
-	out    domain.OpenedContent
+// stubFaststartCache 为 Service 测试提供可控的表示决策与副本打开结果。
+type stubFaststartCache struct {
+	// target 是 Plan 返回的固定表示。
+	target domain.StreamTarget
+	// opened 是 OpenFaststart 返回的副本内容。
+	opened domain.OpenedContent
+	// err 是 OpenFaststart 返回的错误。
+	err error
+	// selectCalls 记录表示决策次数。
+	selectCalls int
+	// openedFingerprint 记录最近一次请求打开的指纹。
+	openedFingerprint string
 }
 
-func (p *stubStreamPreparer) Prepare(_ context.Context, _ domain.StreamLocation, source domain.OpenedContent) (domain.OpenedContent, error) {
-	p.called = true
-	_ = source.Reader.Close()
-	return p.out, nil
+func (c *stubFaststartCache) SelectRepresentation(domain.StreamLocation, domain.OpenedContent) domain.StreamTarget {
+	c.selectCalls++
+	return c.target
 }
 
-func TestStreamServiceServesPreparedFaststartCopy(t *testing.T) {
+func (c *stubFaststartCache) OpenFaststart(_ domain.StreamLocation, _ domain.OpenedContent, fingerprint string) (domain.OpenedContent, error) {
+	c.openedFingerprint = fingerprint
+	if c.err != nil {
+		return domain.OpenedContent{}, c.err
+	}
+	return c.opened, nil
+}
+
+// TestStreamServicePlanPinsRepresentation 验证入口只决策一次并立即释放源文件句柄。
+func TestStreamServicePlanPinsRepresentation(t *testing.T) {
+	for _, test := range []struct {
+		// name 是测试场景名称。
+		name string
+		// target 是缓存协作器返回的固定表示。
+		target domain.StreamTarget
+	}{
+		{name: "原始文件", target: domain.StreamTarget{Representation: domain.StreamRepresentationSource}},
+		{name: "faststart 副本", target: domain.StreamTarget{Representation: domain.StreamRepresentationFaststart, Fingerprint: "8-1000"}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			source := &testStreamReader{Reader: bytes.NewReader([]byte("original"))}
+			service, err := NewStreamService(fakeStreamRepository{location: domain.StreamLocation{
+				ID: "media", Filename: "clip.mp4", MediaType: domain.MediaTypeVideo, MIMEType: "video/mp4",
+				SourceType: domain.SourceTypeLocal, RootPath: "/media", RelativePath: "clip.mp4",
+			}}, fakeContentOpener{content: domain.OpenedContent{Reader: source, Size: 8, ModifiedAt: time.Unix(1, 0)}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			cache := &stubFaststartCache{target: test.target}
+			service.SetFaststartCache(cache)
+			target, err := service.Plan(context.Background(), "media", "user_local")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if target != test.target || cache.selectCalls != 1 {
+				t.Fatalf("target=%#v calls=%d, want %#v", target, cache.selectCalls, test.target)
+			}
+			if !source.closed {
+				t.Fatal("入口决策后必须立即关闭源文件句柄")
+			}
+		})
+	}
+}
+
+// TestStreamServiceKeepsPinnedSourceBytesAfterWarmup 验证已固定的 source 表示在预热完成后仍返回原始文件字节。
+func TestStreamServiceKeepsPinnedSourceBytesAfterWarmup(t *testing.T) {
 	original := &testStreamReader{Reader: bytes.NewReader([]byte("original"))}
-	prepared := &testStreamReader{Reader: bytes.NewReader([]byte("faststart-copy"))}
-	modified := time.Unix(50, 0).UTC()
 	service, err := NewStreamService(fakeStreamRepository{location: domain.StreamLocation{
 		ID: "media", Filename: "clip.mp4", MediaType: domain.MediaTypeVideo, MIMEType: "video/mp4",
 		SourceType: domain.SourceTypeLocal, RootPath: "/media", RelativePath: "clip.mp4",
@@ -306,79 +358,95 @@ func TestStreamServiceServesPreparedFaststartCopy(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	preparer := &stubStreamPreparer{out: domain.OpenedContent{Reader: prepared, Size: 14, ModifiedAt: modified}}
-	service.SetPreparer(preparer)
-	content, err := service.Open(context.Background(), "media", "user_local")
+	// 缓存已经就绪也不影响已经固定的原始文件表示。
+	service.SetFaststartCache(&stubFaststartCache{
+		target: domain.StreamTarget{Representation: domain.StreamRepresentationFaststart, Fingerprint: "8-1000"},
+		opened: domain.OpenedContent{
+			Reader: &testStreamReader{Reader: bytes.NewReader([]byte("faststart-copy"))},
+			Size:   14, ModifiedAt: time.Unix(50, 0),
+		},
+	})
+	content, err := service.OpenSource(context.Background(), "media", "user_local")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer content.Reader.Close()
-	if !preparer.called || !original.closed {
-		t.Fatalf("preparer.called=%v original.closed=%v", preparer.called, original.closed)
-	}
-	if content.Size != 14 || content.ETag != `W/"e-32"` {
-		t.Fatalf("content=%#v", content)
-	}
 	body, err := io.ReadAll(content.Reader)
-	if err != nil || string(body) != "faststart-copy" {
-		t.Fatalf("body=%q err=%v", body, err)
+	if err != nil || string(body) != "original" || content.Size != 8 {
+		t.Fatalf("body=%q size=%d err=%v", body, content.Size, err)
 	}
 }
-type snapshotStreamPreparer struct {
-	hit  bool
-	out  domain.OpenedContent
-}
 
-func (p snapshotStreamPreparer) Prepare(_ context.Context, _ domain.StreamLocation, source domain.OpenedContent) (domain.OpenedContent, error) {
-	if p.hit {
-		_ = source.Reader.Close()
-		return p.out, nil
-	}
-	return source, nil
-}
-
-// TestStreamServiceFaststartSnapshotMetadata 验证 miss 使用源快照、hit 使用缓存大小和源修改时间。
-func TestStreamServiceFaststartSnapshotMetadata(t *testing.T) {
+// TestStreamServiceFaststartMetadataFollowsOpenedRepresentation 验证两种表示各自使用自己的打开快照。
+func TestStreamServiceFaststartMetadataFollowsOpenedRepresentation(t *testing.T) {
 	sourceModified := time.Unix(1700000000, int64(987*time.Millisecond)).UTC()
-	for _, test := range []struct {
-		name          string
-		hit           bool
-		sourceSize    int64
-		preparedSize  int64
-		wantSize      int64
-	}{
-		{name: "miss", sourceSize: 8, preparedSize: 8, wantSize: 8},
-		{name: "hit", hit: true, sourceSize: 8, preparedSize: 14, wantSize: 14},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			original := &testStreamReader{Reader: bytes.NewReader(bytes.Repeat([]byte{'o'}, int(test.sourceSize)))}
-			prepared := &testStreamReader{Reader: bytes.NewReader(bytes.Repeat([]byte{'c'}, int(test.preparedSize)))}
-			service, err := NewStreamService(fakeStreamRepository{location: domain.StreamLocation{
-				ID: "media_snapshot", Filename: "clip.mp4", MediaType: domain.MediaTypeVideo, MIMEType: "video/mp4",
-				SourceType: domain.SourceTypeLocal, RootPath: "/media", RelativePath: "clip.mp4",
-			}}, fakeContentOpener{content: domain.OpenedContent{
-				Reader: original, Size: test.sourceSize, ModifiedAt: sourceModified,
-			}})
-			if err != nil {
-				t.Fatal(err)
-			}
-			service.SetPreparer(snapshotStreamPreparer{
-				hit: test.hit,
-				out: domain.OpenedContent{Reader: prepared, Size: test.preparedSize, ModifiedAt: sourceModified},
-			})
-			content, err := service.Open(context.Background(), "media_snapshot", "user_local")
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer content.Reader.Close()
-			if !test.hit {
-				defer prepared.Close()
-			}
-			wantModified := sourceModified.Truncate(time.Second)
-			wantETag := fmt.Sprintf(`W/"%x-%x"`, test.wantSize, wantModified.Unix())
-			if content.Size != test.wantSize || !content.ModifiedAt.Equal(wantModified) || content.ETag != wantETag {
-				t.Fatalf("content=%#v want size=%d modified=%v etag=%s", content, test.wantSize, wantModified, wantETag)
-			}
-		})
+	fingerprint := "8-1700000000987"
+	newSnapshotService := func(t *testing.T) (*StreamService, *stubFaststartCache, *testStreamReader) {
+		t.Helper()
+		source := &testStreamReader{Reader: bytes.NewReader(bytes.Repeat([]byte{'o'}, 8))}
+		service, err := NewStreamService(fakeStreamRepository{location: domain.StreamLocation{
+			ID: "media_snapshot", Filename: "clip.mp4", MediaType: domain.MediaTypeVideo, MIMEType: "video/mp4",
+			SourceType: domain.SourceTypeLocal, RootPath: "/media", RelativePath: "clip.mp4",
+		}}, fakeContentOpener{content: domain.OpenedContent{
+			Reader: source, Size: 8, ModifiedAt: sourceModified,
+		}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		cache := &stubFaststartCache{opened: domain.OpenedContent{
+			Reader: &testStreamReader{Reader: bytes.NewReader(bytes.Repeat([]byte{'c'}, 14))},
+			Size:   14, ModifiedAt: sourceModified,
+		}}
+		service.SetFaststartCache(cache)
+		return service, cache, source
 	}
+	wantModified := sourceModified.Truncate(time.Second)
+
+	t.Run("原始文件", func(t *testing.T) {
+		service, _, _ := newSnapshotService(t)
+		content, err := service.OpenSource(context.Background(), "media_snapshot", "user_local")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer content.Reader.Close()
+		wantETag := fmt.Sprintf(`W/"%x-%x"`, int64(8), wantModified.Unix())
+		if content.Size != 8 || !content.ModifiedAt.Equal(wantModified) || content.ETag != wantETag {
+			t.Fatalf("content=%#v want size=8 modified=%v etag=%s", content, wantModified, wantETag)
+		}
+	})
+
+	t.Run("faststart 副本", func(t *testing.T) {
+		service, cache, source := newSnapshotService(t)
+		content, err := service.OpenFaststart(context.Background(), "media_snapshot", "user_local", fingerprint)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer content.Reader.Close()
+		if !source.closed {
+			t.Fatal("打开副本后必须释放核对指纹用的源文件句柄")
+		}
+		if cache.openedFingerprint != fingerprint {
+			t.Fatalf("fingerprint=%q, want %q", cache.openedFingerprint, fingerprint)
+		}
+		wantETag := fmt.Sprintf(`W/"%x-%x"`, int64(14), wantModified.Unix())
+		if content.Size != 14 || !content.ModifiedAt.Equal(wantModified) || content.ETag != wantETag {
+			t.Fatalf("content=%#v want size=14 modified=%v etag=%s", content, wantModified, wantETag)
+		}
+		body, err := io.ReadAll(content.Reader)
+		if err != nil || string(body) != strings.Repeat("c", 14) {
+			t.Fatalf("body=%q err=%v", body, err)
+		}
+	})
+
+	t.Run("副本缺失不回退原始文件", func(t *testing.T) {
+		service, _, _ := newSnapshotService(t)
+		service.SetFaststartCache(&stubFaststartCache{err: domain.ErrStreamCacheMiss})
+		content, err := service.OpenFaststart(context.Background(), "media_snapshot", "user_local", fingerprint)
+		if !errors.Is(err, domain.ErrStreamCacheMiss) {
+			t.Fatalf("error = %v, want %v", err, domain.ErrStreamCacheMiss)
+		}
+		if content.Reader != nil {
+			t.Fatalf("cache miss returned content = %#v", content)
+		}
+	})
 }

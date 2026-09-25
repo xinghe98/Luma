@@ -25,6 +25,9 @@ var (
 	ErrMediaNotFound = errors.New("media not found")
 	// ErrContentNotFound 表示原始媒体文件不存在或未通过安全路径检查。
 	ErrContentNotFound = errors.New("media content not found")
+	// ErrStreamCacheMiss 表示本次播放固定的 faststart 流副本已不可用；
+	// 调用方必须重新从入口决策，不能回退到原始文件字节。
+	ErrStreamCacheMiss = errors.New("stream cache miss")
 	// ErrThumbnailNotFound 表示媒体当前没有可读取的默认缩略图。
 	ErrThumbnailNotFound = errors.New("thumbnail not found")
 	// ErrThumbnailTooLarge 表示缩略图文件超过服务端允许的最大读取大小。

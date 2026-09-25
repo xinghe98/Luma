@@ -40,6 +40,25 @@ type OpenedContent struct {
 	ModifiedAt time.Time
 }
 
+// StreamRepresentation 是入口为一次播放选定的固定文件表示。
+type StreamRepresentation string
+
+const (
+	// StreamRepresentationSource 表示读取原始媒体文件。
+	StreamRepresentationSource StreamRepresentation = "source"
+	// StreamRepresentationFaststart 表示读取 faststart 缓存副本。
+	StreamRepresentationFaststart StreamRepresentation = "faststart"
+)
+
+// StreamTarget 描述入口为一次播放选定的固定表示。
+// 选定后同一次播放始终读取同一字节布局，预热完成或缓存失效都不会改变已选表示。
+type StreamTarget struct {
+	// Representation 是本次播放固定读取的文件表示。
+	Representation StreamRepresentation
+	// Fingerprint 是 faststart 表示对应的源文件版本指纹；其他表示为空。
+	Fingerprint string
+}
+
 // StreamContent 表示已经安全打开并可交给 HTTP 层的原始媒体。
 type StreamContent struct {
 	// Name 是提供给 HTTP 层的内容名称。

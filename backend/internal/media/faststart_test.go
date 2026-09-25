@@ -3,6 +3,8 @@ package media
 import (
 	"bytes"
 	"context"
+	"errors"
+	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -137,7 +139,7 @@ func startFaststartRunner(t *testing.T, cache *FaststartCache) (context.CancelFu
 	return cancel, done
 }
 
-func TestFaststartCacheColdPrepareReturnsOriginalAndLaterHitsCache(t *testing.T) {
+func TestFaststartCacheColdEntryPinsSourceAndWarmEntryServesCache(t *testing.T) {
 	root := t.TempDir()
 	runner := &recordingRemuxRunner{
 		release:  make(chan struct{}),
@@ -160,39 +162,46 @@ func TestFaststartCacheColdPrepareReturnsOriginalAndLaterHitsCache(t *testing.T)
 		RootPath: root, RelativePath: "clip.mp4",
 	}
 	source := newFaststartSource(t, root, "clip.mp4")
-	prepared, err := cache.Prepare(context.Background(), location, source)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if prepared.Reader != source.Reader || prepared.Size != source.Size {
-		t.Fatalf("cold prepare = %#v, want original snapshot", prepared)
+	fingerprint := faststartFingerprint(source.Size, source.ModifiedAt)
+	cold := cache.SelectRepresentation(location, source)
+	if cold.Representation != domain.StreamRepresentationSource || cold.Fingerprint != "" {
+		t.Fatalf("cold target = %#v, want source", cold)
 	}
 	waitFaststartSignal(t, runner.started)
 	if runner.count() != 1 {
 		t.Fatalf("ffmpeg calls while blocked = %d, want 1", runner.count())
 	}
-	if _, err := os.Stat(cache.cachePath(location.ID, source.Size, source.ModifiedAt)); !os.IsNotExist(err) {
+	if _, err := os.Stat(cache.cachePath(location.ID, fingerprint)); !os.IsNotExist(err) {
 		t.Fatalf("cache should not publish while runner is blocked: %v", err)
+	}
+	if _, err := cache.OpenFaststart(location, source, fingerprint); !errors.Is(err, domain.ErrStreamCacheMiss) {
+		t.Fatalf("blocked faststart open error = %v, want cache miss", err)
 	}
 	close(runner.release)
 	waitFaststartSignal(t, runner.finished)
 	waitFaststartCondition(t, func() bool {
-		_, err := os.Stat(cache.cachePath(location.ID, source.Size, source.ModifiedAt))
+		_, err := os.Stat(cache.cachePath(location.ID, fingerprint))
 		return err == nil
 	})
+	// 预热完成只影响后续入口决策，已经固定的 source 表示不受影响。
+	warm := cache.SelectRepresentation(location, source)
+	if warm.Representation != domain.StreamRepresentationFaststart || warm.Fingerprint != fingerprint {
+		t.Fatalf("warm target = %#v, want faststart %q", warm, fingerprint)
+	}
 	_ = source.Reader.Close()
 
 	source2 := openFaststartSource(t, root, "clip.mp4")
-	prepared2, err := cache.Prepare(context.Background(), location, source2)
+	defer source2.Reader.Close()
+	opened, err := cache.OpenFaststart(location, source2, warm.Fingerprint)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer prepared2.Reader.Close()
-	if prepared2.Reader == source2.Reader || runner.count() != 1 {
-		t.Fatalf("second prepare did not hit cache: reader=%T calls=%d", prepared2.Reader, runner.count())
+	defer opened.Reader.Close()
+	if opened.Reader == source2.Reader || runner.count() != 1 {
+		t.Fatalf("warm open did not hit cache: reader=%T calls=%d", opened.Reader, runner.count())
 	}
-	if !prepared2.ModifiedAt.Equal(source2.ModifiedAt) {
-		t.Fatalf("cache modified time = %v, want source %v", prepared2.ModifiedAt, source2.ModifiedAt)
+	if !opened.ModifiedAt.Equal(source2.ModifiedAt) {
+		t.Fatalf("cache modified time = %v, want source %v", opened.ModifiedAt, source2.ModifiedAt)
 	}
 }
 
@@ -215,25 +224,22 @@ func TestFaststartCacheSkipsAlreadyOptimizedAndNonMP4(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	prepared, err := cache.Prepare(context.Background(), domain.StreamLocation{
+	prepared := cache.SelectRepresentation(domain.StreamLocation{
 		ID: "media_ok", Filename: "ok.mp4", MediaType: domain.MediaTypeVideo,
 		RootPath: root, RelativePath: "ok.mp4",
 	}, domain.OpenedContent{Reader: file, Size: info.Size(), ModifiedAt: info.ModTime().UTC()})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if prepared.Reader != file || runner.count() != 0 {
-		t.Fatalf("faststart 原片不应 remux: calls=%d", runner.count())
+	if prepared.Representation != domain.StreamRepresentationSource || prepared.Fingerprint != "" || runner.count() != 0 {
+		t.Fatalf("faststart 原片不应 remux: target=%#v calls=%d", prepared, runner.count())
 	}
 
 	mkv, _ := os.Open(sourcePath)
 	defer mkv.Close()
-	prepared, err = cache.Prepare(context.Background(), domain.StreamLocation{
+	prepared = cache.SelectRepresentation(domain.StreamLocation{
 		ID: "media_mkv", Filename: "clip.mkv", MediaType: domain.MediaTypeVideo,
 		RootPath: root, RelativePath: "ok.mp4",
 	}, domain.OpenedContent{Reader: mkv, Size: info.Size(), ModifiedAt: time.Now()})
-	if err != nil || prepared.Reader != mkv || runner.count() != 0 {
-		t.Fatalf("mkv 不应 remux: err=%v calls=%d", err, runner.count())
+	if prepared.Representation != domain.StreamRepresentationSource || runner.count() != 0 {
+		t.Fatalf("mkv 不应 remux: target=%#v calls=%d", prepared, runner.count())
 	}
 }
 
@@ -275,15 +281,15 @@ func TestFaststartCacheCoalescesSameKeyAndUsesSingleWorker(t *testing.T) {
 				errs <- err
 				return
 			}
-			prepared, err := cache.Prepare(context.Background(), location, domain.OpenedContent{
+			target := cache.SelectRepresentation(location, domain.OpenedContent{
 				Reader: file, Size: templateSize, ModifiedAt: templateModified,
 			})
-			if err != nil {
+			if target.Representation != domain.StreamRepresentationSource {
 				_ = file.Close()
-				errs <- err
+				errs <- fmt.Errorf("cold target = %#v, want source", target)
 				return
 			}
-			readers[i] = prepared.Reader
+			readers[i] = file
 		}(i)
 	}
 	group.Wait()
@@ -319,24 +325,24 @@ func TestFaststartCacheDifferentKeysRemainSingleWorker(t *testing.T) {
 		}
 	}()
 	source1 := newFaststartSource(t, root, "first.mp4")
-	first, err := cache.Prepare(context.Background(), domain.StreamLocation{
+	first := cache.SelectRepresentation(domain.StreamLocation{
 		ID: "media_first", Filename: "first.mp4", MediaType: domain.MediaTypeVideo,
 		RootPath: root, RelativePath: "first.mp4",
 	}, source1)
-	if err != nil {
-		t.Fatal(err)
+	if first.Representation != domain.StreamRepresentationSource {
+		t.Fatalf("first target = %#v, want source", first)
 	}
-	defer first.Reader.Close()
+	defer source1.Reader.Close()
 	waitFaststartSignal(t, runner.started)
 	source2 := newFaststartSource(t, root, "second.mp4")
-	second, err := cache.Prepare(context.Background(), domain.StreamLocation{
+	second := cache.SelectRepresentation(domain.StreamLocation{
 		ID: "media_second", Filename: "second.mp4", MediaType: domain.MediaTypeVideo,
 		RootPath: root, RelativePath: "second.mp4",
 	}, source2)
-	if err != nil {
-		t.Fatal(err)
+	if second.Representation != domain.StreamRepresentationSource {
+		t.Fatalf("second target = %#v, want source", second)
 	}
-	defer second.Reader.Close()
+	defer source2.Reader.Close()
 	select {
 	case <-runner.started:
 		t.Fatal("second remux started before first completed")
@@ -364,17 +370,14 @@ func TestFaststartCacheQueueFullFallsBackImmediately(t *testing.T) {
 	readers := make([]domain.StreamReader, 0, faststartQueueCapacity+1)
 	for i := range faststartQueueCapacity + 1 {
 		source := newFaststartSource(t, root, "clip.mp4")
-		prepared, err := cache.Prepare(context.Background(), domain.StreamLocation{
+		target := cache.SelectRepresentation(domain.StreamLocation{
 			ID: "media_queue_" + string(rune('a'+i)), Filename: "clip.mp4",
 			MediaType: domain.MediaTypeVideo, RootPath: root, RelativePath: "clip.mp4",
 		}, source)
-		if err != nil {
-			t.Fatal(err)
+		if target.Representation != domain.StreamRepresentationSource {
+			t.Fatalf("queue overflow target = %#v, want source", target)
 		}
-		if prepared.Reader != source.Reader {
-			t.Fatal("queue miss should return original reader")
-		}
-		readers = append(readers, prepared.Reader)
+		readers = append(readers, source.Reader)
 	}
 	for _, reader := range readers {
 		_ = reader.Close()
@@ -422,9 +425,9 @@ func TestFaststartCacheFailureCooldownAndInvalidOutputLeaveNoCache(t *testing.T)
 				MediaType: domain.MediaTypeVideo, RootPath: root, RelativePath: "clip.mp4",
 			}
 			source := newFaststartSource(t, root, "clip.mp4")
-			prepared, err := cache.Prepare(context.Background(), location, source)
-			if err != nil {
-				t.Fatal(err)
+			cold := cache.SelectRepresentation(location, source)
+			if cold.Representation != domain.StreamRepresentationSource {
+				t.Fatalf("failed entry target = %#v, want source", cold)
 			}
 			waitFaststartSignal(t, runner.finished)
 			waitFaststartCondition(t, func() bool {
@@ -432,17 +435,21 @@ func TestFaststartCacheFailureCooldownAndInvalidOutputLeaveNoCache(t *testing.T)
 				defer cache.mu.Unlock()
 				return len(cache.pending) == 0 && len(cache.failed) == 1
 			})
-			_ = prepared.Reader.Close()
+			_ = source.Reader.Close()
 			source2 := openFaststartSource(t, root, "clip.mp4")
-			prepared2, err := cache.Prepare(context.Background(), location, source2)
-			if err != nil {
-				t.Fatal(err)
+			defer source2.Reader.Close()
+			// 冷却期内不再排队，并且副本缺失必须明确失败而不是回退原始文件。
+			if again := cache.SelectRepresentation(location, source2); again.Representation != domain.StreamRepresentationSource {
+				t.Fatalf("cooldown target = %#v, want source", again)
 			}
-			defer prepared2.Reader.Close()
+			fingerprint := faststartFingerprint(source2.Size, source2.ModifiedAt)
+			if _, err := cache.OpenFaststart(location, source2, fingerprint); !errors.Is(err, domain.ErrStreamCacheMiss) {
+				t.Fatalf("missing faststart open error = %v, want cache miss", err)
+			}
 			if runner.count() != 1 {
 				t.Fatalf("cooldown ffmpeg calls = %d, want 1", runner.count())
 			}
-			if _, err := os.Stat(cache.cachePath(location.ID, source2.Size, source2.ModifiedAt)); !os.IsNotExist(err) {
+			if _, err := os.Stat(cache.cachePath(location.ID, fingerprint)); !os.IsNotExist(err) {
 				t.Fatalf("failed remux left final cache: %v", err)
 			}
 		})
@@ -466,23 +473,22 @@ func TestFaststartCacheCancellationDropsQueuedWorkAndStopsRunner(t *testing.T) {
 		RootPath: root, RelativePath: "clip.mp4",
 	}
 	source := newFaststartSource(t, root, "clip.mp4")
-	prepared, err := cache.Prepare(context.Background(), location, source)
-	if err != nil {
-		t.Fatal(err)
+	if target := cache.SelectRepresentation(location, source); target.Representation != domain.StreamRepresentationSource {
+		t.Fatalf("cancelled entry target = %#v, want source", target)
 	}
 	waitFaststartSignal(t, runner.started)
 	cancel()
 	if err := <-done; err != nil {
 		t.Fatal(err)
 	}
-	_ = prepared.Reader.Close()
+	_ = source.Reader.Close()
 	cache.mu.Lock()
 	pending := len(cache.pending)
 	cache.mu.Unlock()
 	if pending != 0 {
 		t.Fatalf("pending keys after cancellation = %d", pending)
 	}
-	if _, err := os.Stat(cache.cachePath(location.ID, source.Size, source.ModifiedAt)); !os.IsNotExist(err) {
+	if _, err := os.Stat(cache.cachePath(location.ID, faststartFingerprint(source.Size, source.ModifiedAt))); !os.IsNotExist(err) {
 		t.Fatalf("cancelled remux left final cache: %v", err)
 	}
 }
@@ -500,8 +506,8 @@ func TestFaststartCacheRechecksSizeAndMtimeBeforePublishing(t *testing.T) {
 	}
 	source := newFaststartSource(t, root, "clip.mp4")
 	oldSize, oldModified := source.Size, source.ModifiedAt
-	if _, err := cache.Prepare(context.Background(), location, source); err != nil {
-		t.Fatal(err)
+	if target := cache.SelectRepresentation(location, source); target.Representation != domain.StreamRepresentationSource {
+		t.Fatalf("changed-source entry target = %#v, want source", target)
 	}
 	_ = source.Reader.Close()
 	fileToChange, err := os.OpenFile(filepath.Join(root, "clip.mp4"), os.O_WRONLY|os.O_APPEND, 0)
@@ -526,15 +532,14 @@ func TestFaststartCacheRechecksSizeAndMtimeBeforePublishing(t *testing.T) {
 	if runner.count() != 0 {
 		t.Fatalf("changed source should fail before ffmpeg, calls=%d", runner.count())
 	}
-	if _, err := os.Stat(cache.cachePath(location.ID, oldSize, oldModified)); !os.IsNotExist(err) {
+	if _, err := os.Stat(cache.cachePath(location.ID, faststartFingerprint(oldSize, oldModified))); !os.IsNotExist(err) {
 		t.Fatalf("stale identity cache was published: %v", err)
 	}
 	source2 := openFaststartSource(t, root, "clip.mp4")
-	prepared, err := cache.Prepare(context.Background(), location, source2)
-	if err != nil {
-		t.Fatal(err)
+	defer source2.Reader.Close()
+	if target := cache.SelectRepresentation(location, source2); target.Representation != domain.StreamRepresentationSource {
+		t.Fatalf("new-version entry target = %#v, want source", target)
 	}
-	_ = prepared.Reader.Close()
 	waitFaststartSignal(t, runner.finished)
 	cancel()
 	if err := <-done; err != nil {
@@ -611,15 +616,15 @@ func TestFaststartCacheLRUEvictsOldFilesAndKeepsOversizedNewest(t *testing.T) {
 	}
 }
 
-func TestFaststartCacheUsesMillisecondKeyAndStableSourceModifiedAtAfterTouch(t *testing.T) {
+func TestFaststartCacheUsesMillisecondFingerprintAndStableSourceModifiedAtAfterTouch(t *testing.T) {
 	cache, err := newFaststartCache("ffmpeg", t.TempDir(), &recordingRemuxRunner{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	first := time.Unix(100, int64(123*time.Millisecond)).UTC()
 	second := time.Unix(100, int64(124*time.Millisecond)).UTC()
-	firstPath := cache.cachePath("media_milli", 10, first)
-	secondPath := cache.cachePath("media_milli", 10, second)
+	firstPath := cache.cachePath("media_milli", faststartFingerprint(10, first))
+	secondPath := cache.cachePath("media_milli", faststartFingerprint(10, second))
 	if firstPath == secondPath || !strings.Contains(filepath.Base(firstPath), "-100123.mp4") {
 		t.Fatalf("millisecond cache paths = %q, %q", firstPath, secondPath)
 	}
@@ -639,7 +644,7 @@ func TestFaststartCacheUsesMillisecondKeyAndStableSourceModifiedAtAfterTouch(t *
 		t.Fatal(err)
 	}
 	info, _ := os.Stat(sourcePath)
-	cachePath := cache.cachePath("media_touch", info.Size(), sourceModified)
+	cachePath := cache.cachePath("media_touch", faststartFingerprint(info.Size(), sourceModified))
 	if err := os.WriteFile(cachePath, []byte("cached"), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -651,16 +656,23 @@ func TestFaststartCacheUsesMillisecondKeyAndStableSourceModifiedAtAfterTouch(t *
 	if err != nil {
 		t.Fatal(err)
 	}
-	prepared, err := cache.Prepare(context.Background(), domain.StreamLocation{
+	defer file.Close()
+	location := domain.StreamLocation{
 		ID: "media_touch", Filename: "clip.mp4", MediaType: domain.MediaTypeVideo,
 		RootPath: root, RelativePath: "clip.mp4",
-	}, domain.OpenedContent{Reader: file, Size: info.Size(), ModifiedAt: sourceModified})
+	}
+	source := domain.OpenedContent{Reader: file, Size: info.Size(), ModifiedAt: sourceModified}
+	target := cache.SelectRepresentation(location, source)
+	if target.Representation != domain.StreamRepresentationFaststart {
+		t.Fatalf("touch target = %#v, want faststart", target)
+	}
+	opened, err := cache.OpenFaststart(location, source, target.Fingerprint)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer prepared.Reader.Close()
-	if !prepared.ModifiedAt.Equal(sourceModified) {
-		t.Fatalf("cached source modified time = %v, want %v", prepared.ModifiedAt, sourceModified)
+	defer opened.Reader.Close()
+	if !opened.ModifiedAt.Equal(sourceModified) {
+		t.Fatalf("cached source modified time = %v, want %v", opened.ModifiedAt, sourceModified)
 	}
 	cacheInfo, err := os.Stat(cachePath)
 	if err != nil {

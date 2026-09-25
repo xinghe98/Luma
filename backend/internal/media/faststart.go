@@ -1,5 +1,7 @@
 // 非 faststart 的 MP4/MOV 在播放前异步 copy remux 到 cache_dir/faststart。
-// 不改写媒体源；缓存生成失败时调用方继续使用原文件。
+// 入口只决定一次播放读取哪一个固定表示，选定后不再改变：缓存就绪时固定使用副本，
+// 缓存缺失时本次固定使用原始文件并排队后台预热；已选副本被删除时明确失败，
+// 不会退回原始文件的字节布局。不改写媒体源。
 package media
 
 import (
@@ -17,10 +19,10 @@ import (
 )
 
 const (
-	faststartCacheDir                = "faststart"
-	faststartTimeout                 = 15 * time.Minute
-	faststartQueueCapacity           = 32
-	faststartFailureCooldown         = 5 * time.Minute
+	faststartCacheDir                   = "faststart"
+	faststartTimeout                    = 15 * time.Minute
+	faststartQueueCapacity              = 32
+	faststartFailureCooldown            = 5 * time.Minute
 	defaultFaststartCacheMaxBytes int64 = 20 * 1024 * 1024 * 1024
 )
 
@@ -39,9 +41,8 @@ type FaststartCache struct {
 }
 
 type faststartKey struct {
-	id         string
-	size       int64
-	modifiedMS int64
+	id          string
+	fingerprint string
 }
 
 type faststartTask struct {
@@ -92,40 +93,58 @@ func newFaststartCacheWithOptions(executable, cacheDir string, maxBytes int64, l
 	}, nil
 }
 
-// Prepare 检查 faststart 缓存并异步排队生成；缓存未命中时立即返回原文件快照。
-// 请求上下文不控制后台任务，任务由 jobs.Group 的生命周期上下文负责取消。
-func (c *FaststartCache) Prepare(_ context.Context, location domain.StreamLocation, source domain.OpenedContent) (domain.OpenedContent, error) {
-	if source.Reader == nil {
-		return source, nil
-	}
-	if !shouldConsiderFaststart(location) {
-		return source, nil
+// SelectRepresentation 决定一次播放固定的文件表示，并且永不阻塞调用方。
+// 缓存已就绪时选择 faststart 副本；否则立即选择原始文件并排队后台预热。
+// 预热任务由 jobs.Group 的生命周期上下文负责取消，与调用方请求上下文无关。
+func (c *FaststartCache) SelectRepresentation(location domain.StreamLocation, source domain.OpenedContent) domain.StreamTarget {
+	original := domain.StreamTarget{Representation: domain.StreamRepresentationSource}
+	if source.Reader == nil || !shouldConsiderFaststart(location) {
+		return original
 	}
 	needed, err := NeedsFastStart(source.Reader)
 	_, _ = source.Reader.Seek(0, 0)
 	if err != nil || !needed {
-		return source, nil
+		return original
 	}
 	if err := validateCacheMediaID(location.ID); err != nil {
-		return source, nil
+		return original
 	}
-	finalPath := c.cachePath(location.ID, source.Size, source.ModifiedAt)
+	fingerprint := faststartFingerprint(source.Size, source.ModifiedAt)
+	finalPath := c.cachePath(location.ID, fingerprint)
+	if ready, err := validCacheFile(finalPath); err != nil || !ready {
+		c.enqueue(faststartTask{
+			key:        faststartKey{id: location.ID, fingerprint: fingerprint},
+			location:   location,
+			size:       source.Size,
+			modifiedAt: source.ModifiedAt,
+			finalPath:  finalPath,
+		})
+		return original
+	}
+	c.touchCache(finalPath)
+	return domain.StreamTarget{
+		Representation: domain.StreamRepresentationFaststart,
+		Fingerprint:    fingerprint,
+	}
+}
 
-	if opened, err := openCachedContent(finalPath, source.ModifiedAt); err == nil {
-		_ = source.Reader.Close()
-		c.touchCache(finalPath)
-		return opened, nil
+// OpenFaststart 打开入口固定的 faststart 副本，指纹必须是同一源文件版本的快照。
+// 副本缺失、无效或与当前源文件版本不一致时返回 domain.ErrStreamCacheMiss：
+// 调用方必须明确失败，绝不能改用原始文件的字节布局。
+func (c *FaststartCache) OpenFaststart(location domain.StreamLocation, source domain.OpenedContent, fingerprint string) (domain.OpenedContent, error) {
+	if err := validateCacheMediaID(location.ID); err != nil {
+		return domain.OpenedContent{}, domain.ErrStreamCacheMiss
 	}
-
-	key := faststartKey{id: location.ID, size: source.Size, modifiedMS: source.ModifiedAt.UnixMilli()}
-	task := faststartTask{
-		key: key, location: location, size: source.Size,
-		modifiedAt: source.ModifiedAt, finalPath: finalPath,
+	if fingerprint != faststartFingerprint(source.Size, source.ModifiedAt) {
+		return domain.OpenedContent{}, domain.ErrStreamCacheMiss
 	}
-	if !c.enqueue(task) {
-		return source, nil
+	path := c.cachePath(location.ID, fingerprint)
+	opened, err := openCachedContent(path, source.ModifiedAt)
+	if err != nil {
+		return domain.OpenedContent{}, fmt.Errorf("%w: %s", domain.ErrStreamCacheMiss, err)
 	}
-	return source, nil
+	c.touchCache(path)
+	return opened, nil
 }
 
 func shouldConsiderFaststart(location domain.StreamLocation) bool {
@@ -311,9 +330,13 @@ func validCacheFile(path string) (bool, error) {
 	return false, nil
 }
 
-func (c *FaststartCache) cachePath(id string, size int64, modifiedAt time.Time) string {
-	name := fmt.Sprintf("%s-%d-%d.mp4", id, size, modifiedAt.UnixMilli())
-	return filepath.Join(c.root, name)
+// faststartFingerprint 是源文件某个版本的稳定指纹，URL 与缓存文件名共用同一格式。
+func faststartFingerprint(size int64, modifiedAt time.Time) string {
+	return fmt.Sprintf("%d-%d", size, modifiedAt.UnixMilli())
+}
+
+func (c *FaststartCache) cachePath(id, fingerprint string) string {
+	return filepath.Join(c.root, fmt.Sprintf("%s-%s.mp4", id, fingerprint))
 }
 
 func (c *FaststartCache) removeStaleCaches(id, keep string) {
@@ -352,7 +375,7 @@ func (c *FaststartCache) pendingPaths() map[string]struct{} {
 	defer c.mu.Unlock()
 	paths := make(map[string]struct{}, len(c.pending))
 	for key := range c.pending {
-		paths[c.cachePath(key.id, key.size, time.UnixMilli(key.modifiedMS))] = struct{}{}
+		paths[c.cachePath(key.id, key.fingerprint)] = struct{}{}
 	}
 	return paths
 }

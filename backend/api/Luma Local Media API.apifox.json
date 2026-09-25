@@ -1530,16 +1530,16 @@
                 "responses": [
                   {
                     "id": "107784645",
-                    "code": 200,
-                    "name": "成功",
+                    "code": 302,
+                    "name": "固定流表示",
                     "headers": [],
                     "jsonSchema": {
                       "type": "object",
                       "properties": {}
                     },
                     "itemSchema": {},
-                    "description": "",
-                    "contentType": "json",
+                    "description": "Location 返回相对于入口的 stream/source 或 stream/faststart/{fingerprint}；无响应体。按原请求 URL 解析并在整次播放中固定该地址。",
+                    "contentType": "raw",
                     "mediaType": ""
                   }
                 ],
@@ -1552,7 +1552,7 @@
                   "examples": [],
                   "oasExtensions": ""
                 },
-                "description": "",
+                "description": "播放入口：返回 302，Location 为 stream/source 或 stream/faststart/{fingerprint} 的相对引用，按原请求地址解析可保留反向代理前缀；Cache-Control: no-store。首次播放固定 source 并后台排队 remux，缓存就绪后固定 faststart 副本。FFmpeg/libmpv seek 会重新请求传入地址，因此客户端起播时必须只解析入口一次并固定最终地址，之后所有 Range 请求使用该地址。副本失效返回 404 STREAM_CACHE_MISS，不回退原始文件字节。完整契约见 backend/api/openapi.yaml。",
                 "tags": [],
                 "status": "developing",
                 "serverId": "",

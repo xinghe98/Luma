@@ -5,11 +5,9 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:luma/data/api/api_session.dart';
 import 'package:luma/data/proxy/loopback_media_relay.dart';
-import 'package:luma/data/proxy/proxy_route.dart';
 
 void main() {
   late HttpServer upstream;
-  late ProxyRoute proxyRoute;
   late LoopbackMediaRelay relay;
   late MediaAuthorizationResolver authorizationResolver;
   final requestHeaders = <String, String?>{};
@@ -60,9 +58,7 @@ void main() {
       }
       await request.response.close();
     });
-    proxyRoute = ProxyRoute();
     relay = LoopbackMediaRelay(
-      proxyRoute: proxyRoute,
       authorizationHeadersFor: (url) => authorizationResolver(url),
       createHttpClient: () {
         final client = HttpClient()..findProxy = (_) => 'DIRECT';
@@ -77,18 +73,7 @@ void main() {
     await upstream.close(force: true);
   });
 
-  test('inactive route keeps original media URL and headers', () {
-    final original = 'http://127.0.0.1:${upstream.port}/video';
-    final route = relay.route(original, const {
-      'Authorization': 'Bearer token',
-    });
-    expect(route.url, original);
-    expect(route.headers, {'Authorization': 'Bearer token'});
-    expect(route.token, isNull);
-  });
-
   test('GET forwards auth and range then streams 206 metadata', () async {
-    _activate(proxyRoute);
     final route = relay.route('http://127.0.0.1:${upstream.port}/video', const {
       'Authorization': 'Bearer token',
     });
@@ -122,7 +107,6 @@ void main() {
   });
 
   test('HEAD forwards metadata without a response body', () async {
-    _activate(proxyRoute);
     final route = relay.route('http://127.0.0.1:${upstream.port}/video', const {
       'Authorization': 'Bearer token',
     });
@@ -142,7 +126,6 @@ void main() {
   });
 
   test('unknown and revoked tokens return 404', () async {
-    _activate(proxyRoute);
     final route = relay.route(
       'http://127.0.0.1:${upstream.port}/video',
       const {},
@@ -160,7 +143,6 @@ void main() {
   });
 
   test('client cancellation closes a streaming relay request', () async {
-    _activate(proxyRoute);
     final route = relay.route(
       'http://127.0.0.1:${upstream.port}/slow',
       const {},
@@ -181,7 +163,6 @@ void main() {
   });
 
   test('non-GET methods are rejected', () async {
-    _activate(proxyRoute);
     final route = relay.route(
       'http://127.0.0.1:${upstream.port}/video',
       const {},
@@ -233,7 +214,6 @@ void main() {
         token: 'token',
       );
       authorizationResolver = session.authorizationHeadersFor;
-      _activate(proxyRoute);
       final client = HttpClient()..findProxy = (_) => 'DIRECT';
 
       final getTarget = 'http://127.0.0.1:${redirectServer.port}/luma/get';
@@ -280,6 +260,133 @@ void main() {
       client.close(force: true);
     },
   );
+
+  test(
+    'one playback pins its representation across concurrent ranges',
+    () async {
+      final selected = Completer<void>();
+      final release = Completer<void>();
+      var warmed = false;
+      var removed = false;
+      var entries = 0;
+      final origin = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      addTearDown(() => origin.close(force: true));
+      origin.listen((request) async {
+        final response = request.response;
+        if (request.uri.path == '/stream') {
+          entries++;
+          final location = warmed ? '/cached' : '/source';
+          if (!selected.isCompleted) {
+            selected.complete();
+            await release.future;
+          }
+          response
+            ..statusCode = HttpStatus.found
+            ..headers.set(HttpHeaders.locationHeader, location);
+        } else if (removed) {
+          response.statusCode = HttpStatus.notFound;
+        } else {
+          final body = request.uri.path == '/source' ? '2345' : 'abcd';
+          expect(request.headers.value(HttpHeaders.rangeHeader), 'bytes=2-5');
+          response
+            ..statusCode = HttpStatus.partialContent
+            ..headers.set(HttpHeaders.contentRangeHeader, 'bytes 2-5/10')
+            ..contentLength = 4;
+          if (request.method != 'HEAD') response.write(body);
+        }
+        await response.close();
+      });
+      final route = relay.route(
+        'http://127.0.0.1:${origin.port}/stream',
+        const {},
+      );
+      final client = HttpClient()..findProxy = (_) => 'DIRECT';
+      addTearDown(() => client.close(force: true));
+
+      Future<HttpClientResponse> requestRange(String method) async {
+        final request = await client.openUrl(method, Uri.parse(route.url));
+        request.headers.set(HttpHeaders.rangeHeader, 'bytes=2-5');
+        return request.close();
+      }
+
+      final first = requestRange('HEAD');
+      await selected.future;
+      warmed = true;
+      final concurrent = requestRange('GET');
+      release.complete();
+      final head = await first;
+      expect(head.statusCode, HttpStatus.partialContent);
+      expect(head.contentLength, 4);
+      expect(await _body(head), isEmpty);
+      final overlappingRange = await concurrent;
+      expect(utf8.decode(await _body(overlappingRange)), '2345');
+      final laterRange = await requestRange('GET');
+      expect(utf8.decode(await _body(laterRange)), '2345');
+      expect(entries, 1);
+
+      removed = true;
+      final missing = await requestRange('GET');
+      expect(missing.statusCode, HttpStatus.notFound);
+      await _body(missing);
+      expect(entries, 1, reason: '已选表示失效不能回入口改选另一种字节布局');
+    },
+  );
+
+  for (final cancelFirst in [false, true]) {
+    test(
+      'stalled initial headers release queued Range (cancel=$cancelFirst)',
+      () async {
+        final entered = Completer<void>();
+        var requests = 0;
+        final origin = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+        addTearDown(() => origin.close(force: true));
+        origin.listen((request) async {
+          requests++;
+          if (requests == 1) {
+            entered.complete();
+            return;
+          }
+          request.response
+            ..statusCode = HttpStatus.partialContent
+            ..headers.set(HttpHeaders.contentRangeHeader, 'bytes 2-5/10')
+            ..contentLength = 4
+            ..write('2345');
+          await request.response.close();
+        });
+        await relay.close();
+        relay = LoopbackMediaRelay(
+          createHttpClient: () => HttpClient()..findProxy = (_) => 'DIRECT',
+          authorizationHeadersFor: (_) => const {},
+          responseHeadersTimeout: const Duration(milliseconds: 150),
+        );
+        await relay.start();
+        final route = relay.route(
+          'http://127.0.0.1:${origin.port}/stream',
+          const {},
+        );
+        final firstClient = HttpClient()..findProxy = (_) => 'DIRECT';
+        final nextClient = HttpClient()..findProxy = (_) => 'DIRECT';
+        addTearDown(() {
+          firstClient.close(force: true);
+          nextClient.close(force: true);
+        });
+        final first = await firstClient.getUrl(Uri.parse(route.url));
+        final outcome = first.close().then<int>((response) async {
+          await response.drain<void>();
+          return response.statusCode;
+        }, onError: (Object _) => -1);
+        await entered.future;
+        if (cancelFirst) first.abort();
+        final next = await nextClient.getUrl(Uri.parse(route.url));
+        next.headers.set(HttpHeaders.rangeHeader, 'bytes=2-5');
+        final response = await next.close().timeout(const Duration(seconds: 2));
+        expect(response.statusCode, HttpStatus.partialContent);
+        expect(utf8.decode(await _body(response)), '2345');
+        expect(await outcome, cancelFirst ? -1 : HttpStatus.badGateway);
+        expect(requests, 2);
+      },
+    );
+  }
 
   test('redirects outside API authorization boundaries omit bearer', () async {
     final publicAuthorization = <String, String?>{};
@@ -330,7 +437,6 @@ void main() {
       token: 'token',
     );
     authorizationResolver = session.authorizationHeadersFor;
-    _activate(proxyRoute);
     final client = HttpClient()..findProxy = (_) => 'DIRECT';
 
     for (final boundary in ['host', 'port', 'path']) {
@@ -399,7 +505,6 @@ void main() {
         );
         await request.response.close();
       });
-      _activate(proxyRoute);
       final client = HttpClient()..findProxy = (_) => 'DIRECT';
 
       for (final path in [
@@ -421,18 +526,6 @@ void main() {
       expect(completedRedirectResponses, 15);
       client.close(force: true);
     },
-  );
-}
-
-void _activate(ProxyRoute route) {
-  route.activate(
-    const ProxyEndpoint(
-      profileId: 'profile',
-      host: '127.0.0.1',
-      port: 1,
-      username: 'user',
-      password: 'password',
-    ),
   );
 }
 

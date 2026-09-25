@@ -1,9 +1,8 @@
+// 本地媒体转发复用代理与认证边界；每个播放 token 固定首次选定的资源地址。
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
-
-import 'proxy_route.dart';
 
 final class MediaRequestRoute {
   const MediaRequestRoute({
@@ -42,12 +41,12 @@ final class DirectMediaRequestRouter implements MediaRequestRouter {
 typedef MediaAuthorizationResolver = Map<String, String> Function(String url);
 
 final class LoopbackMediaRelay implements MediaRequestRouter {
+  /// 创建直连和代理共用的播放转发器；上游路由由注入的 HttpClient 决定。
   LoopbackMediaRelay({
-    required ProxyRoute proxyRoute,
     required HttpClient Function() createHttpClient,
     required MediaAuthorizationResolver authorizationHeadersFor,
-  }) : _proxyRoute = proxyRoute,
-       _createHttpClient = createHttpClient,
+    this.responseHeadersTimeout = const Duration(seconds: 60),
+  }) : _createHttpClient = createHttpClient,
        _authorizationHeadersFor = authorizationHeadersFor;
 
   static const _forwardedRequestHeaders = <String>{
@@ -67,9 +66,11 @@ final class LoopbackMediaRelay implements MediaRequestRouter {
     'cache-control',
   };
 
-  final ProxyRoute _proxyRoute;
   final HttpClient Function() _createHttpClient;
   final MediaAuthorizationResolver _authorizationHeadersFor;
+
+  /// 上游响应头的等待上限；防止首次解析卡住后阻塞同一播放的所有 Range。
+  final Duration responseHeadersTimeout;
   final Map<String, _MediaTarget> _targets = {};
   HttpServer? _server;
   StreamSubscription<HttpRequest>? _subscription;
@@ -89,11 +90,9 @@ final class LoopbackMediaRelay implements MediaRequestRouter {
     _subscription = server.listen(_handleRequest, onError: (_) {});
   }
 
+  /// 为一次播放创建独立地址；首次响应选定表示后，后续 Range 不再重选入口。
   @override
   MediaRequestRoute route(String url, Map<String, String> headers) {
-    if (!_proxyRoute.isActive) {
-      return MediaRequestRoute(url: url, headers: headers);
-    }
     final server = _server;
     final target = Uri.tryParse(url);
     if (server == null ||
@@ -144,6 +143,12 @@ final class LoopbackMediaRelay implements MediaRequestRouter {
 
     final client = _createHttpClient();
     client.autoUncompress = false;
+    unawaited(
+      response.done.then<void>(
+        (_) => client.close(force: true),
+        onError: (Object _, StackTrace _) => client.close(force: true),
+      ),
+    );
     try {
       final upstream = await _openUpstream(
         client: client,
@@ -179,43 +184,73 @@ final class LoopbackMediaRelay implements MediaRequestRouter {
     }
   }
 
+  /// 首批并发请求共用一次地址选择，只等响应头，不阻塞已选资源的并行读取。
   Future<HttpClientResponse> _openUpstream({
     required HttpClient client,
     required String method,
     required _MediaTarget target,
     required HttpHeaders downstreamHeaders,
   }) async {
-    var uri = target.uri;
-    Map<String, String> authorizationHeaders = target.headers;
-    var redirectCount = 0;
-    while (true) {
-      final upstreamRequest = await client.openUrl(method, uri);
-      upstreamRequest.followRedirects = false;
-      for (final entry in authorizationHeaders.entries) {
-        upstreamRequest.headers.set(entry.key, entry.value);
-      }
-      downstreamHeaders.forEach((name, values) {
-        if (_forwardedRequestHeaders.contains(name.toLowerCase())) {
-          upstreamRequest.headers.set(name, values);
+    while (target.resolving != null) {
+      await target.resolving!.future;
+    }
+    final selection = target.resolvedUri == null ? Completer<void>() : null;
+    if (selection != null) target.resolving = selection;
+    final headerDeadline = Timer(
+      responseHeadersTimeout,
+      () => client.close(force: true),
+    );
+    try {
+      var uri = target.resolvedUri ?? target.uri;
+      var authorizationHeaders = uri == target.uri
+          ? target.headers
+          : _authorizationHeadersFor(uri.toString());
+      var redirectCount = 0;
+      while (true) {
+        final upstreamRequest = await client.openUrl(method, uri);
+        upstreamRequest.followRedirects = false;
+        for (final entry in authorizationHeaders.entries) {
+          upstreamRequest.headers.set(entry.key, entry.value);
         }
-      });
+        downstreamHeaders.forEach((name, values) {
+          if (_forwardedRequestHeaders.contains(name.toLowerCase())) {
+            upstreamRequest.headers.set(name, values);
+          }
+        });
 
-      final upstream = await upstreamRequest.close();
-      if (!upstream.isRedirect) return upstream;
+        final upstream = await upstreamRequest.close();
+        if (!upstream.isRedirect) {
+          if (selection != null &&
+              (upstream.statusCode == HttpStatus.ok ||
+                  upstream.statusCode == HttpStatus.partialContent ||
+                  upstream.statusCode == HttpStatus.notModified ||
+                  upstream.statusCode ==
+                      HttpStatus.requestedRangeNotSatisfiable)) {
+            target.resolvedUri = uri;
+          }
+          return upstream;
+        }
 
-      await upstream.drain<void>();
-      final location = upstream.headers.value(HttpHeaders.locationHeader);
-      if (location == null || location.isEmpty || redirectCount >= 5) {
-        throw const HttpException('Invalid media redirect');
+        await upstream.drain<void>();
+        final location = upstream.headers.value(HttpHeaders.locationHeader);
+        if (location == null || location.isEmpty || redirectCount >= 5) {
+          throw const HttpException('Invalid media redirect');
+        }
+        final nextUri = uri.resolve(location);
+        if (!nextUri.isAbsolute ||
+            (nextUri.scheme != 'http' && nextUri.scheme != 'https')) {
+          throw const HttpException('Invalid media redirect');
+        }
+        redirectCount++;
+        uri = nextUri;
+        authorizationHeaders = _authorizationHeadersFor(uri.toString());
       }
-      final nextUri = uri.resolve(location);
-      if (!nextUri.isAbsolute ||
-          (nextUri.scheme != 'http' && nextUri.scheme != 'https')) {
-        throw const HttpException('Invalid media redirect');
+    } finally {
+      headerDeadline.cancel();
+      if (selection != null) {
+        target.resolving = null;
+        selection.complete();
       }
-      redirectCount++;
-      uri = nextUri;
-      authorizationHeaders = _authorizationHeadersFor(uri.toString());
     }
   }
 
@@ -237,8 +272,10 @@ final class LoopbackMediaRelay implements MediaRequestRouter {
 }
 
 final class _MediaTarget {
-  const _MediaTarget({required this.uri, required this.headers});
+  _MediaTarget({required this.uri, required this.headers});
 
   final Uri uri;
   final Map<String, String> headers;
+  Uri? resolvedUri;
+  Completer<void>? resolving;
 }

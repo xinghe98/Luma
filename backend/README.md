@@ -172,10 +172,10 @@ curl http://127.0.0.1:8080/api/v1/media/{media_id}/thumbnail \
   -H 'If-None-Match: "previous-etag"' \
   --output thumbnail.jpg
 
-curl -I http://127.0.0.1:8080/api/v1/media/{media_id}/stream \
+curl -I -L http://127.0.0.1:8080/api/v1/media/{media_id}/stream \
   -H "Authorization: Bearer ${SESSION_TOKEN}"
 
-curl http://127.0.0.1:8080/api/v1/media/{media_id}/stream \
+curl -L http://127.0.0.1:8080/api/v1/media/{media_id}/stream \
   -H "Authorization: Bearer ${SESSION_TOKEN}" \
   -H "Range: bytes=0-1048575" \
   --output video.part
@@ -186,6 +186,13 @@ curl http://127.0.0.1:8080/api/v1/media/{image_id}/original \
 ```
 
 列表响应的 `next_cursor` 为 `null` 时表示没有下一页，否则将其原样传入下一次请求。视频 `stream_url` 和图片 `original_url` 均支持 GET、HEAD、Range、`If-None-Match`、`If-Modified-Since` 和 `If-Range`；响应使用私有缓存和基于实际文件大小、修改时间的弱 ETag。媒体列表支持 `favorite` 与 `tag_id` 筛选，用户数据通过 `/user-data` 与 `/progress` 写入。
+
+`/media/{id}/stream` 是入口而不是内容响应：它用 302 跳转到本次播放固定的表示地址。`Location` 使用 `stream/source` 或 `stream/faststart/{fingerprint}` 这样的相对引用，即使反向代理剥离了外部路径前缀，客户端仍能依据原请求地址正确解析。入口响应不可被中间层缓存。跳转目标只有两种：
+
+* `/media/{id}/stream/source`：始终读取原始媒体文件。
+* `/media/{id}/stream/faststart/{fingerprint}`：始终读取该版本指纹的 faststart 缓存副本。
+
+入口在缓存已就绪时跳转到副本，否则跳转到原始文件并排队后台 remux，两种情况都不等待 remux 完成。一次播放必须只解析入口一次，之后的 Range 与 `If-Range` 请求直接使用跳转后的地址；FFmpeg/libmpv 在每次 seek 时都会重新请求入口地址，所以客户端必须在起播时固定最终地址，否则预热完成后会跨字节布局切换。已固定的副本地址在缓存被清理后返回 404 `STREAM_CACHE_MISS`，客户端应重新解析入口并重新开始播放，不能接受原始文件字节。
 
 ### Flutter 已封装但暂无前端功能
 
@@ -827,25 +834,39 @@ ffmpeg 缩略图：1 至 2 个 Worker
 内容接口：
 
 ```http
-GET /api/v1/media/{id}/stream
-GET /api/v1/media/{id}/original
+GET|HEAD /api/v1/media/{id}/stream                            # 入口：302 跳转到本次播放固定的表示
+GET|HEAD /api/v1/media/{id}/stream/source                     # 固定表示：原始媒体文件
+GET|HEAD /api/v1/media/{id}/stream/faststart/{fingerprint}    # 固定表示：faststart 缓存副本
+GET|HEAD /api/v1/media/{id}/original
 ```
 
-处理流程：
+入口流程：
 
 ```text
 读取媒体 ID
-→ 查询数据库
-→ 获取 source 和 relative_path
+→ 查询数据库并校验当前用户可见性
 → 规范化并校验路径仍位于 source 根目录
 → 拒绝符号链接逃逸
-→ 检查文件是否存在
-→ 打开文件
-→ 调用 http.ServeContent
+→ 打开文件快照（size 与毫秒级 mtime 组成版本指纹）
+→ 判断是否需要 faststart
+→ 缓存已就绪：302 到 stream/faststart/{fingerprint}
+→ 缓存缺失或不需要 faststart：排队后台 remux（可选），302 到 stream/source
+```
+
+表示流程：
+
+```text
+source：重新校验可见性 → 打开原始文件 → 调用 http.ServeContent
+faststart：重新校验可见性 → 打开源文件快照核对指纹 → 打开该指纹的缓存副本 → 调用 http.ServeContent
 ```
 
 核心要求：
 
+* 入口只做决策与跳转，不返回内容字节；`Location` 使用相对引用以保留反向代理前缀，并携带 `Cache-Control: no-store`
+* 一次播放只解析一次入口，跳转后的地址固定该次播放读取的字节布局；FFmpeg/libmpv 会在每次 seek 时重新请求入口地址，因此起播时必须固定最终地址
+* `source` 表示始终读取原始文件；预热完成不会改变已经固定的表示
+* `faststart` 表示只读取该指纹的缓存副本；副本缺失、无效或指纹与当前源文件不一致时返回 404 `STREAM_CACHE_MISS`，不得回退到原始文件字节
+* remux 只在后台执行，入口与任何 Range 请求都不得等待它完成
 * 支持 Range
 * 支持 HEAD
 * 正确返回 Content-Type
@@ -879,6 +900,8 @@ Gin 负责路由、HTTP 参数、请求 DTO、响应 DTO 和中间件。使用 `
 // GET  /api/v1/media/:id
 // GET  /api/v1/media/:id/thumbnail
 // GET|HEAD /api/v1/media/:id/stream
+// GET|HEAD /api/v1/media/:id/stream/source
+// GET|HEAD /api/v1/media/:id/stream/faststart/:fingerprint
 // GET|HEAD /api/v1/media/:id/original
 // GET|PATCH /api/v1/media/:id/user-data
 // PUT /api/v1/media/:id/progress

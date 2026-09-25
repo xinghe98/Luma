@@ -228,7 +228,7 @@ func (b *bootstrap) build(ctx context.Context) (*App, error) {
 	if err != nil {
 		return nil, fmt.Errorf("创建 faststart 缓存: %w", err)
 	}
-	streamService.SetPreparer(faststartCache)
+	streamService.SetFaststartCache(faststartCache)
 	if err := workerGroup.Add(faststartCache); err != nil {
 		return nil, fmt.Errorf("注册 faststart Worker: %w", err)
 	}

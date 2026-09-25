@@ -4,11 +4,15 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -138,11 +142,22 @@ type memoryStream struct {
 
 func (*memoryStream) Close() error { return nil }
 
-func (fakeStreamUseCase) Open(context.Context, string, string) (domain.StreamContent, error) {
+// Plan 固定为原始文件表示。
+func (fakeStreamUseCase) Plan(context.Context, string, string) (domain.StreamTarget, error) {
+	return domain.StreamTarget{Representation: domain.StreamRepresentationSource}, nil
+}
+
+// OpenSource 返回可定位的测试内容。
+func (fakeStreamUseCase) OpenSource(context.Context, string, string) (domain.StreamContent, error) {
 	return domain.StreamContent{
 		Name: "test.mp4", MIMEType: "video/mp4", ETag: `W/"c-3b9aca00"`, Size: 12,
 		ModifiedAt: time.Unix(1, 0).UTC(), Reader: &memoryStream{bytes.NewReader([]byte("video-stream"))},
 	}, nil
+}
+
+// OpenFaststart 表示测试媒体没有可用的缓存副本。
+func (fakeStreamUseCase) OpenFaststart(context.Context, string, string, string) (domain.StreamContent, error) {
+	return domain.StreamContent{}, domain.ErrStreamCacheMiss
 }
 
 func (fakeStreamUseCase) OpenOriginal(context.Context, string, string) (domain.StreamContent, error) {
@@ -315,7 +330,7 @@ func TestStreamRouteSupportsRangeHeadAndConditionalRequests(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			request := httptest.NewRequest(test.method, "/api/v1/media/media_test/stream", nil)
+			request := httptest.NewRequest(test.method, "/api/v1/media/media_test/stream/source", nil)
 			request.Header.Set("Authorization", "Bearer test-session")
 			request.Header.Set("Range", test.rangeHeader)
 			request.Header.Set("If-None-Match", test.ifNoneMatch)
@@ -339,101 +354,219 @@ func TestStreamRouteSupportsRangeHeadAndConditionalRequests(t *testing.T) {
 	}
 }
 
-type blockedFaststartPreparer struct {
-	started chan struct{}
-	release chan struct{}
+// pinnedStreamRepository 按用户返回固定媒体位置；hidden 时模拟不可见媒体。
+type pinnedStreamRepository struct {
+	// root 是媒体源根目录。
+	root string
+	// hidden 表示当前用户不可见该媒体。
+	hidden bool
 }
 
-func (p *blockedFaststartPreparer) Prepare(_ context.Context, _ domain.StreamLocation, source domain.OpenedContent) (domain.OpenedContent, error) {
-	select {
-	case p.started <- struct{}{}:
-	default:
+func (r pinnedStreamRepository) GetStreamLocation(_ context.Context, id, userID string) (domain.StreamLocation, error) {
+	if r.hidden || userID != "user_local" {
+		return domain.StreamLocation{}, domain.ErrMediaNotFound
 	}
-	go func() { <-p.release }()
-	return source, nil
-}
-
-type repeatingStreamOpener struct {
-	payload  []byte
-	modified time.Time
-}
-
-func (o repeatingStreamOpener) OpenContent(context.Context, string, string) (domain.OpenedContent, error) {
-	return domain.OpenedContent{
-		Reader:     &memoryStream{bytes.NewReader(o.payload)},
-		Size:       int64(len(o.payload)),
-		ModifiedAt: o.modified,
-	}, nil
-}
-
-type snapshotStreamRepository struct{}
-
-func (snapshotStreamRepository) GetStreamLocation(context.Context, string, string) (domain.StreamLocation, error) {
 	return domain.StreamLocation{
-		ID: "media_test", Filename: "test.mp4", MediaType: domain.MediaTypeVideo, MIMEType: "video/mp4",
-		SourceType: domain.SourceTypeLocal, RootPath: "/media", RelativePath: "test.mp4",
+		ID: id, Filename: "clip.mp4", MediaType: domain.MediaTypeVideo, MIMEType: "video/mp4",
+		SourceType: domain.SourceTypeLocal, RootPath: r.root, RelativePath: "clip.mp4",
 	}, nil
 }
 
-// TestStreamRouteReturnsWhileFaststartRemuxBlocked 验证 HEAD/Range 在 remux 仍阻塞时已按原文件快照返回。
-func TestStreamRouteReturnsWhileFaststartRemuxBlocked(t *testing.T) {
-	payload := []byte("video-stream")
-	modified := time.Unix(1, 0).UTC()
-	preparer := &blockedFaststartPreparer{
-		started: make(chan struct{}, 8),
-		release: make(chan struct{}),
+// pinnedStreamOpener 直接打开媒体根目录中的文件，模拟已通过安全检查的内容打开器。
+type pinnedStreamOpener struct {
+	// root 是媒体源根目录。
+	root string
+}
+
+func (o pinnedStreamOpener) OpenContent(_ context.Context, root, relativePath string) (domain.OpenedContent, error) {
+	file, err := os.Open(filepath.Join(root, relativePath))
+	if err != nil {
+		return domain.OpenedContent{}, domain.ErrContentNotFound
 	}
-	streamService, err := service.NewStreamService(snapshotStreamRepository{}, repeatingStreamOpener{payload: payload, modified: modified})
+	info, err := file.Stat()
+	if err != nil {
+		_ = file.Close()
+		return domain.OpenedContent{}, err
+	}
+	return domain.OpenedContent{Reader: file, Size: info.Size(), ModifiedAt: info.ModTime().UTC()}, nil
+}
+
+// pinnedFaststartCache 用真实缓存文件模拟入口的表示决策与副本打开。
+type pinnedFaststartCache struct {
+	// root 是测试缓存目录。
+	root string
+}
+
+func (c *pinnedFaststartCache) fingerprint(source domain.OpenedContent) string {
+	return fmt.Sprintf("%d-%d", source.Size, source.ModifiedAt.UnixMilli())
+}
+
+func (c *pinnedFaststartCache) cachePath(source domain.OpenedContent) string {
+	return filepath.Join(c.root, "faststart-"+c.fingerprint(source)+".mp4")
+}
+
+func (c *pinnedFaststartCache) SelectRepresentation(_ domain.StreamLocation, source domain.OpenedContent) domain.StreamTarget {
+	if _, err := os.Stat(c.cachePath(source)); err != nil {
+		return domain.StreamTarget{Representation: domain.StreamRepresentationSource}
+	}
+	return domain.StreamTarget{
+		Representation: domain.StreamRepresentationFaststart,
+		Fingerprint:    c.fingerprint(source),
+	}
+}
+
+func (c *pinnedFaststartCache) OpenFaststart(_ domain.StreamLocation, source domain.OpenedContent, fingerprint string) (domain.OpenedContent, error) {
+	if fingerprint != c.fingerprint(source) {
+		return domain.OpenedContent{}, domain.ErrStreamCacheMiss
+	}
+	file, err := os.Open(c.cachePath(source))
+	if err != nil {
+		return domain.OpenedContent{}, domain.ErrStreamCacheMiss
+	}
+	info, err := file.Stat()
+	if err != nil {
+		_ = file.Close()
+		return domain.OpenedContent{}, domain.ErrStreamCacheMiss
+	}
+	return domain.OpenedContent{Reader: file, Size: info.Size(), ModifiedAt: source.ModifiedAt}, nil
+}
+
+// authorizedStreamRequest 发送带测试会话的流请求。
+func authorizedStreamRequest(t *testing.T, router http.Handler, method, path, rangeHeader string) *httptest.ResponseRecorder {
+	t.Helper()
+	request := httptest.NewRequest(method, path, nil)
+	request.Header.Set("Authorization", "Bearer test-session")
+	if rangeHeader != "" {
+		request.Header.Set("Range", rangeHeader)
+	}
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, request)
+	return recorder
+}
+
+// TestStreamRoutePinsRepresentationAcrossWarmup 验证预热前后各表示地址返回的字节与元数据始终一致。
+func TestStreamRoutePinsRepresentationAcrossWarmup(t *testing.T) {
+	root := t.TempDir()
+	sourceBytes := []byte("SOURCE-BYTES-0123456789")
+	if err := os.WriteFile(filepath.Join(root, "clip.mp4"), sourceBytes, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	modified := time.Unix(1700000000, 0).UTC()
+	if err := os.Chtimes(filepath.Join(root, "clip.mp4"), modified, modified); err != nil {
+		t.Fatal(err)
+	}
+	source := domain.OpenedContent{Size: int64(len(sourceBytes)), ModifiedAt: modified}
+	cache := &pinnedFaststartCache{root: t.TempDir()}
+	streamService, err := service.NewStreamService(pinnedStreamRepository{root: root}, pinnedStreamOpener{root: root})
 	if err != nil {
 		t.Fatal(err)
 	}
-	streamService.SetPreparer(preparer)
+	streamService.SetFaststartCache(cache)
 	router := testRouter(t, streamService)
+	entryPath := "/api/v1/media/media_test/stream"
+	sourcePath := entryPath + "/source"
+	cachePath := entryPath + "/faststart/" + cache.fingerprint(source)
 
-	type result struct {
-		headStatus int
-		headBody   int
-		headLength string
-		headETag   string
-		getStatus  int
-		getBody    string
-		getRange   string
+	// 冷入口立即固定到原始文件地址。
+	cold := authorizedStreamRequest(t, router, http.MethodGet, entryPath, "")
+	if cold.Code != http.StatusFound || cold.Header().Get("Location") != "stream/source" {
+		t.Fatalf("cold entry status=%d location=%q, want %q", cold.Code, cold.Header().Get("Location"), sourcePath)
 	}
-	done := make(chan result, 1)
-	go func() {
-		head := httptest.NewRequest(http.MethodHead, "/api/v1/media/media_test/stream", nil)
-		head.Header.Set("Authorization", "Bearer test-session")
-		headRecorder := httptest.NewRecorder()
-		router.ServeHTTP(headRecorder, head)
+	if cold.Header().Get("Cache-Control") != "no-store" {
+		t.Fatalf("entry cache-control=%q", cold.Header().Get("Cache-Control"))
+	}
 
-		get := httptest.NewRequest(http.MethodGet, "/api/v1/media/media_test/stream", nil)
-		get.Header.Set("Authorization", "Bearer test-session")
-		get.Header.Set("Range", "bytes=2-6")
-		getRecorder := httptest.NewRecorder()
-		router.ServeHTTP(getRecorder, get)
-		done <- result{
-			headStatus: headRecorder.Code,
-			headBody:   headRecorder.Body.Len(),
-			headLength: headRecorder.Header().Get("Content-Length"),
-			headETag:   headRecorder.Header().Get("ETag"),
-			getStatus:  getRecorder.Code,
-			getBody:    getRecorder.Body.String(),
-			getRange:   getRecorder.Header().Get("Content-Range"),
+	// source 表示：HEAD 与 Range 使用同一快照，越界 Range 仍是 416。
+	sourceHead := authorizedStreamRequest(t, router, http.MethodHead, sourcePath, "")
+	if sourceHead.Code != http.StatusOK || sourceHead.Header().Get("Content-Length") != strconv.Itoa(len(sourceBytes)) {
+		t.Fatalf("source HEAD status=%d length=%q", sourceHead.Code, sourceHead.Header().Get("Content-Length"))
+	}
+	sourceRange := authorizedStreamRequest(t, router, http.MethodGet, sourcePath, "bytes=0-5")
+	if sourceRange.Code != http.StatusPartialContent || sourceRange.Body.String() != "SOURCE" ||
+		sourceRange.Header().Get("Content-Range") != fmt.Sprintf("bytes 0-5/%d", len(sourceBytes)) {
+		t.Fatalf("source range status=%d body=%q range=%q", sourceRange.Code, sourceRange.Body.String(), sourceRange.Header().Get("Content-Range"))
+	}
+	if sourceRange.Header().Get("ETag") != sourceHead.Header().Get("ETag") {
+		t.Fatalf("source etag=%q, HEAD etag=%q", sourceRange.Header().Get("ETag"), sourceHead.Header().Get("ETag"))
+	}
+	unsatisfiable := authorizedStreamRequest(t, router, http.MethodGet, sourcePath, fmt.Sprintf("bytes=%d-%d", len(sourceBytes)+1, len(sourceBytes)+4))
+	if unsatisfiable.Code != http.StatusRequestedRangeNotSatisfiable ||
+		unsatisfiable.Header().Get("Content-Range") != fmt.Sprintf("bytes */%d", len(sourceBytes)) {
+		t.Fatalf("source unsatisfiable status=%d range=%q", unsatisfiable.Code, unsatisfiable.Header().Get("Content-Range"))
+	}
+
+	// 预热完成：新的入口请求固定到副本地址。
+	cacheBytes := []byte("CACHE-BYTES!!")
+	if err := os.WriteFile(cache.cachePath(source), cacheBytes, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	warm := authorizedStreamRequest(t, router, http.MethodHead, entryPath, "")
+	if warm.Code != http.StatusFound || warm.Header().Get("Location") != "stream/faststart/"+cache.fingerprint(source) {
+		t.Fatalf("warm entry status=%d location=%q, want %q", warm.Code, warm.Header().Get("Location"), cachePath)
+	}
+
+	// 已固定的 source 地址在预热完成后仍然返回原始文件字节。
+	afterWarm := authorizedStreamRequest(t, router, http.MethodGet, sourcePath, "bytes=0-5")
+	if afterWarm.Code != http.StatusPartialContent || afterWarm.Body.String() != "SOURCE" {
+		t.Fatalf("pinned source after warm status=%d body=%q", afterWarm.Code, afterWarm.Body.String())
+	}
+
+	// 已固定的副本地址始终返回副本字节与副本长度。
+	cacheHead := authorizedStreamRequest(t, router, http.MethodHead, cachePath, "")
+	cacheGet := authorizedStreamRequest(t, router, http.MethodGet, cachePath, "")
+	if cacheHead.Code != http.StatusOK || cacheGet.Code != http.StatusOK ||
+		cacheHead.Header().Get("Content-Length") != strconv.Itoa(len(cacheBytes)) || cacheGet.Body.String() != string(cacheBytes) {
+		t.Fatalf("cache HEAD=%d/%q GET=%d/%q", cacheHead.Code, cacheHead.Header().Get("Content-Length"), cacheGet.Code, cacheGet.Body.String())
+	}
+	if cacheHead.Header().Get("ETag") != cacheGet.Header().Get("ETag") || cacheGet.Header().Get("ETag") == sourceHead.Header().Get("ETag") {
+		t.Fatalf("cache etag=%q source etag=%q", cacheGet.Header().Get("ETag"), sourceHead.Header().Get("ETag"))
+	}
+	cacheRange := authorizedStreamRequest(t, router, http.MethodGet, cachePath, "bytes=6-10")
+	if cacheRange.Code != http.StatusPartialContent || cacheRange.Body.String() != string(cacheBytes[6:11]) {
+		t.Fatalf("cache range status=%d body=%q", cacheRange.Code, cacheRange.Body.String())
+	}
+
+	// 副本被清理后必须明确失败；重新开播则回到原始文件表示。
+	if err := os.Remove(cache.cachePath(source)); err != nil {
+		t.Fatal(err)
+	}
+	evicted := authorizedStreamRequest(t, router, http.MethodGet, cachePath, "bytes=0-5")
+	if evicted.Code != http.StatusNotFound || !strings.Contains(evicted.Body.String(), "STREAM_CACHE_MISS") ||
+		strings.Contains(evicted.Body.String(), "SOURCE") {
+		t.Fatalf("evicted cache status=%d body=%q", evicted.Code, evicted.Body.String())
+	}
+	reopen := authorizedStreamRequest(t, router, http.MethodGet, entryPath, "")
+	if reopen.Code != http.StatusFound || reopen.Header().Get("Location") != "stream/source" {
+		t.Fatalf("reopen status=%d location=%q, want %q", reopen.Code, reopen.Header().Get("Location"), sourcePath)
+	}
+}
+
+// TestStreamRouteKeepsPermissionChecksForPinnedRepresentations 验证入口与各表示地址都继续校验访问权。
+func TestStreamRouteKeepsPermissionChecksForPinnedRepresentations(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "clip.mp4"), []byte("SOURCE-BYTES"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	streamService, err := service.NewStreamService(pinnedStreamRepository{root: root, hidden: true}, pinnedStreamOpener{root: root})
+	if err != nil {
+		t.Fatal(err)
+	}
+	streamService.SetFaststartCache(&pinnedFaststartCache{root: t.TempDir()})
+	router := testRouter(t, streamService)
+	for _, path := range []string{
+		"/api/v1/media/media_test/stream",
+		"/api/v1/media/media_test/stream/source",
+		"/api/v1/media/media_test/stream/faststart/12-1700000000000",
+	} {
+		unauthorized := httptest.NewRecorder()
+		router.ServeHTTP(unauthorized, httptest.NewRequest(http.MethodGet, path, nil))
+		if unauthorized.Code != http.StatusUnauthorized {
+			t.Fatalf("%s unauthorized status=%d", path, unauthorized.Code)
 		}
-	}()
-
-	var got result
-	select {
-	case got = <-done:
-	case <-time.After(200 * time.Millisecond):
-		t.Fatal("HEAD/Range waited for blocked faststart remux")
-	}
-	close(preparer.release)
-	if got.headStatus != http.StatusOK || got.headBody != 0 || got.headLength != "12" || got.headETag != `W/"c-1"` {
-		t.Fatalf("HEAD status=%d body=%d length=%q etag=%q", got.headStatus, got.headBody, got.headLength, got.headETag)
-	}
-	if got.getStatus != http.StatusPartialContent || got.getBody != "deo-s" || got.getRange != "bytes 2-6/12" {
-		t.Fatalf("Range status=%d body=%q range=%q", got.getStatus, got.getBody, got.getRange)
+		hidden := authorizedStreamRequest(t, router, http.MethodGet, path, "")
+		if hidden.Code != http.StatusNotFound || !strings.Contains(hidden.Body.String(), "MEDIA_NOT_FOUND") {
+			t.Fatalf("%s hidden status=%d body=%q", path, hidden.Code, hidden.Body.String())
+		}
 	}
 }
 

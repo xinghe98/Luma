@@ -374,10 +374,60 @@ paths:
     parameters:
       - $ref: "#/components/parameters/MediaID"
     get:
-      summary: 播放原始视频
+      summary: 决定本次播放固定的流表示
       description: |
-        仅服务可见的视频原文件，支持标准单段 HTTP Range、条件请求和进度跳转。
-        discovered、probing、thumbnailing、ready、failed 状态均可 Direct Play；图片和不可见媒体返回 404。
+        入口不返回内容字节：返回 302 跳转到该次播放固定的表示地址。
+        Location 使用 stream/source 或 stream/faststart/{fingerprint} 这样的相对引用，客户端按原请求地址解析，以保留反向代理剥离的路径前缀。
+        缓存副本已就绪时跳转到 /api/v1/media/{id}/stream/faststart/{fingerprint}；
+        否则跳转到 /api/v1/media/{id}/stream/source 并排队后台 remux，两种情况都不会等待 remux 完成。
+        一次播放必须在起播时只解析入口一次并固定最终地址：FFmpeg/libmpv 会在每次 seek 时重新请求入口地址，
+        之后的 Range 与 If-Range 请求必须直接使用跳转后的地址，否则会在预热前后切换字节布局并导致解码失败。
+        入口响应固定携带 Cache-Control: no-store，禁止任何中间层缓存这次决策。
+      security: [{ bearerAuth: [] }]
+      responses:
+        "302":
+          description: 本次播放固定的表示地址。
+          headers:
+            Location:
+              description: 相对于入口请求地址的 stream/source 或 stream/faststart/{fingerprint} 固定表示地址。
+              schema: { type: string }
+            Cache-Control: { schema: { type: string, const: "no-store" } }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/MediaNotFound" }
+        "503":
+          description: 媒体源根目录当前不可访问，error.code 为 SOURCE_OFFLINE
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+    head:
+      summary: 查询本次播放固定的表示地址
+      description: 与 GET 使用相同的认证、可见性和决策语义，不返回响应体；客户端预热会用它触发后台 remux。
+      security: [{ bearerAuth: [] }]
+      responses:
+        "302":
+          description: 本次播放固定的表示地址。
+          headers:
+            Location:
+              description: 相对于入口请求地址的 stream/source 或 stream/faststart/{fingerprint} 固定表示地址。
+              schema: { type: string }
+            Cache-Control: { schema: { type: string, const: "no-store" } }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/MediaNotFound" }
+        "503":
+          description: 媒体源根目录当前不可访问，error.code 为 SOURCE_OFFLINE
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+  /api/v1/media/{id}/stream/source:
+    parameters:
+      - $ref: "#/components/parameters/MediaID"
+    get:
+      summary: 播放入口固定的原始视频文件
+      description: |
+        只服务于入口固定的 source 表示：始终读取原始媒体文件，预热完成后也不会切换成缓存副本。
+        支持标准单段 HTTP Range、条件请求和进度跳转；图片、不可见媒体返回 404。
         弱 ETag 与 Content-Length 均基于打开瞬间的 size/mtime 快照；媒体源根目录不可访问时返回 503 SOURCE_OFFLINE。
       security: [{ bearerAuth: [] }]
       parameters:
@@ -396,18 +446,18 @@ paths:
           schema: { type: string }
       responses:
         "200":
-          description: 完整视频内容
+          description: 完整内容
           headers:
             Accept-Ranges: { schema: { type: string, const: bytes } }
             Content-Length: { schema: { type: integer, format: int64 } }
-            ETag: { schema: { type: string }, description: 由打开瞬间文件大小和秒级修改时间生成的弱 ETag。 }
+            ETag: { schema: { type: string } }
             Last-Modified: { schema: { type: string } }
             Cache-Control: { schema: { type: string, const: "private, max-age=0, must-revalidate" } }
           content:
             video/*:
               schema: { type: string, format: binary }
         "206":
-          description: Range 指定的部分视频内容
+          description: Range 指定的部分内容
           headers:
             Accept-Ranges: { schema: { type: string, const: bytes } }
             Content-Length: { schema: { type: integer, format: int64 } }
@@ -428,7 +478,7 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/MediaNotFound" }
         "416":
-          description: Range 不可满足；Content-Range 为 bytes */快照文件大小，响应体由 Go 标准库生成。
+          description: Range 不可满足；Content-Range 为 bytes */快照内容大小，响应体由 Go 标准库生成。
           headers:
             Content-Range: { schema: { type: string } }
         "503":
@@ -437,8 +487,8 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
     head:
-      summary: 查询原始视频响应元数据
-      description: 与 GET 使用相同的认证、可见性和条件请求语义，但不返回响应体。
+      summary: 查询 source 表示的响应元数据
+      description: 与 GET 使用相同的认证、可见性、快照和条件请求语义，但不返回响应体。
       security: [{ bearerAuth: [] }]
       parameters:
         - in: header
@@ -449,7 +499,7 @@ paths:
           schema: { type: string }
       responses:
         "200":
-          description: 视频响应元数据
+          description: 内容响应元数据
           headers:
             Accept-Ranges: { schema: { type: string, const: bytes } }
             Content-Length: { schema: { type: integer, format: int64 } }
@@ -460,6 +510,103 @@ paths:
         "400": { $ref: "#/components/responses/InvalidRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/MediaNotFound" }
+        "503":
+          description: 媒体源根目录当前不可访问，error.code 为 SOURCE_OFFLINE
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+  /api/v1/media/{id}/stream/faststart/{fingerprint}:
+    parameters:
+      - $ref: "#/components/parameters/MediaID"
+      - $ref: "#/components/parameters/StreamFingerprint"
+    get:
+      summary: 播放入口固定的 faststart 缓存副本
+      description: |
+        只服务于入口固定的 faststart 表示：始终读取该指纹的缓存副本，绝不回退到原始文件字节。
+        指纹由源文件打开瞬间的 size 与毫秒级 mtime 组成；副本缺失、无效或指纹与当前源文件不一致时返回 404 STREAM_CACHE_MISS，
+        客户端必须重新解析入口地址并重新开始播放，不能接受原始文件字节。
+        支持标准单段 HTTP Range、条件请求和进度跳转；可见性与类型校验和 source 表示一致。
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: header
+          name: Range
+          schema: { type: string, examples: ["bytes=0-1048575"] }
+        - in: header
+          name: If-None-Match
+          schema: { type: string }
+        - in: header
+          name: If-Modified-Since
+          schema: { type: string }
+        - in: header
+          name: If-Range
+          description: 弱 ETag 不能用于 If-Range 强比较；客户端可使用 Last-Modified 日期。
+          schema: { type: string }
+      responses:
+        "200":
+          description: 完整内容
+          headers:
+            Accept-Ranges: { schema: { type: string, const: bytes } }
+            Content-Length: { schema: { type: integer, format: int64 } }
+            ETag: { schema: { type: string } }
+            Last-Modified: { schema: { type: string } }
+            Cache-Control: { schema: { type: string, const: "private, max-age=0, must-revalidate" } }
+          content:
+            video/*:
+              schema: { type: string, format: binary }
+        "206":
+          description: Range 指定的部分内容
+          headers:
+            Accept-Ranges: { schema: { type: string, const: bytes } }
+            Content-Length: { schema: { type: integer, format: int64 } }
+            Content-Range: { schema: { type: string } }
+            ETag: { schema: { type: string } }
+            Last-Modified: { schema: { type: string } }
+            Cache-Control: { schema: { type: string, const: "private, max-age=0, must-revalidate" } }
+          content:
+            video/*:
+              schema: { type: string, format: binary }
+        "304":
+          description: 条件请求命中，无响应体
+          headers:
+            ETag: { schema: { type: string } }
+            Last-Modified: { schema: { type: string } }
+            Cache-Control: { schema: { type: string, const: "private, max-age=0, must-revalidate" } }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/StreamRepresentationNotFound" }
+        "416":
+          description: Range 不可满足；Content-Range 为 bytes */副本内容大小，响应体由 Go 标准库生成。
+          headers:
+            Content-Range: { schema: { type: string } }
+        "503":
+          description: 媒体源根目录当前不可访问，error.code 为 SOURCE_OFFLINE
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+    head:
+      summary: 查询 faststart 副本表示的响应元数据
+      description: 与 GET 使用相同的认证、可见性、指纹和条件请求语义，但不返回响应体。
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: header
+          name: If-None-Match
+          schema: { type: string }
+        - in: header
+          name: If-Modified-Since
+          schema: { type: string }
+      responses:
+        "200":
+          description: 副本响应元数据
+          headers:
+            Accept-Ranges: { schema: { type: string, const: bytes } }
+            Content-Length: { schema: { type: integer, format: int64 } }
+            ETag: { schema: { type: string } }
+            Last-Modified: { schema: { type: string } }
+            Cache-Control: { schema: { type: string, const: "private, max-age=0, must-revalidate" } }
+        "304": { description: 条件请求命中，无响应体 }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/StreamRepresentationNotFound" }
         "503":
           description: 媒体源根目录当前不可访问，error.code 为 SOURCE_OFFLINE
           content:
@@ -1474,6 +1621,12 @@ components:
       name: id
       required: true
       schema: { type: string, minLength: 1 }
+    StreamFingerprint:
+      in: path
+      name: fingerprint
+      description: 源文件打开瞬间的 size 与毫秒级 mtime 组成的版本指纹，形如 1048576-1700000000123。
+      required: true
+      schema: { type: string, pattern: "^[0-9]+-[0-9]+$" }
   responses:
     Unauthorized:
       description: 会话缺失、无效、过期或已撤销
@@ -1520,6 +1673,18 @@ components:
             thumbnail_not_found:
               value:
                 error: { code: THUMBNAIL_NOT_FOUND, message: 缩略图不存在, details: null }
+    StreamRepresentationNotFound:
+      description: 媒体不存在或不可见时为 MEDIA_NOT_FOUND；固定副本缺失、无效或指纹与当前源文件不一致时为 STREAM_CACHE_MISS
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          examples:
+            media_not_found:
+              value:
+                error: { code: MEDIA_NOT_FOUND, message: 媒体不存在, details: null }
+            stream_cache_miss:
+              value:
+                error: { code: STREAM_CACHE_MISS, message: 该流副本已失效，请重新开始播放, details: null }
     Conflict:
       description: 资源状态或唯一性冲突
       content:

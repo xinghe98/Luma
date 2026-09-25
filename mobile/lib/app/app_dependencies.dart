@@ -117,7 +117,6 @@ class AppDependencies {
     );
     final apiSession = ApiSession();
     final mediaRelay = LoopbackMediaRelay(
-      proxyRoute: proxyRoute,
       createHttpClient: () => proxyOverrides.newClient(),
       authorizationHeadersFor: apiSession.authorizationHeadersFor,
     );
