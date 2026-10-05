@@ -168,6 +168,54 @@ void main() {
     });
   }
 
+  testWidgets('TV 连接页方向键可达「代理」按钮，确认键打开代理弹窗', (tester) async {
+    _viewport(tester, const Size(1280, 720));
+    final native = _WidgetNative();
+    final bridge = XrayBridge(rawInvoker: native.invoke);
+    final proxy = VmessProxyController(
+      store: _MemoryProxyProfileStore(),
+      parser: VmessProfileParser(bridge),
+      bridge: bridge,
+      route: ProxyRoute(),
+      portProbe: (_) async => true,
+    );
+    try {
+      await proxy.load();
+      final dependencies = _dependencies(
+        television: true,
+        proxyController: proxy,
+      );
+      addTearDown(dependencies.dispose);
+      await _pumpConnection(tester, dependencies);
+      expect(tester.testTextInput.isVisible, isFalse);
+
+      final actionLabel = find.text('代理');
+      expect(actionLabel, findsOneWidget);
+      final actionFocus = Focus.of(tester.element(actionLabel));
+      expect(actionFocus.hasPrimaryFocus, isFalse);
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+      await tester.pumpAndSettle();
+      expect(
+        actionFocus.hasPrimaryFocus,
+        isTrue,
+        reason: '方向键应从连接表单移动到 AppBar 的代理入口',
+      );
+
+      await _heldConfirm(tester, LogicalKeyboardKey.select);
+      expect(find.text('连接代理'), findsOneWidget);
+      expect(tester.testTextInput.isVisible, isFalse);
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pumpAndSettle();
+      expect(find.text('连接代理'), findsNothing);
+      expect(find.byType(ConnectionPage), findsOneWidget);
+    } finally {
+      await tester.pumpWidget(const SizedBox.shrink());
+      await proxy.disposeProxy();
+    }
+  });
+
   for (final (result, message) in [
     (ConnectionResult.unauthorized, '用户名或密码错误，或账号已停用'),
     (ConnectionResult.unreachable, '无法连接服务器，请检查地址和内网状态'),
@@ -388,12 +436,14 @@ Widget _searchApp({
 AppDependencies _dependencies({
   required bool television,
   _PendingConnectionService? service,
+  VmessProxyController? proxyController,
 }) => AppDependencies(
   mediaRepository: MockMediaRepository(),
   connectionService: service ?? _PendingConnectionService(),
   deviceProfile: television
       ? AppDeviceProfile.television
       : AppDeviceProfile.standard,
+  proxyController: proxyController,
 );
 
 Future<void> _pumpConnection(
