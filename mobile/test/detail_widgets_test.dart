@@ -17,6 +17,7 @@ import 'package:luma/features/details/dialogs/image_preview_dialog.dart';
 import 'package:luma/features/details/media_detail_page.dart';
 import 'package:luma/features/details/widgets/detail_actions.dart';
 import 'package:luma/features/details/widgets/detail_information.dart';
+import 'package:luma/features/details/widgets/detail_sections.dart';
 import 'package:luma/features/details/widgets/media_metadata.dart';
 import 'package:luma/shared/layout/surface_card.dart';
 import 'package:luma/shared/media/authenticated_media_image.dart';
@@ -56,6 +57,42 @@ void main() {
     expect(play.right, lessThan(favorite.left));
     expect(favorite.width, LumaLayout.buttonHeight);
     expect(favorite.height, LumaLayout.buttonHeight);
+  });
+
+  testWidgets('TV 详情操作：收藏带文字且不小于 56dp，隐藏笔记编辑', (tester) async {
+    final item = buildMediaFixtures().firstWhere(
+      (item) => item.type == MediaType.video,
+    );
+    final media = MediaController(MockMediaRepository())..remember(item);
+    final controller = DetailsController(mediaId: item.id, media: media);
+    addTearDown(() {
+      controller.dispose();
+      media.dispose();
+    });
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              children: [
+                DetailActions(controller: controller, television: true),
+                DetailSections(controller: controller, allowEditing: false),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+
+    // 收藏是带文字的可见按钮，高度不低于 TV 控件规格。
+    final favorite = tester.getRect(
+      find.byKey(const ValueKey('detail-favorite-action')),
+    );
+    expect(favorite.height, greaterThanOrEqualTo(56));
+    // allowEditing=false：不出现笔记编辑入口。
+    expect(find.text('编辑'), findsNothing);
   });
 
   testWidgets('video metadata cards are centered as a group', (tester) async {

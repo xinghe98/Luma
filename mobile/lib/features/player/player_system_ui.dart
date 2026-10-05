@@ -9,8 +9,11 @@ import 'package:media_kit_video/media_kit_video.dart';
 
 class PlayerSystemUiSession {
   /// 创建播放器系统 UI 会话；测试可替换桌面判定与原生全屏回调。
+  ///
+  /// [television] 为 true 时跳过方向锁与沉浸模式，TV 播放器恒保持横屏全屏。
   PlayerSystemUiSession({
     bool? desktop,
+    this.television = false,
     Future<void> Function()? enterDesktopFullScreen,
     Future<void> Function()? exitDesktopFullScreen,
   }) : _desktop = desktop,
@@ -22,6 +25,10 @@ class PlayerSystemUiSession {
   static int _globalGeneration = 0;
 
   final bool? _desktop;
+
+  /// 当前会话是否运行在 TV 形态；TV 不调用任何系统方向与沉浸式接口。
+  final bool television;
+
   final Future<void> Function() _enterDesktopFullScreen;
   final Future<void> Function() _exitDesktopFullScreen;
   Orientation? _entryOrientation;
@@ -51,7 +58,9 @@ class PlayerSystemUiSession {
     _entered = true;
     _entryOrientation = entryOrientation;
     _portrait = portraitVideo;
-    _canLockOrientation = !isDesktop && shortestSide < 600;
+    // TV 不锁定方向、不进入沉浸模式：系统栏本就不存在，canRotate 恒为 false。
+    _canLockOrientation = !television && !isDesktop && shortestSide < 600;
+    if (television) return;
     final generation = ++_globalGeneration;
     if (isDesktop) {
       _fullScreen = false;
@@ -119,6 +128,7 @@ class PlayerSystemUiSession {
   Future<void> exit() async {
     if (!_entered) return;
     _entered = false;
+    if (television) return;
     final generation = ++_globalGeneration;
     if (isDesktop) {
       if (_fullScreen) {

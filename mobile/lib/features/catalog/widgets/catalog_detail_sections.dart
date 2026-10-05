@@ -5,7 +5,9 @@ import 'package:flutter/material.dart';
 import '../../../core/theme.dart';
 import '../../../data/models/api_catalog.dart';
 import '../../../shared/formatters/duration_formatter.dart';
+import '../../../shared/interaction/luma_focusable_surface.dart';
 import '../../../shared/media/authenticated_media_image.dart';
+import '../../../shared/media/media_card.dart';
 import 'catalog_detail_theme.dart';
 
 /// 显示详情分区标题及可选的右侧摘要。
@@ -114,10 +116,20 @@ class CatalogVersionTile extends StatelessWidget {
     super.key,
     required this.version,
     required this.onPlay,
+    this.focusId,
+    this.autofocus = false,
+    this.onFocusChange,
+    this.focusBorderWidth = 2,
   });
 
   final CatalogVersion version;
   final VoidCallback onPlay;
+
+  /// TV 集合内的稳定身份；非空时改用 LumaFocusableSurface 承载焦点描边。
+  final String? focusId;
+  final bool autofocus;
+  final ValueChanged<bool>? onFocusChange;
+  final double focusBorderWidth;
 
   @override
   Widget build(BuildContext context) {
@@ -125,53 +137,64 @@ class CatalogVersionTile extends StatelessWidget {
       if (version.videoCodec.isNotEmpty) version.videoCodec.toUpperCase(),
       if (version.audioCodec.isNotEmpty) version.audioCodec.toUpperCase(),
     ].join(' · ');
-    return InkWell(
-      onTap: onPlay,
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: LumaSpacing.sm),
-        decoration: const BoxDecoration(
-          border: Border(
-            bottom: BorderSide(color: CatalogDetailPalette.outlineVariant),
-          ),
-        ),
-        child: Row(
-          children: [
-            _VersionBadge(label: version.label, resolution: version.resolution),
-            const SizedBox(width: LumaSpacing.md),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    version.label.isEmpty ? '本地版本' : version.label,
-                    style: Theme.of(context).textTheme.titleSmall,
-                  ),
-                  if (metadata.isNotEmpty)
-                    Text(
-                      metadata,
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: CatalogDetailPalette.muted,
-                      ),
-                    ),
-                ],
-              ),
-            ),
-            if (version.fileSize > 0)
-              Text(
-                _formatFileSize(version.fileSize),
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: CatalogDetailPalette.muted,
-                ),
-              ),
-            const SizedBox(width: LumaSpacing.sm),
-            const Icon(
-              Icons.chevron_right_rounded,
-              color: CatalogDetailPalette.muted,
-            ),
-          ],
+    final content = Container(
+      padding: const EdgeInsets.symmetric(vertical: LumaSpacing.sm),
+      decoration: const BoxDecoration(
+        border: Border(
+          bottom: BorderSide(color: CatalogDetailPalette.outlineVariant),
         ),
       ),
+      child: Row(
+        children: [
+          _VersionBadge(label: version.label, resolution: version.resolution),
+          const SizedBox(width: LumaSpacing.md),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  version.label.isEmpty ? '本地版本' : version.label,
+                  style: Theme.of(context).textTheme.titleSmall,
+                ),
+                if (metadata.isNotEmpty)
+                  Text(
+                    metadata,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: CatalogDetailPalette.muted,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          if (version.fileSize > 0)
+            Text(
+              _formatFileSize(version.fileSize),
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: CatalogDetailPalette.muted,
+              ),
+            ),
+          const SizedBox(width: LumaSpacing.sm),
+          const Icon(
+            Icons.chevron_right_rounded,
+            color: CatalogDetailPalette.muted,
+          ),
+        ],
+      ),
     );
+    // TV 路径：焦点描边由 LumaFocusableSurface 提供，激活仍走原回调。
+    if (focusId != null) {
+      return LumaFocusableSurface(
+        label: '播放${version.label.isEmpty ? '本地版本' : version.label}',
+        onActivate: onPlay,
+        borderRadius: BorderRadius.circular(LumaRadii.small),
+        focusId: focusId,
+        autofocus: autofocus,
+        onFocusChange: onFocusChange,
+        focusBorderWidth: focusBorderWidth,
+        child: content,
+      );
+    }
+    return InkWell(onTap: onPlay, child: content);
   }
 }
 
@@ -238,10 +261,28 @@ class CatalogEpisodeTile extends StatelessWidget {
     super.key,
     required this.episode,
     required this.onTap,
+    this.focusId,
+    this.autofocus = false,
+    this.onFocusChange,
+    this.focusBorderWidth = 2,
   });
 
   final CatalogEpisode episode;
   final VoidCallback onTap;
+
+  /// TV 集合内的稳定身份；非空时改用 LumaFocusableSurface 承载焦点描边。
+  final String? focusId;
+  final bool autofocus;
+  final ValueChanged<bool>? onFocusChange;
+  final double focusBorderWidth;
+
+  /// 行高与远程揭示共用，容纳系统缩放后的两行标题和元数据。
+  static double televisionExtent(BuildContext context) {
+    final textHeight = MediaCard.textDetailsHeight(context);
+    const artworkHeight = 112 * 9 / 16;
+    return (textHeight > artworkHeight ? textHeight : artworkHeight) +
+        LumaSpacing.md;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -250,63 +291,73 @@ class CatalogEpisodeTile extends StatelessWidget {
         formatDuration(Duration(milliseconds: episode.durationMs!)),
       if (episode.resolution.isNotEmpty) episode.resolution,
     ].join(' · ');
-    return InkWell(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.only(bottom: LumaSpacing.md),
-        child: Row(
-          children: [
-            SizedBox(
-              width: 112,
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(LumaRadii.small),
-                child: AspectRatio(
-                  aspectRatio: 16 / 9,
-                  child: AuthenticatedMediaImage(
-                    path: episode.thumbnailUrl,
-                    cacheWidth: 224,
-                    fallback: const ColoredBox(
-                      color: CatalogDetailPalette.surfaceHigh,
-                      child: Icon(
-                        Icons.play_circle_outline_rounded,
-                        color: CatalogDetailPalette.muted,
-                      ),
-                    ),
+    final content = Row(
+      children: [
+        SizedBox(
+          width: 112,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(LumaRadii.small),
+            child: AspectRatio(
+              aspectRatio: 16 / 9,
+              child: AuthenticatedMediaImage(
+                path: episode.thumbnailUrl,
+                cacheWidth: 224,
+                fallback: const ColoredBox(
+                  color: CatalogDetailPalette.surfaceHigh,
+                  child: Icon(
+                    Icons.play_circle_outline_rounded,
+                    color: CatalogDetailPalette.muted,
                   ),
                 ),
               ),
             ),
-            const SizedBox(width: LumaSpacing.md),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '第 ${episode.episodeNumber} 集 · ${episode.title}',
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.titleSmall,
-                  ),
-                  if (metadata.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(top: LumaSpacing.xs),
-                      child: Text(
-                        metadata,
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: CatalogDetailPalette.muted,
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-            const Icon(
-              Icons.play_arrow_rounded,
-              color: CatalogDetailPalette.muted,
-            ),
-          ],
+          ),
         ),
+        const SizedBox(width: LumaSpacing.md),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '第 ${episode.episodeNumber} 集 · ${episode.title}',
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.titleSmall,
+              ),
+              if (metadata.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: LumaSpacing.xs),
+                  child: Text(
+                    metadata,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: CatalogDetailPalette.muted,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+        const Icon(Icons.play_arrow_rounded, color: CatalogDetailPalette.muted),
+      ],
+    );
+    final body = InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.only(bottom: LumaSpacing.md),
+        child: content,
       ),
+    );
+    if (focusId == null) return body;
+    // TV 路径：整行成为单一焦点目标，描边由 LumaFocusableSurface 提供。
+    return LumaFocusableSurface(
+      label: '第 ${episode.episodeNumber} 集 · ${episode.title}',
+      onActivate: onTap,
+      borderRadius: BorderRadius.circular(LumaRadii.small),
+      focusId: focusId,
+      autofocus: autofocus,
+      onFocusChange: onFocusChange,
+      focusBorderWidth: focusBorderWidth,
+      child: content,
     );
   }
 }

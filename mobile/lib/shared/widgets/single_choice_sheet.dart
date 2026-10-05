@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../../app/app_scope.dart';
 import '../../core/theme.dart';
+import '../interaction/tv_key_bindings.dart';
 
 @immutable
 class BottomSheetChoice<T> {
@@ -18,6 +20,7 @@ class BottomSheetChoice<T> {
 }
 
 /// 在宽屏使用居中对话框、窄屏使用底部抽屉，返回用户选中的值。
+/// TV 一律使用居中对话框并默认聚焦选中项，内容与返回值保持不变。
 Future<T?> showSingleChoiceSheet<T>(
   BuildContext context, {
   required String title,
@@ -25,19 +28,24 @@ Future<T?> showSingleChoiceSheet<T>(
   required T? selectedValue,
   required List<BottomSheetChoice<T>> choices,
 }) {
+  final isTelevision =
+      AppScope.maybeOf(context)?.deviceProfile.isTelevision ?? false;
   final content = _SingleChoiceSheet<T>(
     title: title,
     supportingText: supportingText,
     selectedValue: selectedValue,
     choices: choices,
+    autofocusSelected: isTelevision,
   );
-  if (MediaQuery.sizeOf(context).width >= LumaLayout.navigationRailBreakpoint) {
+  if (isTelevision ||
+      MediaQuery.sizeOf(context).width >= LumaLayout.navigationRailBreakpoint) {
     return showDialog<T>(
       context: context,
       builder: (_) => Dialog(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 520),
-          child: content,
+          // 弹窗是独立路由，需自行消费确认键的长按重复。
+          child: isTelevision ? TvKeyBindings(child: content) : content,
         ),
       ),
     );
@@ -51,18 +59,47 @@ Future<T?> showSingleChoiceSheet<T>(
   );
 }
 
-class _SingleChoiceSheet<T> extends StatelessWidget {
+class _SingleChoiceSheet<T> extends StatefulWidget {
   const _SingleChoiceSheet({
     required this.title,
     required this.supportingText,
     required this.selectedValue,
     required this.choices,
+    this.autofocusSelected = false,
   });
 
   final String title;
   final String supportingText;
   final T? selectedValue;
   final List<BottomSheetChoice<T>> choices;
+
+  /// TV 弹层打开时默认聚焦当前选中项，遥控器立即可操作。
+  final bool autofocusSelected;
+
+  @override
+  State<_SingleChoiceSheet<T>> createState() => _SingleChoiceSheetState<T>();
+}
+
+class _SingleChoiceSheetState<T> extends State<_SingleChoiceSheet<T>> {
+  final _selectedKey = GlobalKey();
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.autofocusSelected) {
+      // 自动聚焦不会触发方向遍历的滚动；首帧布局后显示选中项。
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        final selectedContext = _selectedKey.currentContext;
+        if (selectedContext != null) {
+          Scrollable.ensureVisible(
+            selectedContext,
+            alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtEnd,
+          );
+        }
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -82,19 +119,27 @@ class _SingleChoiceSheet<T> extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(title, style: theme.textTheme.titleLarge),
+            Text(widget.title, style: theme.textTheme.titleLarge),
             const SizedBox(height: LumaSpacing.xs),
             Text(
-              supportingText,
+              widget.supportingText,
               style: theme.textTheme.bodyMedium?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
               ),
             ),
             const SizedBox(height: LumaSpacing.md),
-            for (final choice in choices)
+            for (final choice in widget.choices)
               _SingleChoiceTile<T>(
+                key:
+                    widget.autofocusSelected &&
+                        choice.value == widget.selectedValue
+                    ? _selectedKey
+                    : null,
                 choice: choice,
-                selected: choice.value == selectedValue,
+                selected: choice.value == widget.selectedValue,
+                autofocus:
+                    widget.autofocusSelected &&
+                    choice.value == widget.selectedValue,
               ),
           ],
         ),
@@ -104,10 +149,16 @@ class _SingleChoiceSheet<T> extends StatelessWidget {
 }
 
 class _SingleChoiceTile<T> extends StatelessWidget {
-  const _SingleChoiceTile({required this.choice, required this.selected});
+  const _SingleChoiceTile({
+    super.key,
+    required this.choice,
+    required this.selected,
+    this.autofocus = false,
+  });
 
   final BottomSheetChoice<T> choice;
   final bool selected;
+  final bool autofocus;
 
   @override
   Widget build(BuildContext context) {
@@ -116,6 +167,7 @@ class _SingleChoiceTile<T> extends StatelessWidget {
       button: true,
       selected: selected,
       child: ListTile(
+        autofocus: autofocus,
         contentPadding: EdgeInsets.zero,
         selected: selected,
         selectedColor: scheme.primary,

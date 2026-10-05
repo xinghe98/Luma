@@ -11,6 +11,7 @@ void main() {
     ('Windows 宽屏', Size(1200, 800)),
   ];
 
+
   for (final (name, size) in viewports) {
     testWidgets('搜索框中文字在$name下保持垂直居中', (tester) async {
       await tester.binding.setSurfaceSize(size);

@@ -115,6 +115,22 @@ void main() {
   );
 
   test(
+    'seek feedback exposes backward and forward kinds for TV remote seeks',
+    () async {
+      final harness = await createHarness();
+      addTearDown(harness.dispose);
+
+      harness.interaction.showSeekFeedback(forward: true);
+      expect(harness.interaction.hudKind, PlayerHudKind.forward);
+      expect(harness.interaction.hudVisible, isTrue);
+
+      harness.interaction.showSeekFeedback(forward: false);
+      expect(harness.interaction.hudKind, PlayerHudKind.backward);
+      expect(harness.interaction.hudVisible, isTrue);
+    },
+  );
+
+  test(
     'middle vertical drags are ignored to reduce accidental changes',
     () async {
       final harness = await createHarness();

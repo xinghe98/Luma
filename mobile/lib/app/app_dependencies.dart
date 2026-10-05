@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'package:dio/dio.dart';
 import 'package:dio/io.dart';
-import 'package:flutter/widgets.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import '../data/api/api_client.dart';
@@ -36,6 +36,7 @@ import '../features/connection/connection_controller.dart';
 import '../features/catalog/catalog_store.dart';
 import '../features/player/player_session_controller.dart';
 import '../features/shell/media_branch_prewarmer.dart';
+import 'app_device_profile.dart';
 import 'controllers/media_controller.dart';
 import 'controllers/session_controller.dart';
 import 'controllers/settings_controller.dart';
@@ -44,6 +45,7 @@ class AppDependencies {
   AppDependencies({
     required MediaRepository mediaRepository,
     required ConnectionService connectionService,
+    this.deviceProfile = AppDeviceProfile.standard,
     ApiSession? apiSession,
     SettingsController? settingsController,
     Dio? dio,
@@ -60,7 +62,13 @@ class AppDependencies {
     MediaRequestRouter? mediaRequestRouter,
   }) : media = MediaController(mediaRepository),
        session = SessionController(),
-       settings = settingsController ?? SettingsController(),
+       settings =
+           settingsController ??
+           SettingsController(
+             initialThemeMode: deviceProfile.isTelevision
+                 ? ThemeMode.dark
+                 : ThemeMode.light,
+           ),
        apiSession = apiSession ?? ApiSession(),
        catalog = CatalogStore(
          catalogRepository ?? const EmptyCatalogRepository(),
@@ -93,6 +101,8 @@ class AppDependencies {
       mediaController: media,
       isProxyActive: () => proxy?.isActive ?? false,
       onConnected: () async {
+        // TV 不展示管理界面，连接后不再恢复扫描轮询；观看数据加载照旧。
+        if (deviceProfile.isTelevision) return;
         final server = session.server;
         if (server != null && server.can('scans.manage')) {
           await settings.restoreScan();
@@ -101,7 +111,9 @@ class AppDependencies {
     );
   }
 
-  static AppDependencies create() {
+  static AppDependencies create({
+    AppDeviceProfile deviceProfile = AppDeviceProfile.standard,
+  }) {
     const apiPrefix = String.fromEnvironment(
       'LUMA_API_PREFIX',
       defaultValue: ApiClient.defaultApiPrefix,
@@ -147,9 +159,13 @@ class AppDependencies {
     return AppDependencies(
       mediaRepository: ApiMediaRepository(client, sources),
       connectionService: connectionService,
+      deviceProfile: deviceProfile,
       apiSession: apiSession,
       settingsController: SettingsController(
         scanRepository: ApiScanRepository(client, sources),
+        initialThemeMode: deviceProfile.isTelevision
+            ? ThemeMode.dark
+            : ThemeMode.light,
       ),
       dio: dio,
       credentialStore: credentials,
@@ -165,8 +181,10 @@ class AppDependencies {
     );
   }
 
+  /// 生产入口在构建依赖前解析设备形态，保证首帧就按正确呈现装配。
   static Future<AppDependencies> production() async {
-    final dependencies = create();
+    final deviceProfile = await resolveAppDeviceProfile();
+    final dependencies = create(deviceProfile: deviceProfile);
     await dependencies.initialize();
     await dependencies.restoreSession();
     return dependencies;
@@ -175,6 +193,9 @@ class AppDependencies {
   final MediaController media;
   final SessionController session;
   final SettingsController settings;
+
+  /// 启动时解析一次的设备形态；呈现与输入分支只读取，不再各自探测平台。
+  final AppDeviceProfile deviceProfile;
   final ApiSession apiSession;
   late final PlayerSessionController playerSession;
   final CatalogStore catalog;

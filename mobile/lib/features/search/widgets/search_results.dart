@@ -6,6 +6,7 @@ import '../../../data/models/media_item.dart';
 import '../../../shared/layout/section_header.dart';
 import '../../../shared/media/media_actions.dart';
 import '../../../shared/media/responsive_media_grid.dart';
+import '../../../shared/media/tv_media_grid.dart';
 import '../../../shared/states/empty_state.dart';
 import '../../../shared/states/error_state.dart';
 import '../../../shared/states/skeleton.dart';
@@ -25,6 +26,9 @@ class SearchResults extends StatelessWidget {
     this.isLoadingMore = false,
     this.hasLoadMoreError = false,
     this.onLoadMoreRetry,
+    this.television = false,
+    this.reveal,
+    this.firstResultFocusNode,
   });
 
   final List<MediaItem> items;
@@ -39,6 +43,13 @@ class SearchResults extends StatelessWidget {
   final bool hasLoadMoreError;
   final VoidCallback? onLoadMoreRetry;
 
+  /// TV 使用规则网格与逐项焦点；普通端保持既有网格。
+  final bool television;
+  final TvGridReveal? reveal;
+
+  /// TV 提交查询后聚焦首个结果。
+  final FocusNode? firstResultFocusNode;
+
   @override
   Widget build(BuildContext context) {
     // 单测/预览：无外层滚动时退化为可滚动列表。
@@ -52,20 +63,17 @@ class SearchResults extends StatelessWidget {
   List<Widget> buildSlivers() {
     if (!hasCriteria) {
       return [
-        SliverFillRemaining(
-          hasScrollBody: false,
+        SliverToBoxAdapter(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               const SizedBox(height: LumaSpacing.xl),
               const SectionHeader(title: '搜索结果', subtitle: '输入条件后显示'),
               const SizedBox(height: LumaSpacing.md),
-              const Expanded(
-                child: EmptyState(
-                  title: '开始搜索',
-                  message: '输入关键词，或选择类型、标签来筛选媒体库。',
-                  icon: Icons.search_rounded,
-                ),
+              const EmptyState(
+                title: '开始搜索',
+                message: '输入关键词，或选择类型、标签来筛选媒体库。',
+                icon: Icons.search_rounded,
               ),
             ],
           ),
@@ -109,12 +117,20 @@ class SearchResults extends StatelessWidget {
               onRetry: onSearchRetry,
             ),
           ),
-        ResponsiveMediaSliverGrid(
-          items: items,
-          heroTagPrefix: 'search',
-          onTap: onOpenMedia,
-          onFavorite: onFavorite,
-        ),
+        if (television)
+          TvMediaSliverGrid(
+            items: items,
+            onTap: onOpenMedia,
+            reveal: reveal,
+            firstItemFocusNode: firstResultFocusNode,
+          )
+        else
+          ResponsiveMediaSliverGrid(
+            items: items,
+            heroTagPrefix: 'search',
+            onTap: onOpenMedia,
+            onFavorite: onFavorite,
+          ),
         if (hasLoadMoreError)
           SliverToBoxAdapter(
             child: ErrorState(

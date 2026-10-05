@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../app/app_scope.dart';
 import '../../../core/theme.dart';
 import '../../../data/models/media_types.dart';
 import '../../../shared/layout/adaptive_action_width.dart';
@@ -81,7 +82,11 @@ Future<LibraryFilters?> showLibraryFilterSheet(
         ),
       );
 
-  if (MediaQuery.sizeOf(context).width >= LumaLayout.navigationRailBreakpoint) {
+  // TV 一律使用居中 dialog：底部抽屉在十英尺界面不可达，内容与返回值完全复用。
+  final isTelevision =
+      AppScope.maybeOf(context)?.deviceProfile.isTelevision ?? false;
+  if (isTelevision ||
+      MediaQuery.sizeOf(context).width >= LumaLayout.navigationRailBreakpoint) {
     return showDialog<LibraryFilters>(
       context: context,
       builder: (dialogContext) => Dialog(

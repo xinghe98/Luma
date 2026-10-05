@@ -10,6 +10,7 @@ class HomeHeader extends StatelessWidget {
     super.key,
     required this.onOpenSearch,
     required this.onScrollToTop,
+    this.onRefresh,
   });
 
   /// 打开现有搜索页面，不创建或修改搜索条件。
@@ -17,6 +18,9 @@ class HomeHeader extends StatelessWidget {
 
   /// 双击品牌标志时回到首页顶部。
   final VoidCallback onScrollToTop;
+
+  /// TV 的可见刷新入口，调用既有媒体刷新；普通端不显示。
+  final VoidCallback? onRefresh;
 
   @override
   Widget build(BuildContext context) {
@@ -92,7 +96,24 @@ class HomeHeader extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: LumaSpacing.lg),
-                _HomeSearchButton(onPressed: onOpenSearch),
+                if (onRefresh != null) ...[
+                  Row(
+                    children: [
+                      Expanded(child: _HomeSearchButton(onPressed: onOpenSearch)),
+                      const SizedBox(width: LumaSpacing.sm),
+                      SizedBox.square(
+                        dimension: LumaLayout.inputHeight,
+                        child: IconButton.filledTonal(
+                          tooltip: '刷新媒体库',
+                          onPressed: onRefresh,
+                          icon: const Icon(Icons.refresh_rounded),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: LumaSpacing.sm),
+                ] else
+                  _HomeSearchButton(onPressed: onOpenSearch),
                 const SizedBox(height: LumaSpacing.sm),
                 const ScanStatusCard(),
               ],

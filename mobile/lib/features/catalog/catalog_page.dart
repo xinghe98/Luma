@@ -7,10 +7,13 @@ import '../../core/theme.dart';
 import '../../data/models/api_catalog.dart';
 import '../../data/models/media_item.dart';
 import '../../data/models/media_types.dart';
+import '../../shared/interaction/tv_focus_collection.dart';
 import '../../shared/layout/scroll_to_top_app_bar_title.dart';
 import '../../shared/layout/section_header.dart';
 import '../../shared/media/media_actions.dart';
+import '../../shared/media/media_card.dart';
 import '../../shared/media/responsive_media_grid.dart';
+import '../../shared/media/tv_media_grid.dart';
 import '../../shared/states/empty_state.dart';
 import '../../shared/states/skeleton.dart';
 import '../library/library_controller.dart';
@@ -58,6 +61,9 @@ class _CatalogPageState extends State<CatalogPage>
   Future<void>? _entryGate;
   bool _entrySettled = false;
   bool _loadCheckScheduled = false;
+
+  /// TV 个人视频预览固定展示的条数。
+  static const _tvPersonalPreviewCount = 6;
 
   @override
   bool get wantKeepAlive => true;
@@ -156,6 +162,10 @@ class _CatalogPageState extends State<CatalogPage>
       listenable: Listenable.merge([movies, series, personalVideos]),
       builder: (context, _) {
         final personalItems = personalVideos.visibleItems();
+        final isTelevision = AppScope.of(context).deviceProfile.isTelevision;
+        final tvPersonalPreview = personalItems
+            .take(_tvPersonalPreviewCount)
+            .toList(growable: false);
         final allLoaded =
             movies.hasStarted &&
             series.hasStarted &&
@@ -178,6 +188,13 @@ class _CatalogPageState extends State<CatalogPage>
               onScrollToTop: _scrollToTop,
             ),
             actions: [
+              // TV 使用可见刷新按钮；下拉刷新保留在触控分支。
+              if (isTelevision)
+                IconButton(
+                  tooltip: '刷新影视库',
+                  onPressed: _refresh,
+                  icon: const Icon(Icons.refresh_rounded),
+                ),
               IconButton(
                 tooltip: '搜索',
                 onPressed: widget.onOpenSearch,
@@ -193,141 +210,177 @@ class _CatalogPageState extends State<CatalogPage>
               }
               return false;
             },
-            child: RefreshIndicator(
-              onRefresh: _refresh,
-              child: CustomScrollView(
-                controller: _scroll,
-                key: const PageStorageKey('catalog-overview-scroll'),
-                physics: const AlwaysScrollableScrollPhysics(),
-                cacheExtent: _entrySettled
-                    ? LumaLayout.scrollCacheExtent
-                    : 0,
-                slivers: [
-                  if (allEmpty)
-                    const SliverFillRemaining(
-                      hasScrollBody: false,
-                      child: EmptyState(
-                        icon: Icons.video_library_outlined,
-                        title: '影视库还没有内容',
-                        message: '在设置中添加电影、电视剧或个人视频目录后重新扫描。',
-                      ),
-                    )
-                  else ...[
-                    SliverToBoxAdapter(
-                      child: _CatalogShelfSection(
-                        title: '电影',
-                        controller: movies,
-                        onOpenCatalog: widget.onOpenCatalog,
-                        onOpenAll: widget.onOpenMovies,
-                      ),
+            // TV 的个人视频网格自持集合（盒式网格，不与货架集合嵌套，
+            // 避免货架边界按键被外层集合截走）；电影/电视剧货架各自维护内层集合。
+            child: isTelevision
+                ? _buildScrollBody(
+                    context,
+                    allEmpty: allEmpty,
+                    personalItems: personalItems,
+                    openPersonalVideos: openPersonalVideos,
+                    tvPersonalPreview: tvPersonalPreview,
+                    isTelevision: isTelevision,
+                  )
+                : RefreshIndicator(
+                    onRefresh: _refresh,
+                    child: _buildScrollBody(
+                      context,
+                      allEmpty: allEmpty,
+                      personalItems: personalItems,
+                      openPersonalVideos: openPersonalVideos,
+                      tvPersonalPreview: tvPersonalPreview,
+                      isTelevision: isTelevision,
                     ),
-                    SliverToBoxAdapter(
-                      child: KeyedSubtree(
-                        key: _seriesSectionKey,
-                        child: _CatalogShelfSection(
-                          title: '电视剧',
-                          controller: series,
-                          onOpenCatalog: widget.onOpenCatalog,
-                          onOpenAll: widget.onOpenSeries,
-                        ),
-                      ),
-                    ),
-                    if (personalItems.isEmpty &&
-                        (!personalVideos.hasStarted ||
-                            personalVideos.loadState == LoadState.loading))
-                      SliverToBoxAdapter(
-                        child: KeyedSubtree(
-                          key: _personalSectionKey,
-                          child: _CatalogShelfPlaceholder(
-                            title: '个人视频',
-                            onOpenAll: openPersonalVideos,
-                          ),
-                        ),
-                      )
-                    else if (personalItems.isEmpty &&
-                        personalVideos.loadState == LoadState.error)
-                      SliverToBoxAdapter(
-                        child: KeyedSubtree(
-                          key: _personalSectionKey,
-                          child: _CatalogSectionIssue(
-                            title: '个人视频',
-                            onRetry: personalVideos.refresh,
-                            onOpenAll: openPersonalVideos,
-                          ),
-                        ),
-                      )
-                    else if (personalItems.isEmpty)
-                      SliverToBoxAdapter(
-                        child: KeyedSubtree(
-                          key: _personalSectionKey,
-                          child: _CatalogSectionEmpty(
-                            title: '个人视频',
-                            onOpenAll: openPersonalVideos,
-                          ),
-                        ),
-                      )
-                    else ...[
-                      SliverToBoxAdapter(
-                        child: KeyedSubtree(
-                          key: _personalSectionKey,
-                          child: Padding(
-                            padding: const EdgeInsets.only(top: LumaSpacing.lg),
-                            child: _SectionHeading(
-                              title: '个人视频',
-                              onOpenAll: openPersonalVideos,
-                            ),
-                          ),
-                        ),
-                      ),
-                      if (personalVideos.loadState == LoadState.loading)
-                        const SliverToBoxAdapter(
-                          child: LinearProgressIndicator(minHeight: 2),
-                        )
-                      else if (personalVideos.loadState == LoadState.error)
-                        SliverToBoxAdapter(
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: LumaLayout.pagePaddingH,
-                            ),
-                            child: Align(
-                              alignment: Alignment.centerLeft,
-                              child: TextButton.icon(
-                                onPressed: personalVideos.refresh,
-                                icon: const Icon(Icons.refresh_rounded),
-                                label: const Text('刷新失败，当前保留上次内容'),
-                              ),
-                            ),
-                          ),
-                        ),
-                      SliverPadding(
-                        padding: const EdgeInsets.fromLTRB(
-                          LumaLayout.pagePaddingH,
-                          LumaSpacing.md,
-                          LumaLayout.pagePaddingH,
-                          LumaSpacing.xl,
-                        ),
-                        sliver: ResponsiveMediaSliverGrid(
-                          items: personalItems.take(6).toList(growable: false),
-                          heroTagPrefix: 'catalog-personal',
-                          onTap: widget.onOpenPersonalMedia,
-                          onFavorite: (item) =>
-                              context.toggleFavoriteWithFeedback(
-                                AppScope.of(context).media,
-                                item,
-                              ),
-                        ),
-                      ),
-                    ],
-                    const SliverToBoxAdapter(
-                      child: SizedBox(height: LumaSpacing.xl),
-                    ),
-                  ],
-                ],
-              ),
-            ),
+                  ),
           ),
         );
       },
+    );
+  }
+
+  Widget _buildScrollBody(
+    BuildContext context, {
+    required bool allEmpty,
+    required List<MediaItem> personalItems,
+    required void Function() openPersonalVideos,
+    required List<MediaItem> tvPersonalPreview,
+    required bool isTelevision,
+  }) {
+    final movies = _movies!;
+    final series = _series!;
+    final personalVideos = _personalVideos!;
+    return CustomScrollView(
+      key: const PageStorageKey('catalog-overview-scroll'),
+      controller: _scroll,
+      physics: const AlwaysScrollableScrollPhysics(),
+      cacheExtent: _entrySettled ? LumaLayout.scrollCacheExtent : 0,
+      slivers: [
+        if (allEmpty)
+          const SliverFillRemaining(
+            hasScrollBody: false,
+            child: EmptyState(
+              icon: Icons.video_library_outlined,
+              title: '影视库还没有内容',
+              message: '在设置中添加电影、电视剧或个人视频目录后重新扫描。',
+            ),
+          )
+        else ...[
+          SliverToBoxAdapter(
+            child: _CatalogShelfSection(
+              title: '电影',
+              controller: movies,
+              onOpenCatalog: widget.onOpenCatalog,
+              onOpenAll: widget.onOpenMovies,
+            ),
+          ),
+          SliverToBoxAdapter(
+            child: KeyedSubtree(
+              key: _seriesSectionKey,
+              child: _CatalogShelfSection(
+                title: '电视剧',
+                controller: series,
+                onOpenCatalog: widget.onOpenCatalog,
+                onOpenAll: widget.onOpenSeries,
+              ),
+            ),
+          ),
+          if (personalItems.isEmpty &&
+              (!personalVideos.hasStarted ||
+                  personalVideos.loadState == LoadState.loading))
+            SliverToBoxAdapter(
+              child: KeyedSubtree(
+                key: _personalSectionKey,
+                child: _CatalogShelfPlaceholder(
+                  title: '个人视频',
+                  onOpenAll: openPersonalVideos,
+                ),
+              ),
+            )
+          else if (personalItems.isEmpty &&
+              personalVideos.loadState == LoadState.error)
+            SliverToBoxAdapter(
+              child: KeyedSubtree(
+                key: _personalSectionKey,
+                child: _CatalogSectionIssue(
+                  title: '个人视频',
+                  onRetry: personalVideos.refresh,
+                  onOpenAll: openPersonalVideos,
+                ),
+              ),
+            )
+          else if (personalItems.isEmpty)
+            SliverToBoxAdapter(
+              child: KeyedSubtree(
+                key: _personalSectionKey,
+                child: _CatalogSectionEmpty(
+                  title: '个人视频',
+                  onOpenAll: openPersonalVideos,
+                ),
+              ),
+            )
+          else ...[
+            SliverToBoxAdapter(
+              child: KeyedSubtree(
+                key: _personalSectionKey,
+                child: Padding(
+                  padding: const EdgeInsets.only(top: LumaSpacing.lg),
+                  child: _SectionHeading(
+                    title: '个人视频',
+                    onOpenAll: openPersonalVideos,
+                  ),
+                ),
+              ),
+            ),
+            if (personalVideos.loadState == LoadState.loading)
+              const SliverToBoxAdapter(
+                child: LinearProgressIndicator(minHeight: 2),
+              )
+            else if (personalVideos.loadState == LoadState.error)
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: LumaLayout.pagePaddingH,
+                  ),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton.icon(
+                      onPressed: personalVideos.refresh,
+                      icon: const Icon(Icons.refresh_rounded),
+                      label: const Text('刷新失败，当前保留上次内容'),
+                    ),
+                  ),
+                ),
+              ),
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(
+                LumaLayout.pagePaddingH,
+                LumaSpacing.md,
+                LumaLayout.pagePaddingH,
+                LumaSpacing.xl,
+              ),
+              // TV：规则网格 + 逐项焦点（盒式自持集合）；触控端保持既有网格。
+              sliver: isTelevision
+                  ? SliverToBoxAdapter(
+                      child: _TvPersonalPreviewGrid(
+                        items: tvPersonalPreview,
+                        onOpenPersonalMedia: widget.onOpenPersonalMedia,
+                        scrollController: _scroll,
+                      ),
+                    )
+                  : ResponsiveMediaSliverGrid(
+                      items: personalItems.take(6).toList(growable: false),
+                      heroTagPrefix: 'catalog-personal',
+                      onTap: widget.onOpenPersonalMedia,
+                      onFavorite: (item) => context.toggleFavoriteWithFeedback(
+                        AppScope.of(context).media,
+                        item,
+                      ),
+                    ),
+            ),
+          ],
+          const SliverToBoxAdapter(child: SizedBox(height: LumaSpacing.xl)),
+        ],
+      ],
     );
   }
 

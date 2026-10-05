@@ -83,7 +83,7 @@ LUMA_TMDB_ACCESS_TOKEN=你的_Read_Access_Token
 ## 项目结构
 
 - `backend`：Go、Gin、SQLite 服务端，完整架构和 API 说明见 [backend/README.md](backend/README.md)。
-- `mobile`：Flutter 手机客户端，运行方式见 [mobile/README.md](mobile/README.md)。
+- `mobile`：Flutter 客户端，覆盖手机、Windows 桌面与 Android TV，运行方式见 [mobile/README.md](mobile/README.md)。
 
 ## 部署前准备
 
@@ -401,6 +401,8 @@ IP：192.168.1.10
 IP：10.0.2.2
 端口：8080
 ```
+
+Android TV 与电视盒子由同一客户端提供观看界面，安装包选择与遥控器使用说明见 [mobile/README.md](mobile/README.md) 的「Android TV」一节。
 
 ## 安全与备份
 

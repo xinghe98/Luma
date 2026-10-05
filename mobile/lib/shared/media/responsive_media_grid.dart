@@ -32,6 +32,7 @@ class ResponsiveMediaGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final detailsHeight = MediaCard.textDetailsHeight(context);
     return LayoutBuilder(
       builder: (context, constraints) {
         final width = constraints.maxWidth.isFinite
@@ -42,7 +43,10 @@ class ResponsiveMediaGrid extends StatelessWidget {
           physics: physics,
           addAutomaticKeepAlives: false,
           addRepaintBoundaries: true,
-          gridDelegate: sliverGridDelegateForWidth(width),
+          gridDelegate: sliverGridDelegateForWidth(
+            width,
+            detailsHeight: detailsHeight,
+          ),
           itemCount: items.length,
           itemBuilder: (context, index) {
             final item = items[index];
@@ -63,12 +67,21 @@ class ResponsiveMediaGrid extends StatelessWidget {
     );
   }
 
-  static SliverGridDelegate sliverGridDelegateForWidth(double width) {
+  /// 按可用宽度确定列数，并用已按主题和文字缩放计算的文字区高度安排卡片行高。
+  static SliverGridDelegate sliverGridDelegateForWidth(
+    double width, {
+    required double detailsHeight,
+  }) {
+    final columns = LumaLayout.gridColumns(width);
+    final cardWidth = (width - (columns - 1) * LumaSpacing.md) / columns;
     return SliverGridDelegateWithFixedCrossAxisCount(
-      crossAxisCount: LumaLayout.gridColumns(width),
+      crossAxisCount: columns,
       mainAxisSpacing: LumaSpacing.lg,
       crossAxisSpacing: LumaSpacing.md,
-      childAspectRatio: LumaLayout.mediaCardAspectRatio(width),
+      mainAxisExtent: MediaCard.heightForWidth(
+        cardWidth,
+        detailsHeight: detailsHeight,
+      ),
     );
   }
 }
@@ -91,7 +104,9 @@ class ResponsiveMediaSliverGrid extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SliverGrid(
-      gridDelegate: const _ResponsiveMediaSliverGridDelegate(),
+      gridDelegate: _ResponsiveMediaSliverGridDelegate(
+        detailsHeight: MediaCard.textDetailsHeight(context),
+      ),
       delegate: SliverChildBuilderDelegate(
         (context, index) {
           final item = items[index];
@@ -116,14 +131,18 @@ class ResponsiveMediaSliverGrid extends StatelessWidget {
 
 /// 在 RenderSliver 布局阶段按宽度选择列数，避免滚动偏移变化时重建网格。
 class _ResponsiveMediaSliverGridDelegate extends SliverGridDelegate {
-  const _ResponsiveMediaSliverGridDelegate();
+  const _ResponsiveMediaSliverGridDelegate({required this.detailsHeight});
+
+  final double detailsHeight;
 
   @override
   SliverGridLayout getLayout(SliverConstraints constraints) =>
       ResponsiveMediaGrid.sliverGridDelegateForWidth(
         constraints.crossAxisExtent,
+        detailsHeight: detailsHeight,
       ).getLayout(constraints);
 
   @override
-  bool shouldRelayout(_ResponsiveMediaSliverGridDelegate oldDelegate) => false;
+  bool shouldRelayout(_ResponsiveMediaSliverGridDelegate oldDelegate) =>
+      detailsHeight != oldDelegate.detailsHeight;
 }

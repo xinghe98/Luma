@@ -4,9 +4,11 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../../app/app_scope.dart';
 import '../../../app/route_transition.dart';
 import '../../../core/theme.dart';
 import '../../../data/models/media_item.dart';
+import '../../../shared/interaction/tv_key_bindings.dart';
 import '../../../shared/media/authenticated_media_image.dart';
 
 /// 图片预览关闭后交还给调用方的后续动作。
@@ -69,9 +71,18 @@ class _ImagePreviewDialogState extends State<ImagePreviewDialog> {
   bool _transitionWaitStarted = false;
   bool _closing = false;
 
+  /// TV：图片区焦点与工具栏首按钮焦点。
+  final _imageFocus = FocusNode(debugLabel: 'tv-preview-image');
+  final _toolbarFocus = FocusNode(debugLabel: 'tv-preview-toolbar');
+
   static const _minScale = 1.0;
   static const _maxScale = 4.0;
   static const _doubleTapScale = 2.5;
+
+  bool get _isTelevision =>
+      AppScope.maybeOf(context)?.deviceProfile.isTelevision ?? false;
+
+  double get _currentScale => _transform.value.getMaxScaleOnAxis();
 
   @override
   void didChangeDependencies() {
@@ -90,6 +101,8 @@ class _ImagePreviewDialogState extends State<ImagePreviewDialog> {
   @override
   void dispose() {
     _transform.dispose();
+    _imageFocus.dispose();
+    _toolbarFocus.dispose();
     super.dispose();
   }
 
@@ -108,21 +121,119 @@ class _ImagePreviewDialogState extends State<ImagePreviewDialog> {
       ..scaleByDouble(_doubleTapScale, _doubleTapScale, 1, 1);
   }
 
-  /// 围绕预览中心调整缩放，超出允许范围时钳制到边界。
+  /// 围绕预览中心缩放，并约束图片边缘；缩回原尺寸时恢复居中。
   void _zoomBy(double factor) {
     final current = _transform.value.getMaxScaleOnAxis();
     final next = (current * factor).clamp(_minScale, _maxScale).toDouble();
     final viewport = MediaQuery.sizeOf(context);
     final center = Offset(viewport.width / 2, viewport.height / 2);
     final sceneCenter = _transform.toScene(center);
-    _transform.value = Matrix4.identity()
+    final nextTransform = Matrix4.identity()
       ..translateByDouble(center.dx, center.dy, 0, 1)
       ..scaleByDouble(next, next, 1, 1)
       ..translateByDouble(-sceneCenter.dx, -sceneCenter.dy, 0, 1);
+    _transform.value = _clampTransform(nextTransform, viewport);
   }
 
   /// 还原图片位置与缩放，不触发重新加载。
   void _resetZoom() => _transform.value = Matrix4.identity();
+
+  /// TV：缩放大于 1 时按视口 10% 平移并钳制边缘；未放大时不平移。
+  void _panPreview(Offset delta) {
+    if (_currentScale <= 1.05) return;
+    final size = MediaQuery.sizeOf(context);
+    final center = Offset(size.width / 2, size.height / 2);
+    final scale = _currentScale;
+    final anchor =
+        _transform.toScene(center) - Offset(delta.dx / scale, delta.dy / scale);
+    final next = Matrix4.identity()
+      ..translateByDouble(center.dx, center.dy, 0, 1)
+      ..scaleByDouble(scale, scale, 1, 1)
+      ..translateByDouble(-anchor.dx, -anchor.dy, 0, 1);
+    _transform.value = _clampTransform(next, size);
+  }
+
+  /// 原地约束变换：超出视口的轴不露边，未铺满的轴保持居中。
+  Matrix4 _clampTransform(Matrix4 next, Size size) {
+    final display = _containedSize(size, widget.item.aspectRatio);
+    final origin = Offset(
+      (size.width - display.width) / 2,
+      (size.height - display.height) / 2,
+    );
+    final topLeft = MatrixUtils.transformPoint(next, origin);
+    final bottomRight = MatrixUtils.transformPoint(
+      next,
+      origin + Offset(display.width, display.height),
+    );
+    var shift = Offset.zero;
+    if (bottomRight.dx - topLeft.dx <= size.width) {
+      shift += Offset(size.width / 2 - (topLeft.dx + bottomRight.dx) / 2, 0);
+    } else if (topLeft.dx > 0) {
+      shift -= Offset(topLeft.dx, 0);
+    } else if (bottomRight.dx < size.width) {
+      shift += Offset(size.width - bottomRight.dx, 0);
+    }
+    if (bottomRight.dy - topLeft.dy <= size.height) {
+      shift += Offset(0, size.height / 2 - (topLeft.dy + bottomRight.dy) / 2);
+    } else if (topLeft.dy > 0) {
+      shift -= Offset(0, topLeft.dy);
+    } else if (bottomRight.dy < size.height) {
+      shift += Offset(0, size.height - bottomRight.dy);
+    }
+    if (shift != Offset.zero) {
+      next.setEntry(0, 3, next.entry(0, 3) + shift.dx);
+      next.setEntry(1, 3, next.entry(1, 3) + shift.dy);
+    }
+    return next;
+  }
+
+  /// TV 统一返回意图：先还原放大状态，再一次 Back 才关闭。
+  void _handleTvBack() {
+    if (_currentScale > 1.05) {
+      _resetZoom();
+      return;
+    }
+    unawaited(_close());
+  }
+
+  /// TV 图片区按键：方向平移、OK 回工具栏。
+  KeyEventResult _onImageKeyEvent(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
+      return KeyEventResult.ignored;
+    }
+    if (event is KeyRepeatEvent &&
+        !const [
+          LogicalKeyboardKey.arrowLeft,
+          LogicalKeyboardKey.arrowRight,
+          LogicalKeyboardKey.arrowUp,
+          LogicalKeyboardKey.arrowDown,
+        ].contains(event.logicalKey)) {
+      return KeyEventResult.handled;
+    }
+    final size = MediaQuery.sizeOf(context);
+    final step = Offset(size.width * 0.1, size.height * 0.1);
+    switch (event.logicalKey) {
+      case LogicalKeyboardKey.arrowLeft:
+        _panPreview(Offset(-step.dx, 0));
+      case LogicalKeyboardKey.arrowRight:
+        _panPreview(Offset(step.dx, 0));
+      case LogicalKeyboardKey.arrowUp:
+        _panPreview(Offset(0, -step.dy));
+      case LogicalKeyboardKey.arrowDown:
+        _panPreview(Offset(0, step.dy));
+      case LogicalKeyboardKey.select:
+      case LogicalKeyboardKey.enter:
+      case LogicalKeyboardKey.numpadEnter:
+        // OK 回工具栏。
+        _toolbarFocus.requestFocus();
+      case LogicalKeyboardKey.escape:
+      case LogicalKeyboardKey.goBack:
+        _handleTvBack();
+      default:
+        return KeyEventResult.ignored;
+    }
+    return KeyEventResult.handled;
+  }
 
   /// 先还原缩放并隐藏原图，再触发反向 Hero，确保图片准确缩回来源卡片。
   Future<void> _close([ImagePreviewAction? action]) async {
@@ -225,9 +336,16 @@ class _ImagePreviewDialogState extends State<ImagePreviewDialog> {
           )
         : image;
 
+    final isTv = _isTelevision;
     final chromeWidget = _PreviewChrome(
       onDetails: () => unawaited(_close(ImagePreviewAction.openDetails)),
       onClose: () => unawaited(_close()),
+      // TV：显式缩放工具与首按钮焦点；普通端保持两个动作。
+      television: isTv,
+      zoomIn: () => _zoomBy(1.25),
+      zoomOut: () => _zoomBy(0.8),
+      onReset: _resetZoom,
+      toolbarFocusNode: _toolbarFocus,
     );
     final chromeContent = routeAnimation == null
         ? chromeWidget
@@ -240,17 +358,33 @@ class _ImagePreviewDialogState extends State<ImagePreviewDialog> {
             child: chromeWidget,
           );
     final chrome = Positioned(
-      top: top + LumaSpacing.xs,
-      left: LumaSpacing.xs,
-      right: LumaSpacing.xs,
-      child: chromeContent,
+      // TV 工具栏使用安全边距，避免过扫描裁切焦点。
+      top: isTv ? top + size.height * 0.05 : top + LumaSpacing.xs,
+      left: isTv ? size.width * 0.05 : LumaSpacing.xs,
+      right: isTv ? size.width * 0.05 : LumaSpacing.xs,
+      child: isTv
+          ? Focus(
+              canRequestFocus: false,
+              onKeyEvent: (node, event) {
+                if (event is KeyDownEvent &&
+                    event.logicalKey == LogicalKeyboardKey.arrowUp) {
+                  _imageFocus.requestFocus();
+                  return KeyEventResult.handled;
+                }
+                return KeyEventResult.ignored;
+              },
+              child: chromeContent,
+            )
+          : chromeContent,
     );
 
     final backdrop = ColoredBox(color: context.luma.playerInk);
-    return CallbackShortcuts(
+    final content = CallbackShortcuts(
       bindings: <ShortcutActivator, VoidCallback>{
-        const SingleActivator(LogicalKeyboardKey.escape): () =>
-            unawaited(_close()),
+        // TV：Back/Esc 先还原放大状态再一次关闭；普通端直接关闭。
+        const SingleActivator(LogicalKeyboardKey.escape): isTv
+            ? _handleTvBack
+            : () => unawaited(_close()),
         const SingleActivator(LogicalKeyboardKey.equal, shift: true): () =>
             _zoomBy(1.25),
         const SingleActivator(LogicalKeyboardKey.numpadAdd): () =>
@@ -261,11 +395,18 @@ class _ImagePreviewDialogState extends State<ImagePreviewDialog> {
         const SingleActivator(LogicalKeyboardKey.digit0): _resetZoom,
       },
       child: Focus(
-        autofocus: true,
+        autofocus: !isTv,
+        skipTraversal: isTv,
         child: PopScope(
           canPop: _closing,
           onPopInvokedWithResult: (didPop, _) {
-            if (!didPop && !_closing) unawaited(_close());
+            if (didPop) return;
+            // TV 先还原放大状态再一次关闭；普通端直接关闭。
+            if (isTv) {
+              _handleTvBack();
+            } else {
+              unawaited(_close());
+            }
           },
           child: AnnotatedRegion<SystemUiOverlayStyle>(
             value: SystemUiOverlayStyle.light,
@@ -288,21 +429,44 @@ class _ImagePreviewDialogState extends State<ImagePreviewDialog> {
                   Semantics(
                     image: true,
                     label: '图片预览：${item.title}',
-                    hint: '可双指或滚轮缩放，双击放大，按 0 还原',
-                    child: GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onDoubleTapDown: (details) => _doubleTapDetails = details,
-                      onDoubleTap: _onDoubleTap,
-                      child: Center(
-                        child: InteractiveViewer(
-                          transformationController: _transform,
-                          minScale: _minScale,
-                          maxScale: _maxScale,
-                          clipBehavior: Clip.none,
-                          child: preview,
-                        ),
-                      ),
-                    ),
+                    hint: isTv ? '方向键缩放平移，OK 回到工具栏' : '可双指或滚轮缩放，双击放大，按 0 还原',
+                    child: isTv
+                        ? Focus(
+                            focusNode: _imageFocus,
+                            onKeyEvent: _onImageKeyEvent,
+                            child: GestureDetector(
+                              behavior: HitTestBehavior.opaque,
+                              onDoubleTapDown: (details) =>
+                                  _doubleTapDetails = details,
+                              onDoubleTap: _onDoubleTap,
+                              child: InteractiveViewer(
+                                transformationController: _transform,
+                                minScale: _minScale,
+                                maxScale: _maxScale,
+                                clipBehavior: Clip.none,
+                                child: SizedBox(
+                                  width: size.width,
+                                  height: size.height,
+                                  child: Center(child: preview),
+                                ),
+                              ),
+                            ),
+                          )
+                        : GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onDoubleTapDown: (details) =>
+                                _doubleTapDetails = details,
+                            onDoubleTap: _onDoubleTap,
+                            child: Center(
+                              child: InteractiveViewer(
+                                transformationController: _transform,
+                                minScale: _minScale,
+                                maxScale: _maxScale,
+                                clipBehavior: Clip.none,
+                                child: preview,
+                              ),
+                            ),
+                          ),
                   ),
                   chrome,
                 ],
@@ -312,6 +476,7 @@ class _ImagePreviewDialogState extends State<ImagePreviewDialog> {
         ),
       ),
     );
+    return isTv ? TvKeyBindings(child: content) : content;
   }
 }
 
@@ -341,33 +506,85 @@ Widget _thumbnailFlightShuttle(
 }
 
 class _PreviewChrome extends StatelessWidget {
-  const _PreviewChrome({required this.onDetails, required this.onClose});
+  const _PreviewChrome({
+    required this.onDetails,
+    required this.onClose,
+    this.television = false,
+    this.zoomIn,
+    this.zoomOut,
+    this.onReset,
+    this.toolbarFocusNode,
+  });
 
   final VoidCallback onDetails;
   final VoidCallback onClose;
 
+  /// TV：放大/缩小/还原与详情、关闭都成为可见可聚焦动作，首按钮持焦点。
+  final bool television;
+  final VoidCallback? zoomIn;
+  final VoidCallback? zoomOut;
+  final VoidCallback? onReset;
+  final FocusNode? toolbarFocusNode;
+
   @override
   Widget build(BuildContext context) {
     final extras = context.luma;
-    final chromeStyle = IconButton.styleFrom(
+    var chromeStyle = IconButton.styleFrom(
       backgroundColor: extras.badgeScrim,
       foregroundColor: extras.onPlayerInk,
     );
+    if (television) {
+      // TV 控件最小 56dp，保证观看距离可点中。
+      chromeStyle = chromeStyle.copyWith(
+        minimumSize: const WidgetStatePropertyAll(
+          Size(LumaTvLayout.controlMinHeight, LumaTvLayout.controlMinHeight),
+        ),
+      );
+    }
+    final detailsButton = IconButton.filledTonal(
+      tooltip: '详情',
+      style: chromeStyle,
+      onPressed: onDetails,
+      icon: const Icon(Icons.info_outline_rounded),
+    );
+    final closeButton = IconButton.filledTonal(
+      tooltip: '关闭',
+      style: chromeStyle,
+      onPressed: onClose,
+      icon: const Icon(Icons.close_rounded),
+    );
+    if (!television) {
+      return Row(children: [detailsButton, const Spacer(), closeButton]);
+    }
     return Row(
       children: [
+        // 首按钮持焦点，弹窗打开即可用方向键在工具间移动。
         IconButton.filledTonal(
-          tooltip: '详情',
+          focusNode: toolbarFocusNode,
+          autofocus: true,
+          tooltip: '放大',
           style: chromeStyle,
-          onPressed: onDetails,
-          icon: const Icon(Icons.info_outline_rounded),
+          onPressed: zoomIn,
+          icon: const Icon(Icons.zoom_in_rounded),
         ),
+        const SizedBox(width: LumaSpacing.xs),
+        IconButton.filledTonal(
+          tooltip: '缩小',
+          style: chromeStyle,
+          onPressed: zoomOut,
+          icon: const Icon(Icons.zoom_out_rounded),
+        ),
+        const SizedBox(width: LumaSpacing.xs),
+        IconButton.filledTonal(
+          tooltip: '还原',
+          style: chromeStyle,
+          onPressed: onReset,
+          icon: const Icon(Icons.aspect_ratio_rounded),
+        ),
+        const SizedBox(width: LumaSpacing.xs),
+        detailsButton,
         const Spacer(),
-        IconButton.filledTonal(
-          tooltip: '关闭',
-          style: chromeStyle,
-          onPressed: onClose,
-          icon: const Icon(Icons.close_rounded),
-        ),
+        closeButton,
       ],
     );
   }

@@ -253,6 +253,11 @@ class PlayerInteractionController extends ChangeNotifier {
     _showHud(PlayerHudKind.speed, persistent: true);
   }
 
+  /// 显示一次短暂的快进/快退反馈；TV 遥控在控制层隐藏时定位使用，
+  /// 焦点不随反馈移动。
+  void showSeekFeedback({required bool forward}) =>
+      _showHud(forward ? PlayerHudKind.forward : PlayerHudKind.backward);
+
   void endLongPress() {
     final previous = _speedBeforeHold;
     if (previous == null) return;

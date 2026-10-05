@@ -3,10 +3,13 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../../app/app_scope.dart';
 import '../../../core/theme.dart';
 import '../../../data/proxy/vmess_proxy_controller.dart';
 import '../../../shared/layout/surface_card.dart';
 import '../../settings/dialogs/confirmation_dialog.dart';
+import '../../settings/dialogs/tv_field_halo.dart';
+import '../../shell/widgets/tv_field_gate.dart';
 
 /// 连接页右上角入口：蓝色文字按钮，状态随代理变化。
 class VmessProxyAppBarAction extends StatelessWidget {
@@ -104,10 +107,21 @@ class _VmessProxyDialog extends StatefulWidget {
 
 class _VmessProxyDialogState extends State<_VmessProxyDialog> {
   late final TextEditingController _link;
+  FocusNode? _linkFocusNode;
   var _submitting = false;
   var _replacing = false;
+  bool? _isTelevision;
 
   VmessProxyController get _controller => widget.controller;
+
+  bool get isTelevision => _isTelevision ?? false;
+
+  /// TV：链接字段焦点节点不参与方向遍历，浏览焦点在 TvTextFieldGate 闸门上；
+  /// 普通端不注入节点，保持系统默认行为。
+  FocusNode get _linkFocus => _linkFocusNode ??= FocusNode(
+    debugLabel: 'vmess-link-field',
+    skipTraversal: isTelevision,
+  );
 
   bool get _busy {
     final phase = _controller.phase;
@@ -130,8 +144,17 @@ class _VmessProxyDialogState extends State<_VmessProxyDialog> {
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // 独立嵌入时沿用普通端交互；应用内由 AppScope 提供设备形态。
+    _isTelevision ??=
+        AppScope.maybeOf(context)?.deviceProfile.isTelevision ?? false;
+  }
+
+  @override
   void dispose() {
     _controller.removeListener(_onChanged);
+    _linkFocusNode?.dispose();
     _link
       ..removeListener(_onChanged)
       ..dispose();
@@ -145,6 +168,45 @@ class _VmessProxyDialogState extends State<_VmessProxyDialog> {
       _replacing = false;
     }
     setState(() {});
+  }
+
+  /// 构造链接输入框；TV 包一层浏览闸门（OK 才编辑，编辑态 Back 先退回外层
+  /// 而不关闭弹窗），且不自动聚焦以避免直接弹出 IME。普通端保持原行为。
+  Widget _buildLinkField({required bool enabled, required bool autofocus}) {
+    final field = TextField(
+      controller: _link,
+      enabled: enabled,
+      focusNode: isTelevision ? _linkFocus : null,
+      autofocus: isTelevision ? false : autofocus,
+      minLines: 1,
+      maxLines: 3,
+      keyboardType: TextInputType.visiblePassword,
+      textInputAction: TextInputAction.done,
+      decoration: InputDecoration(
+        isDense: true,
+        labelText: _hasSavedProfile ? '新的 VMess 链接' : 'VMess 链接',
+        hintText: 'vmess://…',
+        alignLabelWithHint: true,
+        suffixIcon: IconButton(
+          tooltip: '粘贴',
+          visualDensity: VisualDensity.compact,
+          onPressed: !enabled ? null : () => unawaited(_paste()),
+          icon: const Icon(Icons.content_paste_rounded),
+        ),
+      ),
+      onSubmitted: (_) {
+        if (!enabled) return;
+        unawaited(_replacing ? _replaceAndStart() : _connect());
+      },
+    );
+    if (!isTelevision) return field;
+    return TvTextFieldGate(
+      // 无已存配置时打开弹窗即落在字段闸门；更换节点视图不抢走按钮焦点。
+      autofocus: !_hasSavedProfile,
+      fieldFocusNode: _linkFocus,
+      builder: (context, focused) =>
+          TvFieldHalo(focused: focused, child: field),
+    );
   }
 
   @override
@@ -198,32 +260,9 @@ class _VmessProxyDialogState extends State<_VmessProxyDialog> {
               ),
               const SizedBox(height: LumaSpacing.xs),
             ],
-            TextField(
-              controller: _link,
+            _buildLinkField(
               enabled: !_busy && !showDisconnect,
               autofocus: !_hasSavedProfile && !showDisconnect,
-              minLines: 1,
-              maxLines: 3,
-              keyboardType: TextInputType.visiblePassword,
-              textInputAction: TextInputAction.done,
-              decoration: InputDecoration(
-                isDense: true,
-                labelText: _hasSavedProfile ? '新的 VMess 链接' : 'VMess 链接',
-                hintText: 'vmess://…',
-                alignLabelWithHint: true,
-                suffixIcon: IconButton(
-                  tooltip: '粘贴',
-                  visualDensity: VisualDensity.compact,
-                  onPressed: _busy || showDisconnect
-                      ? null
-                      : () => unawaited(_paste()),
-                  icon: const Icon(Icons.content_paste_rounded),
-                ),
-              ),
-              onSubmitted: (_) {
-                if (_busy || showDisconnect) return;
-                unawaited(_replacing ? _replaceAndStart() : _connect());
-              },
             ),
           ],
           if (message != null) ...[
@@ -346,8 +385,8 @@ class _VmessProxyDialogState extends State<_VmessProxyDialog> {
       return switch (_failureKind) {
         _ProxyFailureKind.stop => '重试关闭',
         _ProxyFailureKind.delete => '重试删除',
-        _ProxyFailureKind.start || _ProxyFailureKind.other =>
-          _hasSavedProfile ? '重新启动' : '重试',
+        _ProxyFailureKind.start ||
+        _ProxyFailureKind.other => _hasSavedProfile ? '重新启动' : '重试',
       };
     }
     if (_hasSavedProfile) return '启动代理';
@@ -398,17 +437,25 @@ class _VmessProxyDialogState extends State<_VmessProxyDialog> {
           : '启动失败 · 可重试',
   };
 
+  /// TV 动作按钮最小高度 56（LumaTvLayout.controlMinHeight），普通端保持 40。
+  double get _actionHeight =>
+      isTelevision ? LumaTvLayout.controlMinHeight : LumaLayout.buttonHeight;
+
   ButtonStyle _primaryStyle() => FilledButton.styleFrom(
-    minimumSize: const Size(double.infinity, LumaLayout.buttonHeight),
+    minimumSize: Size(0, _actionHeight),
     padding: const EdgeInsets.symmetric(horizontal: LumaSpacing.md),
-    visualDensity: VisualDensity.compact,
+    visualDensity: isTelevision
+        ? VisualDensity.standard
+        : VisualDensity.compact,
     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
   );
 
   ButtonStyle _secondaryStyle() => TextButton.styleFrom(
-    minimumSize: const Size(0, LumaLayout.compactControlHeight),
+    minimumSize: Size(0, _actionHeight),
     padding: const EdgeInsets.symmetric(horizontal: LumaSpacing.xs),
-    visualDensity: VisualDensity.compact,
+    visualDensity: isTelevision
+        ? VisualDensity.standard
+        : VisualDensity.compact,
     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
   );
 

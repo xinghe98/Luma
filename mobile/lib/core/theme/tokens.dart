@@ -161,8 +161,6 @@ abstract final class LumaTypography {
 }
 
 abstract final class LumaLayout {
-  static const _mediaCardDetailsHeight = 76.0;
-
   static const contentMaxWidth = 1280.0;
   static const detailMaxWidth = 1160.0;
   static const formMaxWidth = 520.0;
@@ -170,7 +168,6 @@ abstract final class LumaLayout {
   static const extendedRailBreakpoint = 1100.0;
   static const detailTwoColumnBreakpoint = 760.0;
   static const horizontalCardWidth = 232.0;
-  static const horizontalCardHeight = 202.0;
   static const pagePaddingH = 20.0;
   static const pagePaddingTabletH = 28.0;
   static const pagePaddingWideH = 32.0;
@@ -206,12 +203,25 @@ abstract final class LumaLayout {
       : width >= 600
       ? 3
       : 2;
+}
 
-  /// 按网格宽度计算卡片比例，并为两行标题和元信息保留完整高度。
-  static double mediaCardAspectRatio(double gridWidth) {
-    final count = gridColumns(gridWidth);
-    final cardWidth = (gridWidth - LumaSpacing.md * (count - 1)) / count;
-    return cardWidth / (cardWidth / 1.6 + _mediaCardDetailsHeight);
+/// TV 十英尺界面的布局常量；仅在设备形态为 television 的分支使用。
+abstract final class LumaTvLayout {
+  /// 四边安全边距占视口比例，避免电视过扫描裁切内容与焦点。
+  static const safeAreaRatio = 0.05;
+  static const navigationWidth = 168.0;
+  static const navigationWidthCompact = 72.0;
+  static const focusStroke = 3.0;
+  static const controlMinHeight = 56.0;
+  static const cardSpacing = 24.0;
+  static const posterMinWidth = 160.0;
+  static const landscapeCardMinWidth = 208.0;
+
+  /// 按扣除导航与边距后的局部宽度计算规则网格列数，夹在 1–5 列。
+  static int gridColumns(double width, {double minItemWidth = posterMinWidth}) {
+    final columns = ((width + cardSpacing) / (minItemWidth + cardSpacing))
+        .floor();
+    return columns.clamp(1, 5);
   }
 }
 

@@ -12,6 +12,7 @@ class SearchInput extends StatelessWidget {
     required this.onClear,
     this.focusNode,
     this.autofocus = false,
+    this.television = false,
   });
 
   final TextEditingController textController;
@@ -20,6 +21,9 @@ class SearchInput extends StatelessWidget {
   final VoidCallback onClear;
   final FocusNode? focusNode;
   final bool autofocus;
+
+  /// TV 外层闸门持浏览焦点时为 true，用主色描边提示可进入编辑。
+  final bool television;
 
   /// 构建固定高度且文字显式垂直居中的单行搜索框。
   @override
@@ -31,6 +35,10 @@ class SearchInput extends StatelessWidget {
     final border = OutlineInputBorder(
       borderRadius: BorderRadius.circular(LumaRadii.large),
       borderSide: BorderSide.none,
+    );
+    final gateBorder = OutlineInputBorder(
+      borderRadius: BorderRadius.circular(LumaRadii.large),
+      borderSide: BorderSide(color: scheme.primary, width: 2),
     );
 
     return SizedBox(
@@ -77,7 +85,7 @@ class SearchInput extends StatelessWidget {
             height: LumaLayout.inputHeight,
           ),
           border: border,
-          enabledBorder: border,
+          enabledBorder: television ? gateBorder : border,
           focusedBorder: border,
           disabledBorder: border,
         ),

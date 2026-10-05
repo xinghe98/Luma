@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 
+import '../../../app/app_scope.dart';
 import '../../../core/theme.dart';
+import '../../shell/widgets/tv_field_gate.dart';
+import 'tv_field_halo.dart';
 
 /// 打开服务器别名编辑框；取消返回 null，恢复默认返回空字符串。
 Future<String?> showServerAliasDialog(
@@ -24,6 +27,21 @@ class _ServerAliasDialog extends StatefulWidget {
 
 class _ServerAliasDialogState extends State<_ServerAliasDialog> {
   late final TextEditingController _controller;
+  FocusNode? _fieldFocusNode;
+  bool? _isTelevision;
+
+  bool get isTelevision => _isTelevision ?? false;
+
+  /// TV：字段焦点节点不参与方向遍历，浏览焦点在 TvTextFieldGate 闸门上；
+  /// 普通端不注入节点，保持系统默认行为。
+  FocusNode get _fieldFocus => _fieldFocusNode ??= FocusNode(
+    debugLabel: 'server-alias-field',
+    skipTraversal: isTelevision,
+  );
+
+  /// TV 按钮最小高度 56，普通端沿用 40 的紧凑布局。
+  double get _buttonHeight =>
+      isTelevision ? LumaTvLayout.controlMinHeight : LumaLayout.buttonHeight;
 
   @override
   void initState() {
@@ -32,21 +50,44 @@ class _ServerAliasDialogState extends State<_ServerAliasDialog> {
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // 独立嵌入时沿用普通端交互；应用内由 AppScope 提供设备形态。
+    _isTelevision ??=
+        AppScope.maybeOf(context)?.deviceProfile.isTelevision ?? false;
+  }
+
+  @override
   void dispose() {
+    _fieldFocusNode?.dispose();
     _controller.dispose();
     super.dispose();
+  }
+
+  Widget _buildField() {
+    final field = TextField(
+      controller: _controller,
+      focusNode: isTelevision ? _fieldFocus : null,
+      // TV 由闸门持浏览焦点，OK 才进入编辑弹出 IME；普通端保持自动聚焦。
+      autofocus: !isTelevision,
+      maxLength: 80,
+      decoration: const InputDecoration(labelText: '仅保存在此设备'),
+    );
+    if (!isTelevision) return field;
+    return TvTextFieldGate(
+      // 打开弹窗即落在字段闸门，方向键向下可达操作按钮。
+      autofocus: true,
+      fieldFocusNode: _fieldFocus,
+      builder: (context, focused) =>
+          TvFieldHalo(focused: focused, child: field),
+    );
   }
 
   @override
   Widget build(BuildContext context) => AlertDialog(
     scrollable: true,
     title: const Text('服务器别名'),
-    content: TextField(
-      controller: _controller,
-      autofocus: true,
-      maxLength: 80,
-      decoration: const InputDecoration(labelText: '仅保存在此设备'),
-    ),
+    content: _buildField(),
     actionsAlignment: MainAxisAlignment.end,
     actionsOverflowAlignment: OverflowBarAlignment.end,
     actionsOverflowButtonSpacing: LumaSpacing.xs,
@@ -60,7 +101,7 @@ class _ServerAliasDialogState extends State<_ServerAliasDialog> {
     actions: [
       TextButton(
         style: TextButton.styleFrom(
-          minimumSize: const Size(0, LumaLayout.buttonHeight),
+          minimumSize: Size(0, _buttonHeight),
           padding: const EdgeInsets.symmetric(horizontal: LumaSpacing.sm),
           visualDensity: VisualDensity.standard,
           tapTargetSize: MaterialTapTargetSize.shrinkWrap,
@@ -70,7 +111,7 @@ class _ServerAliasDialogState extends State<_ServerAliasDialog> {
       ),
       TextButton(
         style: TextButton.styleFrom(
-          minimumSize: const Size(0, LumaLayout.buttonHeight),
+          minimumSize: Size(0, _buttonHeight),
           padding: const EdgeInsets.symmetric(horizontal: LumaSpacing.sm),
           visualDensity: VisualDensity.standard,
           tapTargetSize: MaterialTapTargetSize.shrinkWrap,
@@ -80,7 +121,7 @@ class _ServerAliasDialogState extends State<_ServerAliasDialog> {
       ),
       FilledButton(
         style: FilledButton.styleFrom(
-          minimumSize: const Size(0, LumaLayout.buttonHeight),
+          minimumSize: Size(0, _buttonHeight),
           padding: const EdgeInsets.symmetric(horizontal: LumaSpacing.md),
           visualDensity: VisualDensity.standard,
           tapTargetSize: MaterialTapTargetSize.shrinkWrap,

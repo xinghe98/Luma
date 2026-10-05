@@ -42,6 +42,38 @@ void main() {
     ]);
   });
 
+  testWidgets('TV 会话不触碰系统方向与沉浸式接口', (tester) async {
+    final calls = <MethodCall>[];
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) {
+        calls.add(call);
+        return Future<Object?>.value();
+      },
+    );
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        null,
+      ),
+    );
+
+    final session = PlayerSystemUiSession(television: true);
+    await session.enter(
+      portraitVideo: true,
+      entryOrientation: Orientation.portrait,
+      shortestSide: 400,
+    );
+    await session.rotate();
+    await session.exit();
+
+    expect(session.canRotate, isFalse);
+    expect(session.fullScreen, isFalse);
+    final methods = calls.map((call) => call.method).toList();
+    expect(methods, isNot(contains('SystemChrome.setPreferredOrientations')));
+    expect(methods, isNot(contains('SystemChrome.setEnabledSystemUIMode')));
+  });
+
   testWidgets('a stale exit cannot override a newer player enter', (
     tester,
   ) async {

@@ -8,16 +8,23 @@ import '../player_controller.dart';
 
 class PlayerVideoSurface extends StatefulWidget {
   /// 显示已初始化的视频；[attachVideo] 为 false 时不挂载纹理，仅保留占位。
+  ///
+  /// [keepAwake] 在挂载 [Video] 期间保持屏幕常亮；仅 TV 全屏播放器传 true，
+  /// 卸载时由 Video 自行释放。
   const PlayerVideoSurface({
     super.key,
     required this.controller,
     this.attachVideo = true,
+    this.keepAwake = false,
   });
 
   final PlayerController controller;
 
   /// 是否挂载 [Video]。全屏与小窗切换时必须互斥为 true。
   final bool attachVideo;
+
+  /// 是否保持屏幕常亮；默认关闭，普通端维持原行为。
+  final bool keepAwake;
 
   @override
   State<PlayerVideoSurface> createState() => _PlayerVideoSurfaceState();
@@ -70,7 +77,7 @@ class _PlayerVideoSurfaceState extends State<PlayerVideoSurface> {
           controller: video,
           controls: null,
           pauseUponEnteringBackgroundMode: false,
-          wakelock: false,
+          wakelock: widget.keepAwake,
         ),
       );
     }

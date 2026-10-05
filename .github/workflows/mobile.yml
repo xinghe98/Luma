@@ -37,6 +37,103 @@ jobs:
       - run: flutter analyze
       - run: flutter test
       - run: flutter build apk --debug
+      # 手机包 ABI 回归检查：本 job 工作区内构建，先于任何 TV 包产物存在，不会被覆盖。
+      - name: Check plain debug APK keeps arm64-only ABIs
+        run: |
+          python3 - <<'PY'
+          import zipfile
+
+          apk = "build/app/outputs/flutter-apk/app-debug.apk"
+          with zipfile.ZipFile(apk) as z:
+              abis = {p.split("/")[1] for p in z.namelist() if len(p.split("/")) >= 3 and p.split("/")[0] == "lib"}
+          assert abis == {"arm64-v8a"}, f"手机包 ABI 应仅 arm64-v8a，实际 {sorted(abis)}"
+          print("plain debug ABI ok:", sorted(abis))
+          PY
+
+  tv-arm-debug:
+    # TV 双 ARM debug 构建：独立 job 独立工作区，不会覆盖 verify job 的手机包产物。
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.41.6
+          cache: true
+      - run: flutter pub get
+      - name: Build TV dual-ARM debug APK
+        run: flutter build apk --debug --target-platform android-arm,android-arm64 --dart-define=LUMA_TV=true --android-project-arg=lumaTvAbis=arm
+      - name: Check TV APK ABIs
+        run: |
+          python3 - <<'PY'
+          import zipfile
+
+          # debug 包不产出 AOT 的 libapp.so，仅 release 要求。
+          required = {"libflutter.so", "libmpv.so", "libgojni.so"}
+          apk = "build/app/outputs/flutter-apk/app-debug.apk"
+          with zipfile.ZipFile(apk) as z:
+              libs = {}
+              for n in z.namelist():
+                  parts = n.split("/")
+                  if len(parts) >= 3 and parts[0] == "lib":
+                      libs.setdefault(parts[1], set()).add(parts[2])
+          abis = set(libs)
+          assert abis == {"armeabi-v7a", "arm64-v8a"}, f"TV 包应恰好双 ARM ABI，实际 {sorted(abis)}"
+          for abi in sorted(abis):
+              missing = required - libs[abi]
+              assert not missing, f"{abi} 缺少 {sorted(missing)}"
+          print("TV debug ABI ok:", sorted(abis))
+          PY
+      - name: Check TV manifest entries
+        run: |
+          "$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer" manifest print \
+            build/app/outputs/flutter-apk/app-debug.apk > tv-manifest-print.txt
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          import re
+          import subprocess
+          import xml.etree.ElementTree as ET
+
+          manifest = open("tv-manifest-print.txt", encoding="utf-8").read()
+
+          def has_element(tag, needle, attr=None):
+              # 元素属性可能换行输出，[^>]* 也能跨行匹配。
+              for m in re.finditer(rf"<{tag}\b[^>]*>", manifest):
+                  el = m.group(0)
+                  if needle in el and (attr is None or re.search(attr, el)):
+                      return True
+              return False
+
+          assert has_element("category", "android.intent.category.LEANBACK_LAUNCHER"), "缺少 LEANBACK_LAUNCHER 入口"
+          assert has_element("category", 'android:name="android.intent.category.LAUNCHER"'), "手机 LAUNCHER 入口丢失"
+          assert has_element("uses-feature", "android.software.leanback", r'android:required=["\']false'), "leanback 应为非必需特性"
+          assert has_element("uses-feature", "android.hardware.touchscreen", r'android:required=["\']false'), "touchscreen 应为非必需特性"
+          # 编译后的 Manifest 使用资源 ID；从同一 APK 的资源表核对名称。
+          aapt2 = max(
+              Path(os.environ['ANDROID_HOME']).glob('build-tools/*/aapt2'),
+              key=lambda path: tuple(int(part) for part in path.parent.name.split('.') if part.isdigit()),
+          )
+          resources = subprocess.check_output(
+              [str(aapt2), 'dump', 'resources', 'build/app/outputs/flutter-apk/app-debug.apk'],
+              text=True,
+          )
+          banner = re.search(r'resource (0x[0-9a-fA-F]+) drawable/tv_banner\b', resources)
+          assert banner, 'APK 缺少 drawable/tv_banner 资源'
+          application = ET.fromstring(manifest).find('application')
+          banner_ref = application.get('{http://schemas.android.com/apk/res/android}banner')
+          assert banner_ref in {'@drawable/tv_banner', f'@ref/{banner.group(1)}'}, f'TV banner 引用错误：{banner_ref}'
+          assert "com.luma.luma.MainActivity" in manifest, "MainActivity 被改动"
+          assert 'android:scheme="luma"' in manifest, "luma:// 深链丢失"
+          print("TV manifest ok: LEANBACK_LAUNCHER / non-required features / banner / MainActivity / deep links")
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: luma-tv-arm-debug
+          path: mobile/build/app/outputs/flutter-apk/app-debug.apk
+          if-no-files-found: error
 
   windows-release:
     runs-on: windows-latest

@@ -23,6 +23,7 @@ class CatalogDetailHero extends StatelessWidget {
     required this.onPlay,
     required this.onPlayFromStart,
     required this.onToggleFavorite,
+    this.television = false,
   });
 
   final CatalogItem item;
@@ -36,6 +37,9 @@ class CatalogDetailHero extends StatelessWidget {
   final ValueChanged<String> onPlay;
   final ValueChanged<String> onPlayFromStart;
   final VoidCallback onToggleFavorite;
+
+  /// TV：主播放/从头播放/收藏在首次有效内容时获得初始焦点。
+  final bool television;
 
   @override
   Widget build(BuildContext context) => LayoutBuilder(
@@ -129,17 +133,24 @@ class CatalogDetailHero extends StatelessWidget {
                         ),
                       const SizedBox(height: LumaSpacing.xl),
                       AdaptiveActionWidth(
-                        child: _PrimaryPlayButton(item: item, onPlay: onPlay),
+                        child: _PrimaryPlayButton(
+                          item: item,
+                          onPlay: onPlay,
+                          autofocus: television,
+                        ),
                       ),
                       const SizedBox(height: LumaSpacing.sm),
                       AdaptiveActionWidth(
                         child: _SecondaryActions(
                           item: item,
+                          television: television,
                           vertical: stackIdentity,
                           favorite: favorite,
                           savingFavorite: savingFavorite,
                           onPlayFromStart: onPlayFromStart,
                           onToggleFavorite: onToggleFavorite,
+                          // 主播放不可用（无正片）时 TV 首焦点落到次要操作。
+                          autofocus: television && item.playableMediaId.isEmpty,
                         ),
                       ),
                     ],
@@ -162,6 +173,8 @@ class _SecondaryActions extends StatelessWidget {
     required this.savingFavorite,
     required this.onPlayFromStart,
     required this.onToggleFavorite,
+    this.autofocus = false,
+    this.television = false,
   });
 
   final CatalogItem item;
@@ -171,18 +184,27 @@ class _SecondaryActions extends StatelessWidget {
   final ValueChanged<String> onPlayFromStart;
   final VoidCallback onToggleFavorite;
 
+  /// 主播放不可用时 TV 的初始焦点：优先从头播放，其次收藏。
+  final bool autofocus;
+  final bool television;
+
   @override
   Widget build(BuildContext context) {
+    final canPlayFromStart = _startMediaId(item).isNotEmpty;
     final children = [
       OutlinedButton.icon(
-        onPressed: _startMediaId(item).isEmpty
-            ? null
-            : () => onPlayFromStart(_startMediaId(item)),
+        autofocus: autofocus && canPlayFromStart,
+        onFocusChange: television ? _revealTvAction : null,
+        onPressed: canPlayFromStart
+            ? () => onPlayFromStart(_startMediaId(item))
+            : null,
         icon: const Icon(Icons.replay_rounded),
         label: const Text('从头播放'),
         style: _secondaryActionStyle(),
       ),
       OutlinedButton.icon(
+        autofocus: autofocus && !canPlayFromStart && !savingFavorite,
+        onFocusChange: television ? _revealTvAction : null,
         onPressed: savingFavorite ? null : onToggleFavorite,
         icon: Icon(
           favorite ? Icons.favorite_rounded : Icons.favorite_border_rounded,
@@ -331,15 +353,24 @@ class _HeroInformation extends StatelessWidget {
 }
 
 class _PrimaryPlayButton extends StatelessWidget {
-  const _PrimaryPlayButton({required this.item, required this.onPlay});
+  const _PrimaryPlayButton({
+    required this.item,
+    required this.onPlay,
+    this.autofocus = false,
+  });
 
   final CatalogItem item;
   final ValueChanged<String> onPlay;
+
+  /// TV 首次有效内容聚焦主播放；不可播放时由次要操作接住焦点。
+  final bool autofocus;
 
   @override
   Widget build(BuildContext context) {
     return SizedBox(
       child: FilledButton.icon(
+        autofocus: autofocus && item.playableMediaId.isNotEmpty,
+        onFocusChange: autofocus ? _revealTvAction : null,
         onPressed: item.playableMediaId.isEmpty
             ? null
             : () => onPlay(item.playableMediaId),
@@ -359,6 +390,18 @@ class _PrimaryPlayButton extends StatelessWidget {
       ),
     );
   }
+}
+
+/// 获焦后揭示实际按钮；刷新没有焦点变化时不会改变用户所在位置。
+void _revealTvAction(bool focused) {
+  if (!focused) return;
+  final node = FocusManager.instance.primaryFocus;
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    final context = node?.context;
+    if (context != null && context.mounted && node!.hasPrimaryFocus) {
+      Scrollable.ensureVisible(context, alignment: 0.5);
+    }
+  });
 }
 
 /// 电视剧优先从正片第一季开始，只有没有正片时才回退到特别篇。

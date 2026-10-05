@@ -55,7 +55,10 @@ class _SettingsPageState extends State<SettingsPage> {
             body: const SettingsListSkeleton(items: 4),
           );
         }
+        // TV 裁剪管理功能：观看为主，媒体源/成员访问/扫描留在普通端。
+        final isTelevision = dependencies.deviceProfile.isTelevision;
         final canManageAccess =
+            !isTelevision &&
             server.userRole == 'admin' &&
             server.capabilities.contains('users.manage') &&
             dependencies.sources != null;
@@ -109,7 +112,8 @@ class _SettingsPageState extends State<SettingsPage> {
                   );
                 },
                 onEditAlias: () => _editAlias(context),
-                canScan: server.can('scans.manage'),
+                // TV 不显示手动/重新扫描入口。
+                canScan: !isTelevision && server.can('scans.manage'),
               ),
               ListTile(
                 contentPadding: const EdgeInsets.symmetric(
@@ -129,9 +133,13 @@ class _SettingsPageState extends State<SettingsPage> {
                 subtitle: const Text('当前服务器会话的网络通道'),
               ),
               const SizedBox(height: LumaSpacing.xl),
-              const SectionHeader(title: '媒体库整理'),
-              const SizedBox(height: LumaSpacing.sm),
-              if (server.can('sources.manage') &&
+              // TV 隐藏媒体源管理入口。
+              if (!isTelevision) ...[
+                const SectionHeader(title: '媒体库整理'),
+                const SizedBox(height: LumaSpacing.sm),
+              ],
+              if (!isTelevision &&
+                  server.can('sources.manage') &&
                   dependencies.sources is MutableSourceRepository)
                 ListTile(
                   contentPadding: const EdgeInsets.symmetric(

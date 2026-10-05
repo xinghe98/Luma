@@ -2,11 +2,14 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../app/app_navigation.dart';
 import '../../app/app_scope.dart';
 import '../../app/route_transition.dart';
 import '../../core/theme.dart';
 import '../../data/models/media_item.dart';
 import '../../data/models/media_types.dart';
+import '../../shared/interaction/tv_key_bindings.dart';
+import '../../shared/layout/tv_content_frame.dart';
 import '../../shared/media/media_artwork.dart';
 import '../../shared/layout/scroll_to_top_app_bar_title.dart';
 import '../../shared/states/skeleton.dart';
@@ -35,7 +38,9 @@ class MediaDetailPage extends StatefulWidget {
 class _MediaDetailPageState extends State<MediaDetailPage> {
   DetailsController? _controller;
   final _scroll = ScrollController();
+  final _playFocus = FocusNode(debugLabel: 'media-detail-play');
   bool _loadScheduled = false;
+  bool _focusedFirstItem = false;
 
   @override
   void didChangeDependencies() {
@@ -73,129 +78,166 @@ class _MediaDetailPageState extends State<MediaDetailPage> {
   @override
   void dispose() {
     _scroll.dispose();
+    _playFocus.dispose();
     _controller?.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return ListenableBuilder(
-      listenable: _controller!,
-      builder: (context, _) {
-        final controller = _controller!;
-        final item = controller.item;
-        if (item == null) {
-          return Scaffold(
-            appBar: AppBar(
-              title: ScrollToTopAppBarTitle(title: '媒体详情', controller: _scroll),
-            ),
-            body: controller.isLoading
-                ? const DetailPageSkeleton()
-                : Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(LumaSpacing.lg),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            controller.detailError ?? '找不到该媒体，可能已被移除或尚未加载。',
-                            textAlign: TextAlign.center,
-                            style: Theme.of(context).textTheme.bodyLarge
-                                ?.copyWith(
-                                  color: Theme.of(
-                                    context,
-                                  ).colorScheme.onSurfaceVariant,
-                                ),
-                          ),
-                          const SizedBox(height: LumaSpacing.md),
-                          FilledButton(
-                            onPressed: controller.reload,
-                            child: const Text('重试'),
-                          ),
-                        ],
-                      ),
-                    ),
+    final isTelevision = AppScope.of(context).deviceProfile.isTelevision;
+    return DetailBackScope(
+      builder: (onBack) => ListenableBuilder(
+        listenable: _controller!,
+        builder: (context, _) {
+          final controller = _controller!;
+          final item = controller.item;
+          if (item == null) {
+            return _tvWrap(
+              context,
+              isTelevision,
+              Scaffold(
+                appBar: AppBar(
+                  leading: BackButton(onPressed: onBack),
+                  title: ScrollToTopAppBarTitle(
+                    title: '媒体详情',
+                    controller: _scroll,
                   ),
-          );
-        }
-        final coverRadius = context.luma.coverRadius;
-        final cover = AspectRatio(
-          aspectRatio: item.isPortrait ? 3 / 4 : 16 / 10,
-          child: MediaArtwork(
-            item: item,
-            borderRadius: coverRadius,
-            useCardThumbnail: item.type == MediaType.video,
-            cacheWidth: widget.heroTag == null
-                ? null
-                : MediaArtwork.heroThumbnailCacheWidth,
-          ),
-        );
-        final artwork = widget.heroTag == null
-            ? cover
-            : Hero(
-                tag: widget.heroTag!,
-                flightShuttleBuilder: MediaArtwork.preserveSourceHeroFlight,
-                child: cover,
-              );
-        return Scaffold(
-          appBar: AppBar(
-            title: ScrollToTopAppBarTitle(title: '媒体详情', controller: _scroll),
-          ),
-          body: LayoutBuilder(
-            builder: (context, constraints) => SingleChildScrollView(
-              controller: _scroll,
-              padding: LumaLayout.pagePadding(top: LumaSpacing.sm),
-              child: Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(
-                    maxWidth: LumaLayout.detailMaxWidth,
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      if (controller.detailError != null)
-                        Padding(
-                          padding: const EdgeInsets.only(
-                            bottom: LumaSpacing.sm,
-                          ),
-                          child: MaterialBanner(
-                            content: Text(controller.detailError!),
-                            actions: [
-                              TextButton(
+                ),
+                body: controller.isLoading
+                    ? const DetailPageSkeleton()
+                    : Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(LumaSpacing.lg),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                controller.detailError ?? '找不到该媒体，可能已被移除或尚未加载。',
+                                textAlign: TextAlign.center,
+                                style: Theme.of(context).textTheme.bodyLarge
+                                    ?.copyWith(
+                                      color: Theme.of(
+                                        context,
+                                      ).colorScheme.onSurfaceVariant,
+                                    ),
+                              ),
+                              const SizedBox(height: LumaSpacing.md),
+                              FilledButton(
                                 onPressed: controller.reload,
                                 child: const Text('重试'),
                               ),
                             ],
                           ),
                         ),
-                      if (constraints.maxWidth >=
-                          LumaLayout.detailTwoColumnBreakpoint)
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Expanded(flex: 5, child: artwork),
-                            const SizedBox(
-                              width: LumaSpacing.xl + LumaSpacing.xxs,
-                            ),
-                            Expanded(
-                              flex: 6,
-                              child: DetailInformation(controller: controller),
-                            ),
-                          ],
-                        )
-                      else ...[
-                        artwork,
-                        const SizedBox(height: LumaSpacing.xl),
-                        DetailInformation(controller: controller),
-                      ],
-                    ],
-                  ),
+                      ),
+              ),
+            );
+          }
+          final coverRadius = context.luma.coverRadius;
+          final cover = AspectRatio(
+            aspectRatio: item.isPortrait ? 3 / 4 : 16 / 10,
+            child: MediaArtwork(
+              item: item,
+              borderRadius: coverRadius,
+              useCardThumbnail: item.type == MediaType.video,
+              cacheWidth: widget.heroTag == null
+                  ? null
+                  : MediaArtwork.heroThumbnailCacheWidth,
+            ),
+          );
+          final artwork = widget.heroTag == null
+              ? cover
+              : Hero(
+                  tag: widget.heroTag!,
+                  flightShuttleBuilder: MediaArtwork.preserveSourceHeroFlight,
+                  child: cover,
+                );
+          // TV：首次有效内容聚焦主播放；不可播放时 DetailActions 落收藏。
+          final autofocusPrimary = isTelevision && !_focusedFirstItem;
+          if (autofocusPrimary) {
+            _focusedFirstItem = true;
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) _playFocus.requestFocus();
+            });
+          }
+          return _tvWrap(
+            context,
+            isTelevision,
+            Scaffold(
+              appBar: AppBar(
+                leading: BackButton(onPressed: onBack),
+                title: ScrollToTopAppBarTitle(
+                  title: '媒体详情',
+                  controller: _scroll,
                 ),
               ),
+              body: LayoutBuilder(
+                builder: (context, constraints) {
+                  final info = DetailInformation(
+                    controller: controller,
+                    television: isTelevision,
+                    autofocusPrimary: autofocusPrimary,
+                    playFocusNode: isTelevision ? _playFocus : null,
+                  );
+                  return SingleChildScrollView(
+                    controller: _scroll,
+                    padding: LumaLayout.pagePadding(top: LumaSpacing.sm),
+                    child: Center(
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(
+                          maxWidth: LumaLayout.detailMaxWidth,
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            if (controller.detailError != null)
+                              Padding(
+                                padding: const EdgeInsets.only(
+                                  bottom: LumaSpacing.sm,
+                                ),
+                                child: MaterialBanner(
+                                  content: Text(controller.detailError!),
+                                  actions: [
+                                    TextButton(
+                                      onPressed: controller.reload,
+                                      child: const Text('重试'),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            if (constraints.maxWidth >=
+                                LumaLayout.detailTwoColumnBreakpoint)
+                              Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Expanded(flex: 5, child: artwork),
+                                  const SizedBox(
+                                    width: LumaSpacing.xl + LumaSpacing.xxs,
+                                  ),
+                                  Expanded(flex: 6, child: info),
+                                ],
+                              )
+                            else ...[
+                              artwork,
+                              const SizedBox(height: LumaSpacing.xl),
+                              info,
+                            ],
+                          ],
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
             ),
-          ),
-        );
-      },
+          );
+        },
+      ),
     );
   }
+
+  /// TV 根层详情页：确认键映射激活并套安全边距；普通端原样返回。
+  Widget _tvWrap(BuildContext context, bool isTelevision, Widget child) =>
+      isTelevision ? TvKeyBindings(child: TvContentFrame(child: child)) : child;
 }

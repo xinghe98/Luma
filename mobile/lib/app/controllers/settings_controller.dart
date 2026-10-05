@@ -9,11 +9,16 @@ class SettingsController extends ChangeNotifier {
   SettingsController({
     ScanRepository? scanRepository,
     this.scanPollInterval = const Duration(seconds: 1),
-  }) : _scanRepository = scanRepository;
+    this.initialThemeMode = ThemeMode.light,
+  }) : _scanRepository = scanRepository,
+       _themeMode = initialThemeMode;
 
   final ScanRepository? _scanRepository;
   final Duration scanPollInterval;
-  ThemeMode _themeMode = ThemeMode.light;
+
+  /// 构造时确定的首帧主题；TV 默认深色，普通端保持浅色。
+  final ThemeMode initialThemeMode;
+  ThemeMode _themeMode;
   double? _scanProgress;
   String? _scanError;
   int _scanGeneration = 0;

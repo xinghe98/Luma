@@ -5,9 +5,13 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../app/app_navigation.dart';
+import '../../app/app_scope.dart';
 import '../../app/route_transition.dart';
 import '../../data/models/api_catalog.dart';
 import '../../data/repositories/catalog_repository.dart';
+import '../../shared/interaction/tv_key_bindings.dart';
+import '../../shared/layout/tv_content_frame.dart';
 import '../../shared/states/error_state.dart';
 import '../../shared/states/skeleton.dart';
 import 'catalog_store.dart';
@@ -229,87 +233,110 @@ class _CatalogDetailPageState extends State<CatalogDetailPage> {
   @override
   Widget build(BuildContext context) {
     final item = _item;
-    return Scaffold(
-      backgroundColor: item == null ? null : CatalogDetailPalette.background,
-      extendBodyBehindAppBar: item != null,
-      appBar: AppBar(
-        automaticallyImplyLeading: false,
-        leadingWidth: 64,
-        leading: Padding(
-          padding: const EdgeInsets.only(left: 8),
-          child: Align(
-            alignment: Alignment.centerLeft,
-            child: SizedBox.square(
-              dimension: 48,
-              child: IconButton.filled(
-                key: const ValueKey('catalog-detail-back'),
-                tooltip: '返回',
-                onPressed: () => Navigator.of(context).maybePop(),
-                style: IconButton.styleFrom(
-                  minimumSize: const Size.square(48),
-                  maximumSize: const Size.square(48),
-                  backgroundColor: CatalogDetailPalette.text,
-                  foregroundColor: CatalogDetailPalette.background,
-                  shape: const CircleBorder(),
-                ),
-                icon: const Icon(Icons.arrow_back_rounded),
-              ),
-            ),
-          ),
-        ),
-        title: item == null ? const Text('作品详情') : null,
-        backgroundColor: item == null ? null : Colors.transparent,
-        surfaceTintColor: Colors.transparent,
-        foregroundColor: item == null ? null : CatalogDetailPalette.text,
-        systemOverlayStyle: item == null ? null : SystemUiOverlayStyle.light,
-        actions: [
-          if (item != null)
-            IconButton(
-              onPressed: _savingFavorite ? null : _toggleFavorite,
-              tooltip: _favorite ? '取消收藏' : '收藏',
-              icon: Icon(
-                _favorite
-                    ? Icons.favorite_rounded
-                    : Icons.favorite_border_rounded,
-              ),
-            ),
-        ],
-      ),
-      body: item == null
-          ? _error == null
-                ? const DetailPageSkeleton(artworkAspectRatio: 16 / 9)
-                : ErrorState(onRetry: _load)
-          : Stack(
-              children: [
-                CatalogDetailContent(
-                  item: item,
-                  heroTag: widget.heroTag,
-                  loadDetailArtwork: _loadDetailArtwork,
-                  favorite: _favorite,
-                  savingFavorite: _savingFavorite,
-                  onPlay: widget.onOpenMedia,
-                  onPlayFromStart: widget.onOpenMediaFromStart,
-                  onToggleFavorite: _toggleFavorite,
-                ),
-                if (_loading)
-                  const Align(
-                    alignment: Alignment.topCenter,
-                    child: LinearProgressIndicator(minHeight: 2),
-                  ),
-                if (_error != null)
-                  Positioned(
-                    top: MediaQuery.paddingOf(context).top + kToolbarHeight,
-                    left: 0,
-                    right: 0,
-                    child: MaterialBanner(
-                      content: const Text('作品资料刷新失败，当前仍显示上次内容。'),
-                      actions: [
-                        TextButton(onPressed: _load, child: const Text('重试')),
-                      ],
+    final isTelevision =
+        AppScope.maybeOf(context)?.deviceProfile.isTelevision ?? false;
+    return DetailBackScope(
+      builder: (onBack) {
+        final page = Scaffold(
+          backgroundColor: item == null
+              ? null
+              : CatalogDetailPalette.background,
+          // TV 焦点揭示以实际内容视口为边界，避免列表首行被工具栏遮住。
+          extendBodyBehindAppBar: item != null && !isTelevision,
+          appBar: AppBar(
+            automaticallyImplyLeading: false,
+            leadingWidth: 64,
+            leading: Padding(
+              padding: const EdgeInsets.only(left: 8),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: SizedBox.square(
+                  dimension: 48,
+                  child: IconButton.filled(
+                    key: const ValueKey('catalog-detail-back'),
+                    tooltip: '返回',
+                    onPressed: onBack,
+                    style: IconButton.styleFrom(
+                      minimumSize: const Size.square(48),
+                      maximumSize: const Size.square(48),
+                      backgroundColor: CatalogDetailPalette.text,
+                      foregroundColor: CatalogDetailPalette.background,
+                      shape: const CircleBorder(),
                     ),
+                    icon: const Icon(Icons.arrow_back_rounded),
                   ),
-              ],
+                ),
+              ),
             ),
+            title: item == null ? const Text('作品详情') : null,
+            backgroundColor: item == null ? null : Colors.transparent,
+            surfaceTintColor: Colors.transparent,
+            foregroundColor: item == null ? null : CatalogDetailPalette.text,
+            systemOverlayStyle: item == null
+                ? null
+                : SystemUiOverlayStyle.light,
+            actions: [
+              if (item != null)
+                IconButton(
+                  onPressed: _savingFavorite ? null : _toggleFavorite,
+                  tooltip: _favorite ? '取消收藏' : '收藏',
+                  icon: Icon(
+                    _favorite
+                        ? Icons.favorite_rounded
+                        : Icons.favorite_border_rounded,
+                  ),
+                ),
+            ],
+          ),
+          body: item == null
+              ? _error == null
+                    ? const DetailPageSkeleton(artworkAspectRatio: 16 / 9)
+                    : ErrorState(onRetry: _load)
+              : Stack(
+                  children: [
+                    CatalogDetailContent(
+                      item: item,
+                      heroTag: widget.heroTag,
+                      loadDetailArtwork: _loadDetailArtwork,
+                      favorite: _favorite,
+                      savingFavorite: _savingFavorite,
+                      onPlay: widget.onOpenMedia,
+                      onPlayFromStart: widget.onOpenMediaFromStart,
+                      onToggleFavorite: _toggleFavorite,
+                      television: isTelevision,
+                    ),
+                    if (_loading)
+                      const Align(
+                        alignment: Alignment.topCenter,
+                        child: LinearProgressIndicator(minHeight: 2),
+                      ),
+                    if (_error != null)
+                      Positioned(
+                        top: MediaQuery.paddingOf(context).top + kToolbarHeight,
+                        left: 0,
+                        right: 0,
+                        child: MaterialBanner(
+                          content: const Text('作品资料刷新失败，当前仍显示上次内容。'),
+                          actions: [
+                            TextButton(
+                              onPressed: _load,
+                              child: const Text('重试'),
+                            ),
+                          ],
+                        ),
+                      ),
+                  ],
+                ),
+        );
+        return isTelevision
+            ? TvKeyBindings(
+                child: TvContentFrame(
+                  backgroundColor: page.backgroundColor,
+                  child: page,
+                ),
+              )
+            : page;
+      },
     );
   }
 }

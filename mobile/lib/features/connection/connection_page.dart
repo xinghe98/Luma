@@ -5,6 +5,8 @@ import '../../core/extensions.dart';
 import '../../core/theme.dart';
 import '../../data/services/connection_service.dart';
 import '../../data/storage/connection_form_store.dart';
+import '../../shared/interaction/tv_key_bindings.dart';
+import '../../shared/layout/tv_content_frame.dart';
 import 'connection_controller.dart';
 
 import 'widgets/connection_brand_header.dart';
@@ -24,6 +26,7 @@ class _ConnectionPageState extends State<ConnectionPage> {
   final _port = TextEditingController(text: '8080');
   final _username = TextEditingController();
   final _password = TextEditingController();
+  final _connectButtonFocus = FocusNode(debugLabel: 'connection-connect');
   static const _connectionScheme = 'http';
   var _formHydrated = false;
 
@@ -41,6 +44,7 @@ class _ConnectionPageState extends State<ConnectionPage> {
     _port.dispose();
     _username.dispose();
     _password.dispose();
+    _connectButtonFocus.dispose();
     super.dispose();
   }
 
@@ -95,10 +99,23 @@ class _ConnectionPageState extends State<ConnectionPage> {
     final connected =
         dependencies.session.isConnected ||
         dependencies.connection.phase == ConnectionPhase.success;
-    if (!connected) return;
-    await dependencies.rememberConnectionForm(
-      SavedConnectionForm(host: host, port: port, username: username),
-    );
+    if (connected) {
+      await dependencies.rememberConnectionForm(
+        SavedConnectionForm(host: host, port: port, username: username),
+      );
+      return;
+    }
+    // TV：等失败态重新启用按钮后再交回焦点，保留输入便于修改或重试。
+    if (mounted && dependencies.deviceProfile.isTelevision) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted ||
+            dependencies.isDisposed ||
+            dependencies.connection.phase != ConnectionPhase.failure) {
+          return;
+        }
+        _connectButtonFocus.requestFocus();
+      });
+    }
   }
 
   @override
@@ -114,6 +131,76 @@ class _ConnectionPageState extends State<ConnectionPage> {
       ]),
       builder: (context, _) {
         final restoring = dependencies.restoring.value;
+        final isTelevision = dependencies.deviceProfile.isTelevision;
+        final form = SingleChildScrollView(
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(
+                maxWidth: LumaLayout.formMaxWidth,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const ConnectionBrandHeader(),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(
+                      LumaSpacing.lg,
+                      LumaSpacing.xl,
+                      LumaSpacing.lg,
+                      LumaSpacing.lg,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        ConnectionForm(
+                          controller: controller,
+                          hostController: _host,
+                          portController: _port,
+                          usernameController: _username,
+                          passwordController: _password,
+                          proxied: proxy?.isActive ?? false,
+                          enabled: !restoring,
+                          television: isTelevision,
+                          connectFocusNode: isTelevision
+                              ? _connectButtonFocus
+                              : null,
+                          onConnect: () {
+                            // ignore: discarded_futures
+                            _connect();
+                          },
+                        ),
+                        if (restoring) ...[
+                          const SizedBox(height: LumaSpacing.sm),
+                          const Text('正在恢复已保存的服务器连接…'),
+                        ],
+                        // RecentServers 目前是空常量占位；TV 不显示历史服务器。
+                        if (!isTelevision) ...[
+                          const SizedBox(height: LumaSpacing.lg),
+                          RecentServers(
+                            enabled: !restoring && !controller.isLoading,
+                            onSelect: _selectServer,
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+        final body = SafeArea(
+          // TV：连接页属于独立根路由，套安全边距并保持居中表单；
+          // 确认键映射与壳层一致（忽略长按重复）。
+          child: isTelevision
+              ? TvKeyBindings(
+                  child: TvContentFrame(
+                    maxWidth: LumaLayout.formMaxWidth,
+                    child: form,
+                  ),
+                )
+              : form,
+        );
         return Scaffold(
           appBar: proxy == null
               ? null
@@ -130,58 +217,7 @@ class _ConnectionPageState extends State<ConnectionPage> {
                     ),
                   ],
                 ),
-          body: SafeArea(
-            child: SingleChildScrollView(
-              child: Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(
-                    maxWidth: LumaLayout.formMaxWidth,
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      const ConnectionBrandHeader(),
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(
-                          LumaSpacing.lg,
-                          LumaSpacing.xl,
-                          LumaSpacing.lg,
-                          LumaSpacing.lg,
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            ConnectionForm(
-                              controller: controller,
-                              hostController: _host,
-                              portController: _port,
-                              usernameController: _username,
-                              passwordController: _password,
-                              proxied: proxy?.isActive ?? false,
-                              enabled: !restoring,
-                              onConnect: () {
-                                // ignore: discarded_futures
-                                _connect();
-                              },
-                            ),
-                            if (restoring) ...[
-                              const SizedBox(height: LumaSpacing.sm),
-                              const Text('正在恢复已保存的服务器连接…'),
-                            ],
-                            const SizedBox(height: LumaSpacing.lg),
-                            RecentServers(
-                              enabled: !restoring && !controller.isLoading,
-                              onSelect: _selectServer,
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
+          body: body,
         );
       },
     );

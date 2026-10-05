@@ -54,105 +54,111 @@ class _HomePageState extends State<HomePage>
   Widget build(BuildContext context) {
     super.build(context);
     final controller = _controller!;
-    if (controller.media.loadState == LoadState.ready &&
-        controller.media.items.isNotEmpty) {
-      _scheduleBranchPrewarm();
-    }
+    final isTelevision = AppScope.of(context).deviceProfile.isTelevision;
     return Scaffold(
       body: SafeArea(
         child: ListenableBuilder(
           listenable: controller,
-          builder: (context, _) => RefreshIndicator(
-            onRefresh: controller.media.refresh,
-            child: CustomScrollView(
-              key: const PageStorageKey('home-scroll'),
-              controller: _scroll,
-              physics: const AlwaysScrollableScrollPhysics(),
-              slivers: [
-                SliverToBoxAdapter(
-                  child: HomeHeader(
-                    onOpenSearch: widget.onOpenSearch,
-                    onScrollToTop: _scrollToTop,
-                  ),
-                ),
-                if (controller.media.loadState == LoadState.loading &&
-                    controller.media.items.isEmpty)
-                  const SliverToBoxAdapter(child: HomeFeedSkeleton())
-                else if (controller.media.loadState == LoadState.error &&
-                    controller.media.items.isEmpty)
-                  SliverFillRemaining(
-                    hasScrollBody: false,
-                    child: ErrorState(onRetry: controller.media.load),
-                  )
-                else if (controller.media.items.isEmpty)
-                  const SliverFillRemaining(
-                    hasScrollBody: false,
-                    child: EmptyState(
-                      title: '媒体库还没有内容',
-                      message: '等待服务器扫描完成，或前往设置手动开始扫描。',
-                      icon: Icons.video_library_outlined,
-                    ),
-                  )
-                else ...[
-                  if (controller.media.loadState == LoadState.error)
-                    SliverToBoxAdapter(
-                      child: ErrorState(
-                        compact: true,
-                        title: '首页刷新失败',
-                        message: '当前仍显示上次成功加载的内容。',
-                        retryLabel: '重试刷新',
-                        onRetry: controller.media.refresh,
-                      ),
-                    ),
-                  if (controller.media.loadState == LoadState.loading)
-                    const SliverToBoxAdapter(
-                      child: LinearProgressIndicator(minHeight: 2),
-                    ),
-                  SliverToBoxAdapter(
-                    child: HorizontalMediaSection(
-                      title: '继续观看',
-                      subtitle: '回到上次停下的位置',
-                      heroPrefix: 'continue',
-                      items: controller.continuing,
-                      onOpenMedia: widget.onOpenMedia,
-                      onFavorite: (item) => context.toggleFavoriteWithFeedback(
-                        controller.media,
-                        item,
-                      ),
-                    ),
-                  ),
-                  SliverToBoxAdapter(
-                    child: RecentMediaSection(
-                      items: controller.recent,
-                      onOpenMedia: widget.onOpenMedia,
-                      onFavorite: (item) => context.toggleFavoriteWithFeedback(
-                        controller.media,
-                        item,
-                      ),
-                    ),
-                  ),
-                  SliverToBoxAdapter(
-                    child: HorizontalMediaSection(
-                      title: '收藏',
-                      subtitle: '留给以后再看的片段',
-                      heroPrefix: 'favorites',
-                      items: controller.favorites,
-                      onOpenMedia: widget.onOpenMedia,
-                      onFavorite: (item) => context.toggleFavoriteWithFeedback(
-                        controller.media,
-                        item,
-                      ),
-                    ),
-                  ),
-                  const SliverToBoxAdapter(
-                    child: SizedBox(height: LumaSpacing.lg),
-                  ),
-                ],
-              ],
-            ),
-          ),
+          builder: (context, _) {
+            // 每次媒体通知都重建状态分支与货架，避免复用过期的整页快照。
+            final scrollableView = _buildScrollView(context, isTelevision);
+            return isTelevision
+                ? scrollableView
+                : RefreshIndicator(
+                    onRefresh: controller.media.refresh,
+                    child: scrollableView,
+                  );
+          },
         ),
       ),
+    );
+  }
+
+  Widget _buildScrollView(BuildContext context, bool isTelevision) {
+    final controller = _controller!;
+    if (controller.media.loadState == LoadState.ready &&
+        controller.media.items.isNotEmpty) {
+      _scheduleBranchPrewarm();
+    }
+    return CustomScrollView(
+      key: const PageStorageKey('home-scroll'),
+      controller: _scroll,
+      physics: const AlwaysScrollableScrollPhysics(),
+      slivers: [
+        SliverToBoxAdapter(
+          child: HomeHeader(
+            onOpenSearch: widget.onOpenSearch,
+            onScrollToTop: _scrollToTop,
+            onRefresh: isTelevision ? controller.media.refresh : null,
+          ),
+        ),
+        if (controller.media.loadState == LoadState.loading &&
+            controller.media.items.isEmpty)
+          const SliverToBoxAdapter(child: HomeFeedSkeleton())
+        else if (controller.media.loadState == LoadState.error &&
+            controller.media.items.isEmpty)
+          SliverFillRemaining(
+            hasScrollBody: false,
+            child: ErrorState(onRetry: controller.media.load),
+          )
+        else if (controller.media.items.isEmpty)
+          const SliverFillRemaining(
+            hasScrollBody: false,
+            child: EmptyState(
+              title: '媒体库还没有内容',
+              message: '等待服务器扫描完成，或前往设置手动开始扫描。',
+              icon: Icons.video_library_outlined,
+            ),
+          )
+        else ...[
+          if (controller.media.loadState == LoadState.error)
+            SliverToBoxAdapter(
+              child: ErrorState(
+                compact: true,
+                title: '首页刷新失败',
+                message: '当前仍显示上次成功加载的内容。',
+                retryLabel: '重试刷新',
+                onRetry: controller.media.refresh,
+              ),
+            ),
+          if (controller.media.loadState == LoadState.loading)
+            const SliverToBoxAdapter(
+              child: LinearProgressIndicator(minHeight: 2),
+            ),
+          SliverToBoxAdapter(
+            child: HorizontalMediaSection(
+              title: '继续观看',
+              subtitle: '回到上次停下的位置',
+              heroPrefix: 'continue',
+              items: controller.continuing,
+              onOpenMedia: widget.onOpenMedia,
+              onFavorite: (item) =>
+                  context.toggleFavoriteWithFeedback(controller.media, item),
+            ),
+          ),
+          SliverToBoxAdapter(
+            child: RecentMediaSection(
+              items: controller.recent,
+              onOpenMedia: widget.onOpenMedia,
+              onFavorite: (item) =>
+                  context.toggleFavoriteWithFeedback(controller.media, item),
+              scrollController: isTelevision ? _scroll : null,
+            ),
+          ),
+          SliverToBoxAdapter(
+            child: HorizontalMediaSection(
+              title: '收藏',
+              subtitle: '留给以后再看的片段',
+              heroPrefix: 'favorites',
+              items: controller.favorites,
+              onOpenMedia: widget.onOpenMedia,
+              onFavorite: (item) =>
+                  context.toggleFavoriteWithFeedback(controller.media, item),
+            ),
+          ),
+          const SliverToBoxAdapter(child: SizedBox(height: LumaSpacing.lg)),
+        ],
+      ],
     );
   }
 

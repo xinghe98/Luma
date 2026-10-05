@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/theme.dart';
 import '../../../data/models/api_catalog.dart';
+import '../../../shared/interaction/luma_focusable_surface.dart';
 import '../../../shared/media/authenticated_media_image.dart';
 
 /// 打开作品详情，并可携带来源海报的 Hero 标签。
@@ -15,11 +16,22 @@ class CatalogCard extends StatelessWidget {
     required this.item,
     required this.onTap,
     this.heroTag,
+    this.focusId,
+    this.autofocus = false,
+    this.onFocusChange,
+    this.focusBorderWidth = 2,
   });
 
   final CatalogItem item;
   final VoidCallback onTap;
   final String? heroTag;
+
+  /// TV 集合内的稳定身份；非空时改用 LumaFocusableSurface 承载焦点描边，
+  /// 普通端保持既有 InkWell 视觉。
+  final String? focusId;
+  final bool autofocus;
+  final ValueChanged<bool>? onFocusChange;
+  final double focusBorderWidth;
 
   /// 为作品海报生成稳定标签；同一路由内同一作品只能出现一次。
   static String heroTagFor(CatalogItem item) =>
@@ -52,6 +64,98 @@ class CatalogCard extends StatelessWidget {
             if (item.year != null) '${item.year}',
             if (item.completed) '已看完',
           ].join(' · ');
+    final content = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final dpr = MediaQuery.devicePixelRatioOf(context);
+              final cacheWidth = (constraints.maxWidth * dpr).round().clamp(
+                1,
+                640,
+              );
+              final artwork = ClipRRect(
+                borderRadius: BorderRadius.circular(LumaRadii.large),
+                child: Material(
+                  type: MaterialType.transparency,
+                  child: AuthenticatedMediaImage(
+                    path: item.posterUrl,
+                    cacheWidth: cacheWidth,
+                    fallback: ColoredBox(
+                      color: scheme.surfaceContainerHigh,
+                      child: Icon(
+                        item.kind == CatalogKind.movie
+                            ? Icons.movie_outlined
+                            : Icons.tv_outlined,
+                        size: 42,
+                        color: scheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                ),
+              );
+              return ClipRRect(
+                borderRadius: BorderRadius.circular(LumaRadii.large),
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    if (heroTag == null)
+                      artwork
+                    else
+                      Hero(
+                        tag: heroTag!,
+                        createRectTween: straightRectTween,
+                        flightShuttleBuilder: preserveSourceHeroFlight,
+                        child: artwork,
+                      ),
+                    if (item.progress > 0 && !item.completed)
+                      Align(
+                        alignment: Alignment.bottomCenter,
+                        child: LinearProgressIndicator(
+                          value: item.progress,
+                          minHeight: 3,
+                        ),
+                      ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ),
+        const SizedBox(height: LumaSpacing.xs),
+        Text(
+          item.title,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: Theme.of(context).textTheme.titleSmall,
+        ),
+        const SizedBox(height: LumaSpacing.xxs),
+        Text(
+          subtitle.isEmpty
+              ? (item.kind == CatalogKind.movie ? '电影' : '剧集')
+              : subtitle,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: Theme.of(
+            context,
+          ).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+        ),
+      ],
+    );
+    // TV 路径：焦点描边由 LumaFocusableSurface 提供，语义与激活行为一致。
+    if (focusId != null) {
+      return LumaFocusableSurface(
+        label: '${item.title}，$subtitle',
+        onActivate: onTap,
+        borderRadius: BorderRadius.circular(LumaRadii.large),
+        focusId: focusId,
+        autofocus: autofocus,
+        onFocusChange: onFocusChange,
+        focusBorderWidth: focusBorderWidth,
+        child: content,
+      );
+    }
     return Semantics(
       button: true,
       label: '${item.title}，$subtitle',
@@ -61,85 +165,7 @@ class CatalogCard extends StatelessWidget {
         splashFactory: NoSplash.splashFactory,
         overlayColor: const WidgetStatePropertyAll(Colors.transparent),
         borderRadius: BorderRadius.circular(LumaRadii.large),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: LayoutBuilder(
-                builder: (context, constraints) {
-                  final dpr = MediaQuery.devicePixelRatioOf(context);
-                  final cacheWidth = (constraints.maxWidth * dpr).round().clamp(
-                    1,
-                    640,
-                  );
-                  final artwork = ClipRRect(
-                    borderRadius: BorderRadius.circular(LumaRadii.large),
-                    child: Material(
-                      type: MaterialType.transparency,
-                      child: AuthenticatedMediaImage(
-                        path: item.posterUrl,
-                        cacheWidth: cacheWidth,
-                        fallback: ColoredBox(
-                          color: scheme.surfaceContainerHigh,
-                          child: Icon(
-                            item.kind == CatalogKind.movie
-                                ? Icons.movie_outlined
-                                : Icons.tv_outlined,
-                            size: 42,
-                            color: scheme.onSurfaceVariant,
-                          ),
-                        ),
-                      ),
-                    ),
-                  );
-                  return ClipRRect(
-                    borderRadius: BorderRadius.circular(LumaRadii.large),
-                    child: Stack(
-                      fit: StackFit.expand,
-                      children: [
-                        if (heroTag == null)
-                          artwork
-                        else
-                          Hero(
-                            tag: heroTag!,
-                            createRectTween: straightRectTween,
-                            flightShuttleBuilder: preserveSourceHeroFlight,
-                            child: artwork,
-                          ),
-                        if (item.progress > 0 && !item.completed)
-                          Align(
-                            alignment: Alignment.bottomCenter,
-                            child: LinearProgressIndicator(
-                              value: item.progress,
-                              minHeight: 3,
-                            ),
-                          ),
-                      ],
-                    ),
-                  );
-                },
-              ),
-            ),
-            const SizedBox(height: LumaSpacing.xs),
-            Text(
-              item.title,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.titleSmall,
-            ),
-            const SizedBox(height: LumaSpacing.xxs),
-            Text(
-              subtitle.isEmpty
-                  ? (item.kind == CatalogKind.movie ? '电影' : '剧集')
-                  : subtitle,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(
-                context,
-              ).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
-            ),
-          ],
-        ),
+        child: content,
       ),
     );
   }

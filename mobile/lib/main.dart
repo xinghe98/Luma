@@ -6,12 +6,14 @@ import 'package:go_router/go_router.dart';
 import 'package:media_kit/media_kit.dart';
 
 import 'app/app_dependencies.dart';
+import 'app/app_device_profile.dart';
 import 'app/app_metadata.g.dart';
 import 'app/app_router.dart';
 import 'app/open_source_licenses.dart';
 import 'app/app_scope.dart';
 import 'app/app_window_controller.dart';
 import 'core/theme.dart';
+import 'core/theme/tv_theme.dart';
 import 'features/player/widgets/mini_player_overlay.dart';
 import 'shared/branding/brand_mark.dart';
 
@@ -19,16 +21,20 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   MediaKit.ensureInitialized();
   registerBundledLicenses();
+  final deviceProfile = await resolveAppDeviceProfile();
   final imageCache = PaintingBinding.instance.imageCache;
   final view = WidgetsBinding.instance.platformDispatcher.views.first;
   final logicalShortestSide =
       view.physicalSize.shortestSide / view.devicePixelRatio;
   final isLargeScreen = logicalShortestSide >= 600;
   imageCache.maximumSize = AppWindowController.isWindows ? 200 : 150;
-  // Windows 多列和大图预览使用更大缓存；Android 保持既有内存边界。
+  // Windows 多列和大图预览使用更大缓存；TV 固定 64MB，手机按屏幕大小保留既有边界。
   imageCache.maximumSizeBytes =
-      (AppWindowController.isWindows ? 96 : (isLargeScreen ? 64 : 48)) << 20;
-  final dependencies = AppDependencies.create();
+      (AppWindowController.isWindows
+          ? 96
+          : (deviceProfile.isTelevision || isLargeScreen ? 64 : 48)) <<
+      20;
+  final dependencies = AppDependencies.create(deviceProfile: deviceProfile);
   await dependencies.initialize();
   final appWindow = AppWindowController();
   await appWindow.initialize();
@@ -44,9 +50,11 @@ class LumaApp extends StatefulWidget {
   });
 
   /// 创建并持有生产依赖，应用卸载时会统一释放。
-  LumaApp.production({super.key})
-    : dependencies = AppDependencies.create(),
-      ownsDependencies = true;
+  LumaApp.production({
+    super.key,
+    AppDeviceProfile deviceProfile = AppDeviceProfile.standard,
+  }) : dependencies = AppDependencies.create(deviceProfile: deviceProfile),
+       ownsDependencies = true;
 
   final AppDependencies dependencies;
 
@@ -59,11 +67,21 @@ class LumaApp extends StatefulWidget {
 
 class _LumaAppState extends State<LumaApp> {
   late final GoRouter _router;
+  late final ThemeData _lightTheme;
+  late final ThemeData _darkTheme;
 
   @override
   void initState() {
     super.initState();
     _router = createAppRouter(widget.dependencies);
+    // TV 在既有主题上放大文字与控件，主题对象只构建一次。
+    final isTelevision = widget.dependencies.deviceProfile.isTelevision;
+    _lightTheme = isTelevision
+        ? applyTvTheme(LumaTheme.light())
+        : LumaTheme.light();
+    _darkTheme = isTelevision
+        ? applyTvTheme(LumaTheme.dark())
+        : LumaTheme.dark();
     if (widget.ownsDependencies) {
       unawaited(widget.dependencies.restoreSession());
     }
@@ -97,8 +115,8 @@ class _LumaAppState extends State<LumaApp> {
             GlobalCupertinoLocalizations.delegate,
           ],
           supportedLocales: const [Locale('zh', 'CN')],
-          theme: LumaTheme.light(),
-          darkTheme: LumaTheme.dark(),
+          theme: _lightTheme,
+          darkTheme: _darkTheme,
           themeMode: widget.dependencies.settings.themeMode,
           routerConfig: _router,
           // 小窗叠在路由树之上（含 Navigator 内 Dialog），保证始终最前。
@@ -106,13 +124,15 @@ class _LumaAppState extends State<LumaApp> {
             fit: StackFit.expand,
             children: [
               _LaunchBrandOverlay(child: child ?? const SizedBox.shrink()),
-              MiniPlayerOverlay(
-                session: widget.dependencies.playerSession,
-                onExpand: (mediaId) => _router.pushNamed<void>(
-                  AppRoute.player,
-                  pathParameters: {'mediaId': mediaId},
+              // TV 没有小窗播放：退出播放器即结束播放会话。
+              if (!widget.dependencies.deviceProfile.isTelevision)
+                MiniPlayerOverlay(
+                  session: widget.dependencies.playerSession,
+                  onExpand: (mediaId) => _router.pushNamed<void>(
+                    AppRoute.player,
+                    pathParameters: {'mediaId': mediaId},
+                  ),
                 ),
-              ),
             ],
           ),
         ),
@@ -156,7 +176,22 @@ class _LaunchBrandOverlayState extends State<_LaunchBrandOverlay> {
   void _startDismissTimer() {
     if (!mounted || _dismissTimer != null) return;
     _dismissTimer = Timer(_minimumPresentation, () {
-      if (mounted) setState(() => _isVisible = false);
+      if (!mounted) return;
+      setState(() => _isVisible = false);
+      _grantContentInitialFocus();
+    });
+  }
+
+  /// 解除遮罩后先落实路由重挂载产生的 autofocus；没有具体控件持焦时才遍历。
+  /// 避免通用遍历把连接页指定的地址闸门覆盖成更靠前的代理按钮。
+  void _grantContentInitialFocus() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _isVisible) return;
+      final manager = FocusManager.instance;
+      manager.applyFocusChangesIfNeeded();
+      final primary = manager.primaryFocus;
+      if (primary != null && primary is! FocusScopeNode) return;
+      FocusScope.of(context).nextFocus();
     });
   }
 
@@ -171,7 +206,11 @@ class _LaunchBrandOverlayState extends State<_LaunchBrandOverlay> {
   Widget build(BuildContext context) => Stack(
     fit: StackFit.expand,
     children: [
-      if (_isVisible) ExcludeSemantics(child: widget.child) else widget.child,
+      // 可见期间同时阻断指针、语义和键盘焦点/快捷键，遥控器不会操作被遮住的页面。
+      if (_isVisible)
+        ExcludeFocus(child: ExcludeSemantics(child: widget.child))
+      else
+        widget.child,
       if (_isVisible)
         Semantics(
           container: true,

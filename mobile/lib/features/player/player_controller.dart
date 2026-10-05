@@ -98,6 +98,10 @@ class PlayerController extends ChangeNotifier {
   bool _initialized = false;
   bool _buffering = false;
   bool _playing = false;
+
+  /// 暂停意图：后台事件或媒体暂停键在原生暂停落地前同步记录；
+  /// 初始化完成时检查它，避免后台继续出声。用户明确启动播放会清除。
+  bool _pauseIntent = false;
   bool _controlsVisible = true;
   bool _locked = false;
   bool _initializationFailed = false;
@@ -231,15 +235,24 @@ class PlayerController extends ChangeNotifier {
         return;
       }
       await player.setVolume(_volume * 100);
-      await player.play();
-      if (_disposed || generation != _initializationGeneration) return;
+      // 初始化期间播放与暂停都可能等待原生命令锁；每次落地后落实最新意图。
+      bool requestedPause;
+      do {
+        requestedPause = _pauseIntent;
+        if (requestedPause) {
+          await player.pause();
+        } else {
+          await player.play();
+        }
+        if (_disposed || generation != _initializationGeneration) return;
+      } while (requestedPause != _pauseIntent);
       _initializationWatchdog?.cancel();
       _initializationWatchdog = null;
       _startAtZero = false;
       _initialized = true;
       _initializationFailed = false;
       _error = null;
-      _playing = true;
+      _playing = !_pauseIntent;
       _refreshBuffering(armWatchdog: true);
       // 初始化期间用户仍可快进或拖动，起播后补发他们最后一次选择的位置。
       _dispatchLatestSeek();
@@ -724,6 +737,8 @@ class PlayerController extends ChangeNotifier {
     _startAtZero = true;
     _pendingResumePosition = null;
     _position = Duration.zero;
+    // 从头播放是用户主动起播，不再遵守此前的暂停意图。
+    _pauseIntent = false;
     if (_commandPlayer == null) {
       _requestSeek(Duration.zero, resumeAfter: true);
       if (_initializationFailed) await retry();
@@ -772,23 +787,54 @@ class PlayerController extends ChangeNotifier {
     if (player == null) {
       if (_position >= duration) _position = Duration.zero;
       _playing = !_playing;
+      // 用户在初始化完成前明确表达播放/暂停意图：启动清除暂停意图，
+      // 暂停则记录，起播链路都会遵守。
+      _pauseIntent = !_playing;
       notifyListeners();
       return;
     }
     if (_position >= duration) {
       // 播放结束后再次操作：先回到开头，等待定位落地后再决定播放状态。
+      _pauseIntent = false;
       _requestSeek(Duration.zero, resumeAfter: !_playing);
       if (_playing) unawaited(_runCommand(player.pause));
       return;
     }
     if (_playing) {
-      // 用户显式暂停：等待中的定位不再自动恢复播放。
+      // 用户显式暂停：等待中的定位不再自动恢复播放，并记录暂停意图。
+      _pauseIntent = true;
       _seekRequest?.resumeAfter = false;
       unawaited(_runCommand(player.pause));
       unawaited(_saveProgress());
     } else {
+      _pauseIntent = false;
       unawaited(_runCommand(player.play));
     }
+  }
+
+  /// 幂等暂停入口，供 TV 后台生命周期与媒体暂停键复用：
+  /// 先同步记录暂停意图并取消待定位/拖动的自动续播，再暂停原生播放并保存进度；
+  /// 原生命令按最新意图下发，进度仅在播放转暂停时保存，连续事件不重复写入。
+  /// 初始化尚未结束时保留意图，由起播链路在每个命令完成后落实。
+  Future<void> pause({bool revealControls = true}) async {
+    if (_disposed) return;
+    final requestNativePause = !_pauseIntent;
+    final saveProgress = requestNativePause && _playing;
+    _pauseIntent = true;
+    _seekRequest?.resumeAfter = false;
+    _resumeAfterScrub = false;
+    if (revealControls) {
+      _controlsVisible = true;
+      scheduleHide();
+    }
+    // 尚未收到 playing=true 也可能已有 play 排队，首次暂停意图必须排在其后。
+    final player = _commandPlayer;
+    if (requestNativePause && player != null) {
+      unawaited(_runCommand(player.pause));
+    }
+    _playing = false;
+    notifyListeners();
+    if (saveProgress) await _saveProgress();
   }
 
   /// 相对当前显示位置快进或快退；等待原生定位结束时保留目标位置和缓冲提示。

@@ -1,10 +1,12 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../app/app_scope.dart';
 import '../../core/theme.dart';
 import '../../data/models/media_item.dart';
+import '../shell/app_destination.dart';
 import 'player_controller.dart';
 import 'player_device_controls.dart';
 import 'player_interaction_controller.dart';
@@ -34,8 +36,13 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
   PlayerController? _controller;
   PlayerSessionController? _session;
   PlayerInteractionController? _interaction;
-  final PlayerSystemUiSession _systemUi = PlayerSystemUiSession();
+  PlayerSystemUiSession? _systemUi;
   bool _resolved = false;
+  bool _isTelevision = false;
+
+  /// TV 后台暂停意图：控制器尚未创建（深链加载中）也生效，
+  /// 创建控制器后立即施加暂停；返回前台不自动清除。
+  bool _tvMustStartPaused = false;
   bool _minimizing = false;
   bool _loading = false;
   bool _fullscreen = false;
@@ -53,8 +60,19 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     super.didChangeDependencies();
     if (_resolved) return;
     _resolved = true;
-    final media = AppScope.of(context).media;
-    final session = AppScope.of(context).playerSession;
+    // 首次解析依赖时确定设备形态，系统 UI 会话随之创建；
+    // 无 initialItem 的加载/错误路径同样先完成该初始化。
+    final dependencies = AppScope.of(context);
+    _isTelevision = dependencies.deviceProfile.isTelevision;
+    _systemUi = PlayerSystemUiSession(television: _isTelevision);
+    if (_isTelevision) {
+      final lifecycle = WidgetsBinding.instance.lifecycleState;
+      if (lifecycle != null && lifecycle != AppLifecycleState.resumed) {
+        _tvMustStartPaused = true;
+      }
+    }
+    final media = dependencies.media;
+    final session = dependencies.playerSession;
     final active = session.player;
     final item =
         (widget.initialItem?.id == widget.mediaId
@@ -76,6 +94,10 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     if (_controller != null) return;
     session.start(item, startFromBeginning: widget.startFromBeginning);
     final controller = session.player!;
+    if (_isTelevision && _tvMustStartPaused) {
+      // 后台事件先于控制器创建到达：起播立即施加暂停，不自动出声。
+      unawaited(controller.pause(revealControls: false));
+    }
     final interaction = PlayerInteractionController(
       player: controller,
       deviceControls: const MethodChannelPlayerDeviceControls(),
@@ -83,7 +105,8 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     _controller = controller;
     _session = session;
     _interaction = interaction;
-    unawaited(interaction.initialize());
+    // TV 不读取系统亮度与软件音量，跳过设备状态初始化与恢复。
+    if (!_isTelevision) unawaited(interaction.initialize());
     final mediaQuery = MediaQuery.of(context);
     unawaited(
       _enterPresentation(
@@ -94,19 +117,21 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     );
   }
 
-  /// 进入当前平台的播放器呈现模式，并同步桌面全屏状态。
+  /// 进入当前平台的播放器呈现模式，并同步桌面全屏状态；TV 会话内部为空操作。
   Future<void> _enterPresentation({
     required MediaItem item,
     required Orientation orientation,
     required double shortestSide,
   }) async {
-    await _systemUi.enter(
+    final systemUi = _systemUi;
+    if (systemUi == null) return;
+    await systemUi.enter(
       portraitVideo: item.isPortrait,
       entryOrientation: orientation,
       shortestSide: shortestSide,
     );
-    if (mounted && _fullscreen != _systemUi.fullScreen) {
-      setState(() => _fullscreen = _systemUi.fullScreen);
+    if (mounted && _fullscreen != systemUi.fullScreen) {
+      setState(() => _fullscreen = systemUi.fullScreen);
     }
   }
 
@@ -148,12 +173,13 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     final interaction = _interaction;
     _interaction = null;
     if (interaction != null) {
-      unawaited(interaction.restoreDeviceState());
+      // TV 从未初始化设备状态（亮度/软件音量），同样跳过恢复。
+      if (!_isTelevision) unawaited(interaction.restoreDeviceState());
       interaction.dispose();
     }
     _controller = null;
     _session = null;
-    unawaited(_systemUi.exit());
+    unawaited(_systemUi?.exit());
     super.dispose();
   }
 
@@ -162,9 +188,18 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     if (state == AppLifecycleState.inactive ||
         state == AppLifecycleState.paused ||
         state == AppLifecycleState.detached) {
+      if (_isTelevision) {
+        // TV 后台即暂停：先记录意图（控制器未创建也生效），进度由 pause
+        // 保存，不额外发一份 persistProgress；返回前台保持暂停，OK 才继续。
+        _tvMustStartPaused = true;
+        unawaited(_controller?.pause(revealControls: false));
+        return;
+      }
       unawaited(_controller?.persistProgress());
       unawaited(_interaction?.restoreDeviceState());
     } else if (state == AppLifecycleState.resumed) {
+      // TV 保持暂停，等待用户确认键继续；不自动恢复设备状态轮询。
+      if (_isTelevision) return;
       unawaited(_interaction?.initialize());
     }
   }
@@ -173,6 +208,7 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
   Widget build(BuildContext context) {
     final controller = _controller;
     final interaction = _interaction;
+    final systemUi = _systemUi;
     final extras = context.luma;
     if (controller == null || interaction == null) {
       return _PlayerRouteLoadingState(
@@ -187,23 +223,29 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
         controller: controller,
         minimizing: _minimizing,
         onPopped: () => unawaited(_session?.close()),
+        // TV 返回由单一 PopScope 状态判定分层处理，与键盘 Escape 共用逻辑。
+        television: _isTelevision,
+        onBackRequested: _handleTvBack,
         child: PlayerScene(
           controller: controller,
           interaction: interaction,
           // 收起过程中先卸下全屏纹理，再交给小窗挂载，避免双绑定。
           attachVideo: !_minimizing,
           onBack: _closeAndPop,
-          onMinimize: _minimizeAndPop,
-          onRotate: _systemUi.canRotate
-              ? () => unawaited(_systemUi.rotate())
+          onMinimize: _isTelevision ? null : _minimizeAndPop,
+          onRotate: systemUi != null && systemUi.canRotate
+              ? () => unawaited(systemUi.rotate())
               : null,
-          isDesktop: _systemUi.isDesktop,
+          isTelevision: _isTelevision,
+          isDesktop: systemUi?.isDesktop ?? false,
           isFullScreen: _fullscreen,
-          onToggleFullScreen: _systemUi.isDesktop
+          onToggleFullScreen: systemUi != null && systemUi.isDesktop
               ? () => unawaited(_toggleFullScreen())
               : null,
-          onEscape: _systemUi.isDesktop
+          onEscape: systemUi != null && systemUi.isDesktop
               ? () => unawaited(_handleEscape())
+              : _isTelevision
+              ? _handleTvBack
               : null,
         ),
       ),
@@ -224,15 +266,37 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     });
   }
 
-  /// 正常返回会结束播放，避免未明确收起时继续占用解码器。
+  /// 正常返回会结束播放，避免未明确收起时继续占用解码器；
+  /// 深链播放器没有来源栈时回首页，不停留在无法退出的页面。
   void _closeAndPop() {
     unawaited(_session?.close());
-    Navigator.of(context).pop();
+    final navigator = Navigator.of(context);
+    if (navigator.canPop()) {
+      navigator.pop();
+      return;
+    }
+    context.go(AppDestination.home.path);
+  }
+
+  /// TV 分层返回：速度弹窗打开时由其自身路由响应 Back；否则先隐藏可见
+  /// 控制层，控制层已隐藏（或处于错误/初始化失败状态）才结束播放返回来源。
+  /// 键盘 Escape 与 PopScope 共用本入口，避免双 pop。
+  void _handleTvBack() {
+    final controller = _controller;
+    if (controller != null &&
+        controller.controlsVisible &&
+        controller.error == null) {
+      controller.toggleControls();
+      return;
+    }
+    _closeAndPop();
   }
 
   /// 切换 Windows 原生全屏，并刷新工具栏和光标状态。
   Future<void> _toggleFullScreen() async {
-    final fullscreen = await _systemUi.toggleFullScreen();
+    final systemUi = _systemUi;
+    if (systemUi == null) return;
+    final fullscreen = await systemUi.toggleFullScreen();
     if (mounted && fullscreen != _fullscreen) {
       setState(() => _fullscreen = fullscreen);
     }
@@ -240,7 +304,8 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
 
   /// Escape 优先退出全屏，窗口模式下才关闭播放器页面。
   Future<void> _handleEscape() async {
-    if (await _systemUi.exitFullScreen()) {
+    final systemUi = _systemUi;
+    if (systemUi != null && await systemUi.exitFullScreen()) {
       if (mounted) setState(() => _fullscreen = false);
       return;
     }
@@ -310,18 +375,23 @@ class _PlayerRouteLoadingState extends StatelessWidget {
 }
 
 // 仅在锁定状态变化时重建 PopScope，播放进度更新不会重建整个视频场景。
+// TV 恒拦截系统返回，由 [onBackRequested] 分层处理（隐藏控制层 → 结束播放）。
 class _PlayerPopGuard extends StatefulWidget {
   const _PlayerPopGuard({
     required this.controller,
     required this.minimizing,
     required this.onPopped,
     required this.child,
+    this.television = false,
+    this.onBackRequested,
   });
 
   final PlayerController controller;
   final bool minimizing;
   final VoidCallback onPopped;
   final Widget child;
+  final bool television;
+  final VoidCallback? onBackRequested;
 
   @override
   State<_PlayerPopGuard> createState() => _PlayerPopGuardState();
@@ -360,13 +430,20 @@ class _PlayerPopGuardState extends State<_PlayerPopGuard> {
 
   @override
   Widget build(BuildContext context) => PopScope(
-    canPop: !_locked,
+    // TV 恒拦截返回，分层逻辑交给 onBackRequested；普通端锁定时拦截。
+    canPop: widget.television ? false : !_locked,
     onPopInvokedWithResult: (didPop, _) {
-      if (didPop && !widget.minimizing) {
-        widget.onPopped();
-      } else if (_locked) {
-        widget.controller.showLockHint();
+      if (didPop) {
+        if (!widget.minimizing) {
+          widget.onPopped();
+        }
+        return;
       }
+      if (widget.television) {
+        widget.onBackRequested?.call();
+        return;
+      }
+      widget.controller.showLockHint();
     },
     child: widget.child,
   );

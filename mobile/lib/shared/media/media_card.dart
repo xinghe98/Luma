@@ -19,6 +19,12 @@ class MediaCard extends StatelessWidget {
     this.onFavorite,
     this.compact = false,
     this.heroTag,
+    this.focusNode,
+    this.autofocus = false,
+    this.onFocusChange,
+    this.focusId,
+    this.focusBorderWidth = 2,
+    this.artworkFit,
   });
 
   final MediaItem item;
@@ -26,6 +32,54 @@ class MediaCard extends StatelessWidget {
   final VoidCallback? onFavorite;
   final bool compact;
   final String? heroTag;
+
+  /// TV 列表焦点参数，经 TV 网格/货架转发给 LumaFocusableSurface。
+  final FocusNode? focusNode;
+  final bool autofocus;
+  final ValueChanged<bool>? onFocusChange;
+
+  /// TV 集合内的稳定身份；普通端为空不参与集合注册。
+  final String? focusId;
+
+  /// 聚焦描边宽度；TV 传 LumaTvLayout.focusStroke。
+  final double focusBorderWidth;
+
+  /// 封面适配方式；为空保持默认 cover，TV 图片网格传 contain 统一画框。
+  final BoxFit? artworkFit;
+
+  /// 按实际字体与文字缩放测量行高；容器每次构建测量一次，供全部卡片复用。
+  static double textDetailsHeight(
+    BuildContext context, {
+    int titleLines = 2,
+    TextStyle? titleStyle,
+    TextStyle? subtitleStyle,
+  }) {
+    final theme = Theme.of(context).textTheme;
+    final scaler = MediaQuery.textScalerOf(context);
+    final title = titleStyle ?? theme.titleSmall!;
+    final subtitle = subtitleStyle ?? theme.bodySmall!;
+    final painter = TextPainter(
+      text: TextSpan(text: '国Ag', style: title),
+      textScaler: scaler,
+      textDirection: Directionality.of(context),
+      maxLines: 1,
+    )..layout();
+    final titleHeight = painter.height.ceilToDouble();
+    painter.text = TextSpan(text: '国Ag', style: subtitle);
+    painter.layout();
+    final subtitleHeight = painter.height.ceilToDouble();
+    painter.dispose();
+    return titleHeight * titleLines +
+        subtitleHeight +
+        LumaSpacing.xs +
+        LumaSpacing.xxs;
+  }
+
+  /// 网格与货架按封面比例、文字区和视频内距计算行高；图片卡片沿用同一行高。
+  static double heightForWidth(double width, {required double detailsHeight}) {
+    const insets = LumaSpacing.xs * 2;
+    return (width - insets) / (16 / 10) + detailsHeight + insets;
+  }
 
   /// 构建不会因 hover 或键盘焦点改变尺寸的媒体卡片。
   @override
@@ -38,29 +92,32 @@ class MediaCard extends StatelessWidget {
     final artworkRadius = coverRadius > interactionInset
         ? coverRadius - interactionInset
         : 0.0;
-    final artwork = heroTag == null
-        ? MediaArtwork(
-            item: item,
-            useCardThumbnail: item.type == MediaType.video,
-          )
+    final artwork = MediaArtwork(
+      item: item,
+      useCardThumbnail: item.type == MediaType.video,
+      fit: artworkFit ?? BoxFit.cover,
+      cacheWidth: heroTag == null ? null : MediaArtwork.heroThumbnailCacheWidth,
+      cacheHeight: heroTag != null && item.type == MediaType.video
+          ? MediaArtwork.heroThumbnailCacheHeight
+          : null,
+    );
+    final artworkWithHero = heroTag == null
+        ? artwork
         : Hero(
             tag: heroTag!,
             flightShuttleBuilder: MediaArtwork.preserveSourceHeroFlight,
-            child: MediaArtwork(
-              item: item,
-              // 图片详情也使用默认缩略图，保证 Hero 落点能沿用已解码图片。
-              useCardThumbnail: item.type == MediaType.video,
-              cacheWidth: MediaArtwork.heroThumbnailCacheWidth,
-              cacheHeight: item.type == MediaType.video
-                  ? MediaArtwork.heroThumbnailCacheHeight
-                  : null,
-            ),
+            child: artwork,
           );
     return LumaFocusableSurface(
       label: item.title,
       onActivate: onTap,
       borderRadius: BorderRadius.circular(coverRadius),
       contentPadding: EdgeInsets.all(interactionInset),
+      focusNode: focusNode,
+      autofocus: autofocus,
+      onFocusChange: onFocusChange,
+      focusId: focusId,
+      focusBorderWidth: focusBorderWidth,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -71,7 +128,7 @@ class MediaCard extends StatelessWidget {
               child: Stack(
                 fit: StackFit.expand,
                 children: [
-                  artwork,
+                  artworkWithHero,
                   if (item.type == MediaType.video && duration.isNotEmpty)
                     Positioned(
                       right: LumaSpacing.xs,

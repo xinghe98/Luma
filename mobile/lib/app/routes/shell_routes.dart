@@ -8,10 +8,13 @@ import '../../features/search/search_page.dart';
 import '../../features/settings/settings_page.dart';
 import '../../features/shell/app_destination.dart';
 import '../../features/shell/app_shell.dart';
+import '../../features/shell/widgets/branch_navigator_container.dart';
 import '../app_navigation.dart';
 import '../app_route.dart';
 
-StatefulShellRoute buildShellRoutes() => StatefulShellRoute.indexedStack(
+/// 创建共享五分支导航，由分支容器隔离焦点并保留详情返回时的来源状态。
+StatefulShellRoute buildShellRoutes() => StatefulShellRoute(
+  navigatorContainerBuilder: buildBranchNavigatorContainer,
   builder: (_, _, navigationShell) =>
       AppShell(navigationShell: navigationShell),
   branches: [
@@ -34,6 +37,7 @@ StatefulShellRoute buildShellRoutes() => StatefulShellRoute.indexedStack(
           name: AppDestination.photos.routeName,
           path: AppDestination.photos.path,
           builder: (context, _) => LibraryPage(
+            inShell: true,
             type: MediaType.image,
             pageSize: 18,
             onOpenMedia: (item, {heroTag}) =>

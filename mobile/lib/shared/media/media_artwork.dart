@@ -14,11 +14,15 @@ class MediaArtwork extends StatelessWidget {
     this.useCardThumbnail = false,
     this.cacheWidth,
     this.cacheHeight,
+    this.fit = BoxFit.cover,
   });
 
   final MediaItem item;
   final double borderRadius;
   final bool useCardThumbnail;
+
+  /// TV 图片网格使用 contain 统一画框，普通端保持 cover 填充。
+  final BoxFit fit;
 
   /// Hero 两端使用同一解码尺寸，避免飞行结束后因更换 provider 露出占位。
   final int? cacheWidth;
@@ -73,7 +77,7 @@ class MediaArtwork extends StatelessWidget {
                         : null);
                 return AuthenticatedMediaImage(
                   path: imagePath,
-                  fit: BoxFit.cover,
+                  fit: fit,
                   fallback: placeholder,
                   cacheWidth: resolvedCacheWidth,
                   cacheHeight: resolvedCacheHeight,

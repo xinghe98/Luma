@@ -9,14 +9,22 @@ import '../details_controller.dart';
 import '../dialogs/note_editor_dialog.dart';
 
 class DetailSections extends StatelessWidget {
-  const DetailSections({super.key, required this.controller});
+  const DetailSections({
+    super.key,
+    required this.controller,
+    this.allowEditing = true,
+  });
 
   final DetailsController controller;
+
+  /// TV 为 false：隐藏笔记编辑入口，不显示引导编辑的空文案。
+  final bool allowEditing;
 
   @override
   Widget build(BuildContext context) {
     final item = controller.item;
     if (item == null) return const SizedBox.shrink();
+    final hasNote = item.note.isNotEmpty;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -33,25 +41,30 @@ class DetailSections extends StatelessWidget {
               )
               .toList(),
         ),
-        const SizedBox(height: LumaSpacing.xl),
-        SectionHeader(
-          title: '笔记',
-          action: TextButton.icon(
-            onPressed: () => _editNote(context, item),
-            icon: const Icon(Icons.edit_outlined, size: 18),
-            label: const Text('编辑'),
+        // 笔记：TV 隐藏编辑入口；无笔记且不可编辑时不显示引导文案。
+        if (allowEditing || hasNote) ...[
+          const SizedBox(height: LumaSpacing.xl),
+          SectionHeader(
+            title: '笔记',
+            action: allowEditing
+                ? TextButton.icon(
+                    onPressed: () => _editNote(context, item),
+                    icon: const Icon(Icons.edit_outlined, size: 18),
+                    label: const Text('编辑'),
+                  )
+                : null,
           ),
-        ),
-        SurfaceCard(
-          child: Text(
-            item.note.isEmpty ? '还没有笔记。记录关于这段影像的想法。' : item.note,
-            style: TextStyle(
-              color: item.note.isEmpty
-                  ? Theme.of(context).colorScheme.onSurfaceVariant
-                  : null,
+          SurfaceCard(
+            child: Text(
+              item.note.isEmpty ? '还没有笔记。记录关于这段影像的想法。' : item.note,
+              style: TextStyle(
+                color: item.note.isEmpty
+                    ? Theme.of(context).colorScheme.onSurfaceVariant
+                    : null,
+              ),
             ),
           ),
-        ),
+        ],
         if (item.directory.isNotEmpty) ...[
           const SizedBox(height: LumaSpacing.xl),
           const SectionHeader(title: '文件信息'),

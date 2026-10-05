@@ -169,58 +169,211 @@ class _CatalogShelf extends StatelessWidget {
   final VoidCallback onRetry;
 
   @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.only(top: LumaSpacing.lg),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _SectionHeading(title: title, onOpenAll: onOpenAll),
-        if (loading)
-          const Padding(
-            padding: EdgeInsets.only(top: LumaSpacing.xs),
-            child: LinearProgressIndicator(minHeight: 2),
-          )
-        else if (hasError)
-          Align(
-            alignment: Alignment.centerLeft,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: LumaLayout.pagePaddingH,
-              ),
-              child: TextButton.icon(
-                onPressed: onRetry,
-                icon: const Icon(Icons.refresh_rounded),
-                label: const Text('刷新失败，当前保留上次内容'),
-              ),
-            ),
-          ),
-        const SizedBox(height: LumaSpacing.md),
-        SizedBox(
-          height: 262,
-          child: ListView.separated(
-            padding: const EdgeInsets.symmetric(
-              horizontal: LumaLayout.pagePaddingH,
-            ),
-            scrollDirection: Axis.horizontal,
-            itemCount: items.length.clamp(0, 12),
-            separatorBuilder: (_, _) => const SizedBox(width: LumaSpacing.md),
-            itemBuilder: (context, index) {
-              final item = items[index];
-              final heroTag = CatalogCard.heroTagFor(item);
-              return SizedBox(
-                width: 138,
-                child: CatalogCard(
-                  item: item,
-                  heroTag: heroTag,
-                  onTap: () => onOpenCatalog(item, heroTag: heroTag),
+  Widget build(BuildContext context) {
+    final isTelevision = AppScope.of(context).deviceProfile.isTelevision;
+    return Padding(
+      padding: const EdgeInsets.only(top: LumaSpacing.lg),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _SectionHeading(title: title, onOpenAll: onOpenAll),
+          if (loading)
+            const Padding(
+              padding: EdgeInsets.only(top: LumaSpacing.xs),
+              child: LinearProgressIndicator(minHeight: 2),
+            )
+          else if (hasError)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: LumaLayout.pagePaddingH,
                 ),
-              );
-            },
+                child: TextButton.icon(
+                  onPressed: onRetry,
+                  icon: const Icon(Icons.refresh_rounded),
+                  label: const Text('刷新失败，当前保留上次内容'),
+                ),
+              ),
+            ),
+          const SizedBox(height: LumaSpacing.md),
+          // TV：大海报货架与逐项焦点；触控端保持既有小卡与箭头-free 横滑。
+          if (isTelevision)
+            _TvCatalogShelf(items: items, onOpenCatalog: onOpenCatalog)
+          else
+            SizedBox(
+              height: 262,
+              child: ListView.separated(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: LumaLayout.pagePaddingH,
+                ),
+                scrollDirection: Axis.horizontal,
+                itemCount: items.length.clamp(0, 12),
+                separatorBuilder: (_, _) =>
+                    const SizedBox(width: LumaSpacing.md),
+                itemBuilder: (context, index) {
+                  final item = items[index];
+                  final heroTag = CatalogCard.heroTagFor(item);
+                  return SizedBox(
+                    width: 138,
+                    child: CatalogCard(
+                      item: item,
+                      heroTag: heroTag,
+                      onTap: () => onOpenCatalog(item, heroTag: heroTag),
+                    ),
+                  );
+                },
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// TV 海报货架：更大卡宽、逐项 D-pad 焦点与离屏滚动交接。
+class _TvCatalogShelf extends StatefulWidget {
+  const _TvCatalogShelf({required this.items, required this.onOpenCatalog});
+
+  final List<CatalogItem> items;
+  final CatalogOpenCallback onOpenCatalog;
+
+  @override
+  State<_TvCatalogShelf> createState() => _TvCatalogShelfState();
+}
+
+class _TvCatalogShelfState extends State<_TvCatalogShelf> {
+  final _scroll = ScrollController();
+  TvListReveal? _reveal;
+  List<String>? _ids;
+  Map<String, int> _itemIndices = const {};
+
+  /// 海报按 2:3 展示；卡高预留 TV 字号的标题与来源行。
+  static const _cardWidth = LumaTvLayout.landscapeCardMinWidth;
+
+  @override
+  void didUpdateWidget(_TvCatalogShelf oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // 数据刷新后重建 id 表；集合以列表同一性判断数据变化。
+    if (!identical(oldWidget.items, widget.items)) _ids = null;
+  }
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final reveal = _reveal ??= TvListReveal.linear(
+      controller: _scroll,
+      stepExtent: _cardWidth + LumaTvLayout.cardSpacing,
+    );
+    var ids = _ids;
+    if (ids == null) {
+      ids = [for (final item in widget.items.take(12)) item.id];
+      _ids = ids;
+      _itemIndices = {
+        for (var index = 0; index < ids.length; index++) ids[index]: index,
+      };
+    }
+    return TvFocusCollection(
+      itemIds: ids,
+      axis: Axis.horizontal,
+      columns: 1,
+      revealIndex: reveal.revealIndex,
+      child: SizedBox(
+        height:
+            _cardWidth * 1.5 +
+            MediaCard.textDetailsHeight(context, titleLines: 1),
+        child: ListView.separated(
+          controller: _scroll,
+          padding: const EdgeInsets.symmetric(
+            horizontal: LumaLayout.pagePaddingH,
           ),
+          scrollDirection: Axis.horizontal,
+          itemCount: ids.length,
+          findItemIndexCallback: (key) =>
+              key is ValueKey<String> ? _itemIndices[key.value] : null,
+          separatorBuilder: (_, _) =>
+              const SizedBox(width: LumaTvLayout.cardSpacing),
+          itemBuilder: (context, index) {
+            final item = widget.items[index];
+            return SizedBox(
+              key: ValueKey(item.id),
+              width: _cardWidth,
+              child: CatalogCard(
+                item: item,
+                // TV 不使用 Hero；路由侧会再次丢弃标签。
+                focusId: item.id,
+                focusBorderWidth: LumaTvLayout.focusStroke,
+                onTap: () => widget.onOpenCatalog(item),
+                onFocusChange: (focused) {
+                  if (focused) reveal.track(index);
+                },
+              ),
+            );
+          },
         ),
-      ],
-    ),
-  );
+      ),
+    );
+  }
+}
+
+/// TV 个人视频预览网格：盒式自持焦点集合，滚动基准用页面纵向滚动。
+/// 固定六项（SliverToBoxAdapter 常驻构建），不与货架集合嵌套。
+class _TvPersonalPreviewGrid extends StatefulWidget {
+  const _TvPersonalPreviewGrid({
+    required this.items,
+    required this.onOpenPersonalMedia,
+    required this.scrollController,
+  });
+
+  final List<MediaItem> items;
+  final MediaOpenCallback onOpenPersonalMedia;
+  final ScrollController scrollController;
+
+  @override
+  State<_TvPersonalPreviewGrid> createState() => _TvPersonalPreviewGridState();
+}
+
+class _TvPersonalPreviewGridState extends State<_TvPersonalPreviewGrid> {
+  TvGridReveal? _reveal;
+  List<String>? _ids;
+
+  @override
+  void didUpdateWidget(_TvPersonalPreviewGrid oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // 数据刷新后重建 id 表；集合以列表同一性判断数据变化。
+    if (!identical(oldWidget.items, widget.items)) _ids = null;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final reveal = _reveal ??= TvGridReveal(
+      controller: widget.scrollController,
+    );
+    final ids = _ids ??= [for (final item in widget.items) item.id];
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final columns = const TvMediaGridGeometry().columnsFor(
+          constraints.maxWidth,
+        );
+        return TvFocusCollection(
+          itemIds: ids,
+          axis: Axis.vertical,
+          columns: columns,
+          revealIndex: reveal.revealIndex,
+          child: TvMediaGrid(
+            items: widget.items,
+            onTap: widget.onOpenPersonalMedia,
+            reveal: reveal,
+          ),
+        );
+      },
+    );
+  }
 }
 
 class _SectionHeading extends StatelessWidget {

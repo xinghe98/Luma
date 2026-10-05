@@ -19,6 +19,7 @@ List<RouteBase> buildSettingsRoutes(
     parentNavigatorKey: rootNavigatorKey,
     name: AppRoute.librarySources,
     path: '/settings/sources',
+    redirect: (_, _) => _guardTvManagement(dependencies),
     builder: (_, _) {
       final sources = dependencies.sources;
       if (sources is! MutableSourceRepository) {
@@ -37,7 +38,8 @@ List<RouteBase> buildSettingsRoutes(
     parentNavigatorKey: rootNavigatorKey,
     name: AppRoute.accessManagement,
     path: '/settings/access',
-    redirect: (_, _) => _guardAccessManagement(dependencies),
+    redirect: (_, _) => _guardTvManagement(dependencies) ??
+        _guardAccessManagement(dependencies),
     builder: (_, _) {
       final sources = dependencies.sources;
       if (sources == null) {
@@ -56,7 +58,8 @@ List<RouteBase> buildSettingsRoutes(
     parentNavigatorKey: rootNavigatorKey,
     name: AppRoute.newMember,
     path: '/settings/access/new',
-    redirect: (_, _) => _guardAccessManagement(dependencies),
+    redirect: (_, _) => _guardTvManagement(dependencies) ??
+        _guardAccessManagement(dependencies),
     builder: (_, _) {
       final sources = dependencies.sources;
       if (sources == null) {
@@ -72,7 +75,8 @@ List<RouteBase> buildSettingsRoutes(
     parentNavigatorKey: rootNavigatorKey,
     name: AppRoute.memberDetail,
     path: '/settings/access/:userId',
-    redirect: (_, _) => _guardAccessManagement(dependencies),
+    redirect: (_, _) => _guardTvManagement(dependencies) ??
+        _guardAccessManagement(dependencies),
     builder: (_, state) => AccessUserRoutePage(
       access: dependencies.access,
       sources: dependencies.sources,
@@ -97,3 +101,8 @@ String? _guardAccessManagement(AppDependencies dependencies) {
       dependencies.sources != null;
   return allowed ? null : '/settings';
 }
+
+/// TV 裁剪管理功能：四个管理路径（含管理员账号）一律回设置页；
+/// 属于产品行为，不替代服务端权限校验。匿名会话同样直接重定向。
+String? _guardTvManagement(AppDependencies dependencies) =>
+    dependencies.deviceProfile.isTelevision ? '/settings' : null;

@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 
 import '../../../core/theme.dart';
+import '../../media/media_card.dart';
+import '../../media/responsive_media_grid.dart';
 import 'base.dart';
 
 class MediaGridSkeleton extends StatelessWidget {
@@ -12,17 +14,16 @@ class MediaGridSkeleton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final detailsHeight = MediaCard.textDetailsHeight(context);
     final grid = LayoutBuilder(
       builder: (context, constraints) {
         final width = constraints.maxWidth;
         return GridView.builder(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
-          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: LumaLayout.gridColumns(width),
-            mainAxisSpacing: LumaSpacing.lg,
-            crossAxisSpacing: LumaSpacing.md,
-            childAspectRatio: LumaLayout.mediaCardAspectRatio(width),
+          gridDelegate: ResponsiveMediaGrid.sliverGridDelegateForWidth(
+            width,
+            detailsHeight: detailsHeight,
           ),
           itemCount: items,
           itemBuilder: (context, index) => const Column(

@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import '../../../core/theme.dart';
 import '../../../shared/branding/brand_mark.dart';
 import '../app_destination.dart';
+import 'tv_app_navigation.dart';
 
 class AdaptiveAppNavigation extends StatelessWidget {
   const AdaptiveAppNavigation({
@@ -13,14 +14,25 @@ class AdaptiveAppNavigation extends StatelessWidget {
     required this.selectedIndex,
     required this.onSelect,
     required this.content,
+    this.isTelevision = false,
   });
 
   final int selectedIndex;
   final ValueChanged<int> onSelect;
   final Widget content;
 
+  /// TV 使用左侧常驻导航；手机底部导航与宽屏 Rail 分支保持不变。
+  final bool isTelevision;
+
   @override
   Widget build(BuildContext context) {
+    if (isTelevision) {
+      return TvAppNavigation(
+        selectedIndex: selectedIndex,
+        onSelect: onSelect,
+        content: content,
+      );
+    }
     return LayoutBuilder(
       builder: (context, constraints) {
         if (constraints.maxWidth < LumaLayout.navigationRailBreakpoint) {

@@ -9,9 +9,13 @@ import '../../core/extensions.dart';
 import '../../core/theme.dart';
 import '../../data/models/media_item.dart';
 import '../../data/models/media_types.dart';
+import '../../shared/interaction/tv_focus_collection.dart';
+import '../../shared/interaction/tv_key_bindings.dart';
+import '../../shared/layout/tv_content_frame.dart';
 import '../../shared/media/masonry_media_sliver.dart';
 import '../../shared/media/media_actions.dart';
 import '../../shared/media/responsive_media_grid.dart';
+import '../../shared/media/tv_media_grid.dart';
 import '../../shared/states/empty_state.dart';
 import '../../shared/states/error_state.dart';
 import '../../shared/states/skeleton.dart';
@@ -31,6 +35,7 @@ class LibraryPage extends StatefulWidget {
     this.onLongPressMedia,
     this.fixedLibraryKind,
     this.embedded = false,
+    this.inShell = false,
     this.title,
     this.initialItems = const [],
     this.pageSize = 48,
@@ -51,6 +56,9 @@ class LibraryPage extends StatefulWidget {
   /// 嵌入影视库分页时仅渲染内容和局部工具栏，避免嵌套 Scaffold/AppBar。
   final bool embedded;
 
+  /// 壳层分支已提供 TV 安全边距，根层个人视频路由则由此页提供。
+  final bool inShell;
+
   /// 图片库长按进详情等；影音库可不传。
   final MediaOpenCallback? onLongPressMedia;
 
@@ -64,6 +72,25 @@ class _LibraryPageState extends State<LibraryPage>
   final _scroll = ScrollController();
   bool _entrySettled = false;
   bool _loadMoreCheckScheduled = false;
+
+  /// TV 网格的滚动基准与稳定 id 表；控制器通知后重建。
+  TvGridReveal? _tvReveal;
+  List<String>? _tvItemIds;
+
+  TvGridReveal get _tvRevealSafe =>
+      _tvReveal ??= TvGridReveal(controller: _scroll);
+
+  void _invalidateTvIds() => _tvItemIds = null;
+
+  List<String> get _tvIds {
+    var ids = _tvItemIds;
+    final items = _controller?.visibleItems() ?? const <MediaItem>[];
+    if (ids == null) {
+      ids = [for (final item in items) item.id];
+      _tvItemIds = ids;
+    }
+    return ids;
+  }
 
   @override
   bool get wantKeepAlive => true;
@@ -92,6 +119,7 @@ class _LibraryPageState extends State<LibraryPage>
     );
     _controller = controller;
     controller.addListener(_scheduleLoadMoreCheck);
+    controller.addListener(_invalidateTvIds);
     final entryGate = _waitForEntrySettle();
     unawaited(controller.ensureLoadedAfter(entryGate));
     unawaited(_restoreScrollCacheAfter(entryGate));
@@ -104,6 +132,7 @@ class _LibraryPageState extends State<LibraryPage>
       ..dispose();
     _controller
       ?..removeListener(_scheduleLoadMoreCheck)
+      ..removeListener(_invalidateTvIds)
       ..dispose();
     super.dispose();
   }
@@ -150,173 +179,216 @@ class _LibraryPageState extends State<LibraryPage>
       builder: (context, _) {
         final items = controller.visibleItems();
         final loadState = controller.loadState;
+        final isTelevision = AppScope.of(context).deviceProfile.isTelevision;
         final showInitialSkeleton =
             loadState == LoadState.loading && items.isEmpty;
-        final body = RefreshIndicator(
-          onRefresh: controller.refresh,
-          child: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(
-                maxWidth: LumaLayout.contentMaxWidth,
+        final scrollContent = Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(
+              maxWidth: LumaLayout.contentMaxWidth,
+            ),
+            child: CustomScrollView(
+              key: PageStorageKey(
+                'library-scroll-${widget.type.name}-${widget.fixedLibraryKind ?? 'all'}',
               ),
-              child: CustomScrollView(
-                key: PageStorageKey(
-                  'library-scroll-${widget.type.name}-${widget.fixedLibraryKind ?? 'all'}',
-                ),
-                controller: _scroll,
-                // 首入场只构建可视区，动效结束后再预构建约半屏内容。
-                cacheExtent: _entrySettled ? LumaLayout.scrollCacheExtent : 0,
-                physics: const AlwaysScrollableScrollPhysics(),
-                slivers: [
-                  if (controller.isRefreshing)
-                    const SliverToBoxAdapter(
-                      child: LinearProgressIndicator(minHeight: 2),
+              controller: _scroll,
+              // 首入场只构建可视区，动效结束后再预构建约半屏内容。
+              cacheExtent: _entrySettled ? LumaLayout.scrollCacheExtent : 0,
+              physics: const AlwaysScrollableScrollPhysics(),
+              slivers: [
+                if (controller.isRefreshing)
+                  const SliverToBoxAdapter(
+                    child: LinearProgressIndicator(minHeight: 2),
+                  ),
+                if (controller.hasExtraFilters)
+                  SliverPadding(
+                    padding: const EdgeInsets.fromLTRB(
+                      LumaLayout.pagePaddingH,
+                      LumaSpacing.xs,
+                      LumaLayout.pagePaddingH,
+                      0,
                     ),
-                  if (controller.hasExtraFilters)
+                    sliver: SliverToBoxAdapter(
+                      child: Align(
+                        alignment: Alignment.centerRight,
+                        child: TextButton.icon(
+                          onPressed: controller.clearFilters,
+                          icon: const Icon(Icons.close_rounded, size: 18),
+                          label: const Text('清除筛选'),
+                        ),
+                      ),
+                    ),
+                  ),
+                if (showInitialSkeleton && isVideo)
+                  const SliverPadding(
+                    padding: EdgeInsets.fromLTRB(
+                      LumaLayout.pagePaddingH,
+                      LumaSpacing.sm,
+                      LumaLayout.pagePaddingH,
+                      LumaSpacing.xl,
+                    ),
+                    sliver: SliverToBoxAdapter(
+                      child: MediaGridSkeleton(items: 8),
+                    ),
+                  )
+                else if (showInitialSkeleton)
+                  const SliverPadding(
+                    padding: EdgeInsets.fromLTRB(
+                      LumaSpacing.sm,
+                      LumaSpacing.xs,
+                      LumaSpacing.sm,
+                      LumaSpacing.xl,
+                    ),
+                    sliver: SliverToBoxAdapter(child: PhotoMasonrySkeleton()),
+                  )
+                else if (loadState == LoadState.error && items.isEmpty)
+                  SliverFillRemaining(
+                    hasScrollBody: false,
+                    child: ErrorState(onRetry: controller.refresh),
+                  )
+                else if (items.isEmpty)
+                  SliverFillRemaining(
+                    hasScrollBody: false,
+                    child: EmptyState(
+                      title: widget.fixedLibraryKind == 'personal'
+                          ? '还没有个人视频'
+                          : isVideo
+                          ? '影音库还没有内容'
+                          : '图片库还没有内容',
+                      message: '尝试清除筛选条件，或等待服务器扫描完成。',
+                      icon: Icons.filter_alt_off_outlined,
+                      action: OutlinedButton(
+                        onPressed: () =>
+                            controller.clearFilters(includeType: true),
+                        child: const Text('清除筛选条件'),
+                      ),
+                    ),
+                  )
+                else ...[
+                  if (loadState == LoadState.error)
+                    SliverToBoxAdapter(
+                      child: ErrorState(
+                        compact: true,
+                        title: '媒体库刷新失败',
+                        message: '当前仍显示相同筛选条件下的上次结果。',
+                        retryLabel: '重新刷新',
+                        onRetry: controller.refresh,
+                      ),
+                    ),
+                  if (isVideo)
                     SliverPadding(
                       padding: const EdgeInsets.fromLTRB(
                         LumaLayout.pagePaddingH,
-                        LumaSpacing.xs,
+                        LumaSpacing.sm,
                         LumaLayout.pagePaddingH,
-                        0,
+                        LumaSpacing.xs,
                       ),
-                      sliver: SliverToBoxAdapter(
-                        child: Align(
-                          alignment: Alignment.centerRight,
-                          child: TextButton.icon(
-                            onPressed: controller.clearFilters,
-                            icon: const Icon(Icons.close_rounded, size: 18),
-                            label: const Text('清除筛选'),
-                          ),
-                        ),
+                      // TV：规则网格 + 逐项焦点；触控端保持既有网格。
+                      sliver: isTelevision
+                          ? TvMediaSliverGrid(
+                              items: items,
+                              onTap: widget.onOpenMedia,
+                              reveal: _tvRevealSafe,
+                            )
+                          : ResponsiveMediaSliverGrid(
+                              items: items,
+                              heroTagPrefix: 'videos',
+                              onTap: widget.onOpenMedia,
+                              onFavorite: (item) => context
+                                  .toggleFavoriteWithFeedback(media, item),
+                            ),
+                    )
+                  else if (isTelevision)
+                    // TV 图片：规则网格 + 统一画框 contain，保证上下导航可预测；
+                    // 不使用瀑布流，视频沿用默认封面填充。
+                    SliverPadding(
+                      padding: const EdgeInsets.fromLTRB(
+                        LumaLayout.pagePaddingH,
+                        LumaSpacing.sm,
+                        LumaLayout.pagePaddingH,
+                        LumaSpacing.xs,
+                      ),
+                      sliver: TvMediaSliverGrid(
+                        items: items,
+                        onTap: widget.onOpenMedia,
+                        artworkFit: BoxFit.contain,
+                        reveal: _tvRevealSafe,
+                      ),
+                    )
+                  else
+                    SliverPadding(
+                      padding: const EdgeInsets.fromLTRB(
+                        LumaSpacing.sm,
+                        LumaSpacing.xs,
+                        LumaSpacing.sm,
+                        LumaSpacing.xs,
+                      ),
+                      sliver: MasonryMediaSliver(
+                        items: items,
+                        onTap: widget.onOpenMedia,
+                        onLongPress: widget.onLongPressMedia,
+                        onFavorite: (item) =>
+                            context.toggleFavoriteWithFeedback(media, item),
                       ),
                     ),
-                  if (showInitialSkeleton && isVideo)
-                    const SliverPadding(
-                      padding: EdgeInsets.fromLTRB(
-                        LumaLayout.pagePaddingH,
-                        LumaSpacing.sm,
-                        LumaLayout.pagePaddingH,
-                        LumaSpacing.xl,
-                      ),
-                      sliver: SliverToBoxAdapter(
-                        child: MediaGridSkeleton(items: 8),
+                  if (controller.hasLoadMoreError)
+                    SliverToBoxAdapter(
+                      child: ErrorState(
+                        compact: true,
+                        title: '下一页加载失败',
+                        message: '已加载的项目不会丢失，可以继续重试。',
+                        retryLabel: '重试下一页',
+                        onRetry: controller.loadMore,
                       ),
                     )
-                  else if (showInitialSkeleton)
-                    const SliverPadding(
-                      padding: EdgeInsets.fromLTRB(
-                        LumaSpacing.sm,
-                        LumaSpacing.xs,
-                        LumaSpacing.sm,
-                        LumaSpacing.xl,
-                      ),
-                      sliver: SliverToBoxAdapter(child: PhotoMasonrySkeleton()),
-                    )
-                  else if (loadState == LoadState.error && items.isEmpty)
-                    SliverFillRemaining(
-                      hasScrollBody: false,
-                      child: ErrorState(onRetry: controller.refresh),
-                    )
-                  else if (items.isEmpty)
-                    SliverFillRemaining(
-                      hasScrollBody: false,
-                      child: EmptyState(
-                        title: widget.fixedLibraryKind == 'personal'
-                            ? '还没有个人视频'
-                            : isVideo
-                            ? '影音库还没有内容'
-                            : '图片库还没有内容',
-                        message: '尝试清除筛选条件，或等待服务器扫描完成。',
-                        icon: Icons.filter_alt_off_outlined,
-                        action: OutlinedButton(
-                          onPressed: () =>
-                              controller.clearFilters(includeType: true),
-                          child: const Text('清除筛选条件'),
-                        ),
-                      ),
-                    )
-                  else ...[
-                    if (loadState == LoadState.error)
-                      SliverToBoxAdapter(
-                        child: ErrorState(
-                          compact: true,
-                          title: '媒体库刷新失败',
-                          message: '当前仍显示相同筛选条件下的上次结果。',
-                          retryLabel: '重新刷新',
-                          onRetry: controller.refresh,
-                        ),
-                      ),
-                    if (isVideo)
-                      SliverPadding(
-                        padding: const EdgeInsets.fromLTRB(
-                          LumaLayout.pagePaddingH,
-                          LumaSpacing.sm,
+                  else if (controller.isLoadingMore)
+                    const SliverToBoxAdapter(
+                      child: Padding(
+                        padding: EdgeInsets.fromLTRB(
                           LumaLayout.pagePaddingH,
                           LumaSpacing.xs,
+                          LumaLayout.pagePaddingH,
+                          LumaSpacing.xl,
                         ),
-                        sliver: ResponsiveMediaSliverGrid(
-                          items: items,
-                          heroTagPrefix: 'videos',
-                          onTap: widget.onOpenMedia,
-                          onFavorite: (item) =>
-                              context.toggleFavoriteWithFeedback(media, item),
-                        ),
-                      )
-                    else
-                      SliverPadding(
-                        padding: const EdgeInsets.fromLTRB(
-                          LumaSpacing.sm,
-                          LumaSpacing.xs,
-                          LumaSpacing.sm,
-                          LumaSpacing.xs,
-                        ),
-                        sliver: MasonryMediaSliver(
-                          items: items,
-                          onTap: widget.onOpenMedia,
-                          onLongPress: widget.onLongPressMedia,
-                          onFavorite: (item) =>
-                              context.toggleFavoriteWithFeedback(media, item),
-                        ),
-                      ),
-                    if (controller.hasLoadMoreError)
-                      SliverToBoxAdapter(
-                        child: ErrorState(
-                          compact: true,
-                          title: '下一页加载失败',
-                          message: '已加载的项目不会丢失，可以继续重试。',
-                          retryLabel: '重试下一页',
-                          onRetry: controller.loadMore,
-                        ),
-                      )
-                    else if (controller.isLoadingMore)
-                      const SliverToBoxAdapter(
-                        child: Padding(
-                          padding: EdgeInsets.fromLTRB(
-                            LumaLayout.pagePaddingH,
-                            LumaSpacing.xs,
-                            LumaLayout.pagePaddingH,
-                            LumaSpacing.xl,
-                          ),
-                          child: Center(
-                            child: SizedBox(
-                              width: 28,
-                              height: 28,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            ),
+                        child: Center(
+                          child: SizedBox(
+                            width: 28,
+                            height: 28,
+                            child: CircularProgressIndicator(strokeWidth: 2),
                           ),
                         ),
-                      )
-                    else
-                      const SliverToBoxAdapter(
-                        child: SizedBox(height: LumaSpacing.xl),
                       ),
-                  ],
+                    )
+                  else
+                    const SliverToBoxAdapter(
+                      child: SizedBox(height: LumaSpacing.xl),
+                    ),
                 ],
-              ),
+              ],
             ),
           ),
         );
+        // 触控分支保留下拉刷新；TV 用外层集合承担方向移动与离屏滚动交接。
+        final body = isTelevision
+            ? scrollContent
+            : RefreshIndicator(
+                onRefresh: controller.refresh,
+                child: scrollContent,
+              );
+        final scrollHost = isTelevision
+            ? LayoutBuilder(
+                builder: (context, constraints) => TvFocusCollection(
+                  itemIds: _tvIds,
+                  axis: Axis.vertical,
+                  columns: const TvMediaGridGeometry().columnsFor(
+                    constraints.maxWidth.clamp(0, LumaLayout.contentMaxWidth) -
+                        2 * LumaLayout.pagePaddingH,
+                  ),
+                  revealIndex: _tvRevealSafe.revealIndex,
+                  child: body,
+                ),
+              )
+            : body;
         if (widget.embedded) {
           return Column(
             children: [
@@ -327,11 +399,11 @@ class _LibraryPageState extends State<LibraryPage>
                   children: _actions(),
                 ),
               ),
-              Expanded(child: body),
+              Expanded(child: scrollHost),
             ],
           );
         }
-        return Scaffold(
+        final scaffold = Scaffold(
           appBar: AppBar(
             title: ScrollToTopAppBarTitle(
               title: widget.title ?? (isVideo ? '影音库' : '图片库'),
@@ -339,8 +411,13 @@ class _LibraryPageState extends State<LibraryPage>
             ),
             actions: _actions(),
           ),
-          body: body,
+          body: scrollHost,
         );
+        // 根层路由（个人视频）在 TV 套安全边距；分支页面由壳层统一处理。
+        if (isTelevision && !widget.inShell) {
+          return TvKeyBindings(child: TvContentFrame(child: scaffold));
+        }
+        return scaffold;
       },
     );
   }
@@ -351,6 +428,12 @@ class _LibraryPageState extends State<LibraryPage>
         tooltip: '搜索',
         onPressed: widget.onOpenSearch,
         icon: const Icon(Icons.search_rounded),
+      ),
+    if (AppScope.of(context).deviceProfile.isTelevision)
+      IconButton(
+        tooltip: '刷新',
+        onPressed: _controller?.refresh,
+        icon: const Icon(Icons.refresh_rounded),
       ),
     if (widget.type == MediaType.video)
       IconButton(

@@ -8,6 +8,23 @@ import 'package:luma/features/shell/app_destination.dart';
 import 'package:luma/features/shell/widgets/adaptive_app_navigation.dart';
 
 void main() {
+  testWidgets('isTelevision 分支默认关闭，普通端 Harness 不受新参数影响', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(390, 800);
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(const _NavigationHarness());
+    await tester.pumpAndSettle();
+    // 默认 isTelevision=false：仍渲染手机底部导航而非 TV 左导航。
+    expect(
+      find.byKey(const ValueKey('bottom-navigation-surface')),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('capsule navigation keeps five usable targets across widths', (
     tester,
   ) async {

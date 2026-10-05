@@ -1,3 +1,5 @@
+// 瀑布流与规则媒体网格的消费回归：复用真实卡片、解码组件及布局委托。
+// 测试驱动视口与悬停，组件状态随卸载释放，临时视口在用例结束后恢复。
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:luma/core/theme.dart';
@@ -102,10 +104,8 @@ void main() {
 
   testWidgets('宽屏媒体卡片的双行标题不会溢出', (tester) async {
     const gridWidth = 1213.0;
-    final cardWidth =
-        (gridWidth - LumaSpacing.md * (LumaLayout.gridColumns(gridWidth) - 1)) /
-        LumaLayout.gridColumns(gridWidth);
-    final cardHeight = cardWidth / LumaLayout.mediaCardAspectRatio(gridWidth);
+    await tester.binding.setSurfaceSize(const Size(1280, 800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
     final media = item(0).copyWith(title: '这是一段会在桌面媒体卡片中稳定换成两行显示的较长标题');
 
     await tester.pumpWidget(
@@ -115,9 +115,11 @@ void main() {
           body: Align(
             alignment: Alignment.topLeft,
             child: SizedBox(
-              width: cardWidth,
-              height: cardHeight,
-              child: MediaCard(item: media, onTap: () {}),
+              width: gridWidth,
+              child: ResponsiveMediaGrid(
+                items: [media],
+                onTap: (_, {heroTag}) {},
+              ),
             ),
           ),
         ),
@@ -125,9 +127,9 @@ void main() {
     );
 
     expect(
-      tester.widget<LumaFocusableSurface>(
-        find.byType(LumaFocusableSurface),
-      ).contentPadding,
+      tester
+          .widget<LumaFocusableSurface>(find.byType(LumaFocusableSurface))
+          .contentPadding,
       EdgeInsets.zero,
     );
     expect(tester.takeException(), isNull);
@@ -141,10 +143,6 @@ void main() {
       await tester.binding.setSurfaceSize(viewport);
       addTearDown(() => tester.binding.setSurfaceSize(null));
 
-      final columnCount = LumaLayout.gridColumns(gridWidth);
-      final cardWidth =
-          (gridWidth - LumaSpacing.md * (columnCount - 1)) / columnCount;
-      final cardHeight = cardWidth / LumaLayout.mediaCardAspectRatio(gridWidth);
       final media = MediaItem(
         id: 'video-hover',
         title: '视频卡片标题',
@@ -168,9 +166,11 @@ void main() {
             body: Align(
               alignment: Alignment.topLeft,
               child: SizedBox(
-                width: cardWidth,
-                height: cardHeight,
-                child: MediaCard(item: media, onTap: () {}),
+                width: gridWidth,
+                child: ResponsiveMediaGrid(
+                  items: [media],
+                  onTap: (_, {heroTag}) {},
+                ),
               ),
             ),
           ),

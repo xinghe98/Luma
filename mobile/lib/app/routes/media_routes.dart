@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/theme.dart';
@@ -14,6 +17,7 @@ import '../../features/shell/app_destination.dart';
 import '../app_dependencies.dart';
 import '../app_navigation.dart';
 import '../app_route.dart';
+import '../app_scope.dart';
 
 List<RouteBase> buildMediaRoutes(
   AppDependencies dependencies,
@@ -184,7 +188,95 @@ CustomTransitionPage<void> _collectionPage(
     transitionDuration: duration,
     reverseTransitionDuration: duration,
     transitionsBuilder: _collectionReveal,
-    child: child,
+    child: AppScope.of(context).deviceProfile.isTelevision
+        ? _TvCollectionFocusEntry(child: child)
+        : child,
+  );
+}
+
+/// 根层集合页持有独立焦点历史；首入场与控件卸载后的空焦点只在当前路由恢复。
+/// 详情或弹窗覆盖期间不请求焦点，返回后由 scope 保留原来的卡片位置。
+class _TvCollectionFocusEntry extends StatefulWidget {
+  const _TvCollectionFocusEntry({required this.child});
+
+  final Widget child;
+
+  @override
+  State<_TvCollectionFocusEntry> createState() =>
+      _TvCollectionFocusEntryState();
+}
+
+class _TvCollectionFocusEntryState extends State<_TvCollectionFocusEntry> {
+  final _scope = FocusScopeNode(debugLabel: 'tv-collection');
+  bool _focusScheduled = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _scope.addListener(_restoreUnclaimedFocus);
+  }
+
+  void _restoreUnclaimedFocus() {
+    if (!_scope.hasPrimaryFocus || _focusScheduled) return;
+    _focusScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _focusScheduled = false;
+      if (!mounted ||
+          !_scope.hasPrimaryFocus ||
+          ModalRoute.of(context)?.isCurrent != true) {
+        return;
+      }
+      // 优先进入滚动内容中的卡片或重试按钮；加载/空状态则使用工具栏。
+      for (final node in _scope.traversalDescendants) {
+        final nodeContext = node.context;
+        if (nodeContext != null && Scrollable.maybeOf(nodeContext) != null) {
+          node.requestFocus();
+          return;
+        }
+      }
+      _scope.nextFocus();
+    });
+    WidgetsBinding.instance.ensureVisualUpdate();
+  }
+
+  KeyEventResult _handleKey(FocusNode node, KeyEvent event) {
+    if (event.logicalKey != LogicalKeyboardKey.escape &&
+        event.logicalKey != LogicalKeyboardKey.goBack) {
+      return KeyEventResult.ignored;
+    }
+    if (ModalRoute.of(context)?.isCurrent != true) {
+      return KeyEventResult.ignored;
+    }
+    if (event is KeyDownEvent) {
+      if (context.canPop()) {
+        unawaited(Navigator.of(context).maybePop());
+      } else {
+        context.goToDestination(AppDestination.videos);
+      }
+    }
+    return KeyEventResult.handled;
+  }
+
+  @override
+  void dispose() {
+    _scope
+      ..removeListener(_restoreUnclaimedFocus)
+      ..dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => PopScope<void>(
+    canPop: context.canPop(),
+    onPopInvokedWithResult: (didPop, _) {
+      if (!didPop) context.goToDestination(AppDestination.videos);
+    },
+    child: FocusScope(
+      node: _scope,
+      autofocus: true,
+      onKeyEvent: _handleKey,
+      child: widget.child,
+    ),
   );
 }
 

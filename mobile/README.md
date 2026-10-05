@@ -1,6 +1,6 @@
 # 轻影 Luma · Flutter 客户端
 
-轻影是一款连接家庭服务器或内网服务器的私有视频、图片管理播放器。本目录提供 Android 与 Windows 10/11 x64 客户端，并适配手机、平板和桌面宽屏。媒体浏览、搜索、详情、缩略图、原图、播放、用户数据和扫描状态均来自 Luma 服务端 API。
+轻影是一款连接家庭服务器或内网服务器的私有视频、图片管理播放器。本目录提供 Android 与 Windows 10/11 x64 客户端，并适配手机、平板、桌面宽屏与 Android TV。媒体浏览、搜索、详情、缩略图、原图、播放、用户数据和扫描状态均来自 Luma 服务端 API。
 
 ## 运行
 
@@ -30,6 +30,81 @@ Windows 使用标准标题栏，默认窗口为 1280×800，最小尺寸为 960�
 ```
 
 脚本会调用 `backend/scripts/windows-deploy.ps1 -Action PackageClient`，构建 Windows Release 并输出 `build/dist/luma-windows-x64-<version>-setup.exe`。需本机已安装 Flutter、Visual Studio C++ 工具链与 NSIS 3（`makensis`）。当前不提供 MSIX、自动更新、ARM64 或代码签名。
+
+## Android TV
+
+电视端定位为「专注观看」：首页、图片库、影视库、搜索、详情、播放和图片预览全部可用；扫描、媒体源、成员与访问管理保留在手机/Windows 端操作。TV 的设置页隐藏这些管理入口（只读状态仍可见），深链 `/settings/sources`、`/settings/access`、`/settings/access/new`、`/settings/access/:userId` 一律回到设置页，连接成功后也不再自动恢复扫描轮询。笔记编辑入口在 TV 隐藏，收藏通过详情页的可见按钮操作。TV 默认使用深色主题，仍可在设置页切换。
+
+### 设备识别与安装
+
+- 普通包在 Android 上自动读取系统特征：包含 `android.software.leanback` 或 `android.hardware.type.television` 即进入 TV 界面；不按屏幕宽度、外接键盘或鼠标判断。其他平台始终为普通界面。
+- 部分盒子 ROM 不报告 TV 特征，需改用强制 TV 包（带 `--dart-define=LUMA_TV=true` 构建，见下）。TV 包与普通包同包名、同签名，覆盖安装即切换形态；手机安装 TV 包也会进入 TV 界面，分发时须明确标识专用 TV 包。
+- 系统要求 Android 7.0（API 24）及以上，与现有 Flutter 工具链一致。
+
+### 遥控器操作
+
+- D-pad 移动焦点，OK/确认键激活；确认键长按重复不会重复触发，方向键支持长按连移。焦点有 3dp 描边。页面背景覆盖整个可用区域，内容四边安全留白最多 24dp，避免大屏按百分比形成过宽边框；正文仍受既有最大宽度约束，播放器控制层独立保留过扫描安全区。
+- Back、Escape 与遥控返回键使用同一层级：收起输入法 → 关闭弹层/对话框 → 退出详情、集合或图片预览 → 焦点回到左侧导航 → 非首页导航回首页 → 再次返回退出到系统桌面。无退出确认，无导航循环。
+- 播放器：控制层隐藏时 OK 切换播放/暂停、左右键 ±10 秒快进快退、上下键呼出控制层；控制层显示时方向键在按钮与进度条间移动。媒体键支持播放/暂停、快进、快退；系统音量、静音和 Home 键交给系统处理。播放速度在控制层对话框中选择。TV 不提供小窗、锁定、旋转、亮度与软件音量控制。
+- 深链 `luma://app/...` 在 TV 上同样可用；无来源栈的播放器退出后回首页。
+- 从导航首次向右进入页面会落到可操作控件；内容左边界可向左回导航，再次进入恢复该分支焦点。列表重排按媒体 ID 保持焦点，删除当前项时落到相邻有效项，不抢走正在编辑或弹窗中的焦点。
+- 电影、电视剧与个人视频的“查看全部”在新路由内主动交付可操作首焦点，方向键可移动和滚动，确认键打开详情。按钮、系统 Back 与 Escape 从详情返回实际来源页并保留卡片焦点和滚动位置；只有无来源深链的详情回首页，独立分类列表回影视库。焦点隔离仅跟随导航分支切换，不因详情遮盖来源页而清除历史。
+- 图片库和个人视频工具栏提供遥控刷新。首页加载、收藏与进度更新即时反映在货架上；刷新失败保留已有内容。搜索提交后先滚动展示首条结果再移交焦点，离开页面或修改查询后取消旧提交的交接。
+- 详情主操作获焦时滚入可见范围；长简介只在自身范围内翻页，到末尾后交给选集。选集、卡片和对应骨架随字体缩放调整高度，封面比例不变。
+- 字段的粘贴、清除等按钮可直接确认；焦点描边不会重建输入框。选择弹窗会展示当前选项，长按确认只处理首次按下；倍速弹窗打开期间播放器控制层保持可见。图片缩小后重新约束边缘，恢复原尺寸时居中。
+
+### 构建与分发
+
+```bash
+# 手机默认包：仅 arm64-v8a，行为与 TV 适配前一致
+flutter build apk --debug
+
+# TV 强制包（双 ARM debug）：覆盖 32 位与 64 位电视盒子
+flutter build apk --debug --target-platform android-arm,android-arm64 \
+  --dart-define=LUMA_TV=true --android-project-arg=lumaTvAbis=arm
+
+# TV 发布包：同参数加 --release；沿用原 release 签名契约
+flutter build apk --release --target-platform android-arm,android-arm64 \
+  --dart-define=LUMA_TV=true --android-project-arg=lumaTvAbis=arm
+
+# 模拟器隔离验证：仅 x86_64，不作为分发包
+flutter build apk --debug --target-platform android-x64 \
+  --dart-define=LUMA_TV=true --android-project-arg=lumaTvAbis=emulator
+```
+
+- `lumaTvAbis` 取值：缺省仅 `arm64-v8a`；`arm` 为 `armeabi-v7a` + `arm64-v8a`；`emulator` 仅 `x86_64`；其他值构建直接失败。ABI 过滤与 jniLibs 剔除由同一取值派生，不会互相矛盾。
+- TV 双 ARM 的 release 产物重命名为 `build/dist/luma-tv-arm-<version>-release.apk`，不覆盖手机产物；未提供 `key.properties` 时不回退 debug 签名，release 产物保持未签名、不可发布状态。
+- 包内容预期：双 ARM 包的 `lib/armeabi-v7a/` 与 `lib/arm64-v8a/` 都应含 `libflutter.so`、`libgojni.so`、`libmpv.so`（release 另需 AOT 的 `libapp.so`），且不含 x86/x86_64；手机包应仅含 `lib/arm64-v8a/`。Manifest 可用 `apkanalyzer manifest print` 复核 LEANBACK_LAUNCHER 入口、非必需 leanback/touchscreen 特征、TV banner 与 `luma://` 深链。编译后的 banner 可能显示为 `@ref/0x...`，CI 从同一 APK 的资源表确认其对应 `drawable/tv_banner`。
+- CI（`.github/workflows/mobile.yml`）：verify job 先构建手机 debug 包并断言仅含 arm64，tv-arm-debug job 在独立工作区构建双 ARM debug 包、断言双 ARM ABI 与 Manifest 声明后上传 `luma-tv-arm-debug` artifact；各 job 产物互不覆盖。
+- 格式兼容范围由随客户端分发的 libmpv 与设备硬件解码能力决定，不做后端实时转码。
+
+### 隔离原生冒烟
+
+`integration_test/tv_smoke_test.dart` 使用内存仓储、独立会话和本机随机端口测试服务器，覆盖连接、浏览、搜索、详情、播放、返回、图片预览与设置。视频经真实鉴权、Range relay 和 libmpv 解码；不会读取已保存凭据或连接用户服务器。测试使用设备真实视口，不覆盖原生窗口指标。
+
+Windows 上对已启动的 x86_64 模拟器运行：
+
+```powershell
+$tvSmokePreviousGradleOpts = $env:GRADLE_OPTS
+try {
+  $env:GRADLE_OPTS = "$tvSmokePreviousGradleOpts -Dorg.gradle.project.lumaTvAbis=emulator"
+  flutter test integration_test/tv_smoke_test.dart -d emulator-5554 --dart-define=LUMA_TV=true --reporter expanded
+} finally {
+  $env:GRADLE_OPTS = $tvSmokePreviousGradleOpts
+}
+```
+
+`flutter test` 不支持 `--android-project-arg`，因此通过 JVM 属性传递同一个 ABI 选择；构建依然需要兼容的 JDK。截图在平台支持时写入应用临时目录的 `luma_tv_smoke_screenshots`，最终测试报告包含路径和截图错误；截图失败不替代行为断言。
+
+需留存截图时，在同一临时 `GRADLE_OPTS` 配置下改用 `flutter drive --driver=test_driver/integration_test.dart --target=integration_test/tv_smoke_test.dart -d emulator-5554 --dart-define=LUMA_TV=true`；现有宿主驱动会把截图写入 `build/integration_screenshots/`，避免测试卸载应用后丢失设备内文件。
+
+图片检查要求首页缩略图与预览完成真实解码；截图等待转场和重绘结束。Android 视频还必须在截图中央出现测试素材的红绿条纹，`videoPixelsVisible` 为 false 时整个 smoke 失败，即使播放进度和首帧回调正常。宿主驱动在失败时同样保留截图及 `build/integration_response_data.json`，用于区分业务断言与模拟器原生纹理问题。
+
+2026-10-05 本机验证：API 33 Google APIs x86_64 镜像、`tv_1080p` 设备配置、1920×1080 / 320dpi、SwiftShader 下完整原生冒烟通过，包括三类“查看全部”的方向/确认操作、详情返回原列表与焦点恢复、搜索结果可见焦点、真实视频像素、鉴权/Range、进度保存和返回清理。页面边缘像素另由手机至 4K 尺寸的浅色/深色回归覆盖。API 36 在同一 Emulator 35.5.10 的 Radeon 宿主渲染与 SwiftShader 渲染下仍有视频黑屏，日志出现 `eglCreateContext: EGL_BAD_ATTRIBUTE`；该环境未通过画面验收。模拟器通过不能代替下述电视盒子真机验收。
+
+### 验证边界
+
+CI 的 ABI 与 Manifest 检查是 APK 静态结构检查，不等同于真机验收。发布前至少需要：一台 32 位 Android 系统盒子与一台 64 位 Android TV/Google TV，用真实遥控器覆盖 D-pad、OK、Back、Home、音量与媒体键，以及 H.264/AAC、HEVC、MKV、图片浏览、网络中断重试等场景；`adb shell input keyevent` 的方向/确认/返回/Home/媒体键码可辅助验证。签名密钥未配置时 release 包只能标记为未签名，不得当作发布就绪。
 
 ## VMess 内网代理
 
@@ -75,10 +150,10 @@ Windows 使用标准标题栏，默认窗口为 1280×800，最小尺寸为 960�
 - 影视库：电影、电视剧、个人视频三个常驻分页；电影和电视剧使用 2:3 竖版海报墙，个人视频保留原文件卡片体验且不会混入影视来源。
 - 搜索：最近搜索、类型/标签组合筛选和无结果状态。
 - 媒体详情：封面、播放/大图、收藏、元数据、标签、笔记、媒体源名称和文件名。
-- 播放器：使用 `media_kit`/libmpv 播放认证视频流和 HTTP Range；视频始终经应用内 loopback relay 转发（相对 Location、认证头和 Range 都由 relay 处理），移动端支持手势与锁定，Windows 支持音量、全屏、鼠标和键盘控制。快进、拖动提交、取消拖动回到起点和从头播放共用一条定位链路：等待 libmpv 完成定位期间显示缓冲提示（与原生缓冲状态叠加），期间过时的播放位置不会把滑块拉回，被新的定位、拖动、重试或关闭取代的请求不会再恢复播放或写入进度。
+- 播放器：使用 `media_kit`/libmpv 播放认证视频流和 HTTP Range；视频始终经应用内 loopback relay 转发（相对 Location、认证头和 Range 都由 relay 处理），移动端支持手势与锁定，Windows 支持音量、全屏、鼠标和键盘控制，TV 使用仅含播放/暂停、±10 秒定位、倍速与关闭的遥控控制层。快进、拖动提交、取消拖动回到起点和从头播放共用一条定位链路：等待 libmpv 完成定位期间显示缓冲提示（与原生缓冲状态叠加），期间过时的播放位置不会把滑块拉回，被新的定位、拖动、重试或关闭取代的请求不会再恢复播放或写入进度。
 - 设置：服务器状态、扫描、媒体源类型、缓存、关于和断开连接；主题切换在页面右上角。
 
-手机使用 Material 3 底部导航（首页、图片库、影视库、搜索、设置）；宽度达到 840px 后切换为侧边导航。Windows 窗口最小宽度为 960px，因此始终使用侧边导航，并为媒体卡片、横向货架、筛选和图片预览提供键鼠交互。媒体网格会在 2–5 列间自适应，详情页在宽屏使用双栏布局。默认浅色主题，可在设置页右上角切换深色。
+手机使用 Material 3 底部导航（首页、图片库、影视库、搜索、设置）；宽度达到 840px 后切换为侧边导航。Windows 窗口最小宽度为 960px，因此始终使用侧边导航，并为媒体卡片、横向货架、筛选和图片预览提供键鼠交互。Android TV 使用同一五项目的地组成的左侧导航，内容区以列表级焦点集合管理 D-pad 移动与离屏卡片恢复，详情见上文 Android TV 一节。媒体网格会在 2–5 列间自适应，详情页在宽屏使用双栏布局。默认浅色主题，可在设置页右上角切换深色（TV 默认深色）。
 
 Windows 常用快捷键：`Ctrl+F` 搜索、`Alt+Left` 返回；播放器使用 `Space`/`K` 播放暂停、方向键快进快退与调节音量、`M` 静音、`F` 全屏、`Esc` 退出全屏或关闭播放器。
 
