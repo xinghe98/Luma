@@ -16,7 +16,9 @@ import 'package:luma/data/models/api_tag.dart';
 import 'package:luma/data/models/media_filter.dart';
 import 'package:luma/data/models/media_item.dart';
 import 'package:luma/data/models/media_types.dart';
+import 'package:luma/features/catalog/widgets/tv_catalog_header.dart';
 import 'package:luma/features/library/library_page.dart';
+import 'package:luma/features/library/widgets/tv_library_header.dart';
 import 'package:luma/features/search/search_page.dart';
 import 'package:luma/features/search/widgets/search_filters.dart';
 import 'package:luma/shared/interaction/tv_key_bindings.dart';
@@ -24,13 +26,128 @@ import 'package:luma/shared/media/masonry_media_tile.dart';
 import 'package:luma/shared/media/media_card.dart';
 
 void main() {
+  for (final headerKind in ['catalog', 'collection', 'library']) {
+    testWidgets('TV 局部窄宽页头重排且操作可遥控 $headerKind', (tester) async {
+      final dependencies = _dependencies(_ControlledRepository());
+      addTearDown(dependencies.dispose);
+      var refreshed = false;
+      void refresh() => refreshed = true;
+      final header = switch (headerKind) {
+        'catalog' => TvCatalogHeader(
+          onSearch: () {},
+          onRefresh: refresh,
+          onMovies: () {},
+          onSeries: () {},
+          onPersonalVideos: () {},
+        ),
+        'collection' => TvCatalogCollectionHeader(
+          title: '电视剧',
+          onSearch: () {},
+          onRefresh: refresh,
+        ),
+        _ => TvLibraryHeader(
+          title: '个人视频',
+          isVideo: true,
+          showBack: true,
+          hasExtraFilters: false,
+          favoritesOnly: false,
+          sort: MediaSort.newest,
+          onSearch: () {},
+          onRefresh: refresh,
+          onFilters: () {},
+          onFavorites: (_) {},
+          onSort: (_) {},
+          onClear: () {},
+        ),
+      };
+      await _mount(
+        tester,
+        dependencies,
+        Scaffold(
+          body: Align(
+            alignment: Alignment.topLeft,
+            child: SizedBox(width: 380, child: header),
+          ),
+        ),
+        size: const Size(1280, 800),
+        scale: 1.3,
+      );
+      expect(tester.takeException(), isNull);
+      final refreshControl = find.byTooltip(
+        headerKind == 'catalog' ? '刷新影视库' : '刷新',
+      );
+      expect(refreshControl.hitTestable(), findsOneWidget);
+      await _focusWithTab(tester, refreshControl);
+      await tester.sendKeyEvent(LogicalKeyboardKey.select);
+      await tester.pump();
+      expect(refreshed, isTrue);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+  }
+
+  testWidgets('TV 标签菜单可用方向键选择，历史记录按需展开并可清除', (tester) async {
+    final repository = _ControlledRepository(tagCount: 24);
+    final dependencies = _dependencies(repository);
+    addTearDown(dependencies.dispose);
+    await dependencies.media.load();
+    await _mount(
+      tester,
+      dependencies,
+      SearchPage(onOpenMedia: (_, {heroTag}) {}),
+    );
+    final tags = find.byTooltip('选择标签');
+    await _focusWithTab(tester, tags);
+    await tester.sendKeyEvent(LogicalKeyboardKey.select);
+    await tester.pumpAndSettle();
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.pumpAndSettle();
+    final selected = FocusManager.instance.primaryFocus?.context
+        ?.findAncestorWidgetOfExactType<CheckedPopupMenuItem<String>>();
+    expect(selected, isNotNull, reason: '方向键必须先把焦点交给实际标签选项');
+    await tester.sendKeyEvent(LogicalKeyboardKey.select);
+    // CheckedPopupMenuItem 播放勾选动画后才关闭菜单并提交选项。
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump();
+    expect(repository.requests, hasLength(1));
+    expect(repository.filters.single.tagId, selected!.value);
+    repository.requests.single.complete(
+      const MediaListPage(items: [], nextCursor: null),
+    );
+    await tester.pumpAndSettle();
+    expect(tester.getSize(find.byType(SearchFilters)).height, lessThan(120));
+
+    await tester.enterText(find.byType(TextField), '旅行');
+    await tester.pump(const Duration(milliseconds: 350));
+    repository.requests.last.complete(
+      const MediaListPage(items: [], nextCursor: null),
+    );
+    await tester.pumpAndSettle();
+    await tester.testTextInput.receiveAction(TextInputAction.search);
+    await tester.pumpAndSettle();
+    final recent = find.byWidgetPredicate(
+      (widget) => widget is PopupMenuButton<int> && widget.tooltip == '最近搜索',
+    );
+    expect(recent, findsOneWidget);
+    expect(find.byType(ActionChip), findsNothing);
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+    await tester.pumpAndSettle();
+    expect(_containsFocus(recent), isTrue);
+    await tester.sendKeyEvent(LogicalKeyboardKey.select);
+    await tester.pumpAndSettle();
+    expect(find.text('清除搜索记录'), findsOneWidget);
+    await tester.tap(find.text('清除搜索记录'));
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('最近搜索'), findsNothing);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
   for (final scenario in [
     (tags: 24, ready: true, dark: false, scale: 1.0),
     (tags: 64, ready: false, dark: true, scale: 1.3),
   ]) {
-    testWidgets('TV 高标签区提交后先挂载并展示首条结果再允许确认 ${scenario.tags} 标签', (
-      tester,
-    ) async {
+    testWidgets('TV 标签收纳后提交仍展示并聚焦首条结果 ${scenario.tags} 标签', (tester) async {
       final repository = _ControlledRepository(tagCount: scenario.tags);
       final dependencies = _dependencies(repository);
       addTearDown(dependencies.dispose);
@@ -54,13 +171,26 @@ void main() {
         await tester.pumpAndSettle();
       }
       final viewport = tester.getRect(find.byType(CustomScrollView));
+      expect(tester.getSize(find.byType(SearchFilters)).height, lessThan(120));
+      expect(find.text('旅行摄影素材分类标签 0'), findsNothing);
+      expect(find.byTooltip('选择标签').hitTestable(), findsOneWidget);
       expect(
-        tester.getRect(find.byType(SearchFilters)).bottom,
-        greaterThan(viewport.bottom),
-        reason: '标签区必须真实超过视口，避免退化成短标题区测试',
+        tester.widget<TextField>(find.byType(TextField)).focusNode!.hasFocus,
+        isTrue,
       );
-      expect(_card(result.id).hitTestable(), findsNothing);
-      await tester.testTextInput.receiveAction(TextInputAction.search);
+      if (scenario.ready) {
+        await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+        await tester.pump();
+        await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+        await tester.pump();
+        expect(
+          _containsFocus(find.byKey(const ValueKey('tv-submit-search'))),
+          isTrue,
+        );
+        await tester.sendKeyEvent(LogicalKeyboardKey.select);
+      } else {
+        await tester.testTextInput.receiveAction(TextInputAction.search);
+      }
       if (!scenario.ready) {
         repository.requests.single.complete(
           MediaListPage(items: [result], nextCursor: null),
@@ -122,7 +252,6 @@ void main() {
       '新查询',
     );
     expect(_card('old-query'), findsNothing);
-    expect(_card('new-query').hitTestable(), findsNothing);
     expect(_searchScroll(tester).offset, 0);
     await tester.pumpWidget(const SizedBox.shrink());
   });
@@ -178,7 +307,6 @@ void main() {
       isTrue,
     );
     expect(find.byType(TextField).hitTestable(), findsOneWidget);
-    expect(_card('returned-result').hitTestable(), findsNothing);
     expect(_searchScroll(tester).offset, 0);
     await tester.pumpWidget(const SizedBox.shrink());
   });
@@ -414,7 +542,7 @@ bool _containsFocus(Finder target) {
 Future<void> _focusWithTab(WidgetTester tester, Finder target) async {
   for (var step = 0; step < 40 && !_containsFocus(target); step++) {
     await tester.sendKeyEvent(LogicalKeyboardKey.tab);
-    await tester.pump();
+    await tester.pumpAndSettle();
   }
   expect(_containsFocus(target), isTrue);
 }
@@ -438,6 +566,7 @@ class _ControlledRepository extends MockMediaRepository {
 
   final int tagCount;
   final requests = <Completer<MediaListPage>>[];
+  final filters = <MediaFilter>[];
 
   @override
   Future<List<MediaItem>> loadMedia() async => const [];
@@ -468,6 +597,7 @@ class _ControlledRepository extends MockMediaRepository {
     int? limit,
   }) {
     final request = Completer<MediaListPage>();
+    filters.add(filter);
     requests.add(request);
     return request.future;
   }

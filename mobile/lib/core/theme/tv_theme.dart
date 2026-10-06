@@ -1,5 +1,5 @@
-// TV 主题在既有 Luma 主题上放大文字与控件高度，供十英尺观看距离阅读。
-// 只调整文字档位与按钮尺寸；配色、字体、圆角和动效完全沿用普通主题。
+// TV 主题以远距离阅读层级和明确焦点区分标题、内容与操作。
+// 仅由 television 分支应用，沿用普通主题的配色与用户主题选择。
 import 'package:flutter/material.dart';
 
 import 'tokens.dart';
@@ -14,17 +14,17 @@ ThemeData applyTvTheme(ThemeData base) {
       style?.copyWith(fontSize: fontSize);
 
   final tvText = text.copyWith(
-    headlineLarge: size(text.headlineLarge, 28),
-    headlineMedium: size(text.headlineMedium, 28),
+    headlineLarge: size(text.headlineLarge, 36),
+    headlineMedium: size(text.headlineMedium, 30),
     headlineSmall: size(text.headlineSmall, 24),
     titleLarge: size(text.titleLarge, 24),
-    titleMedium: size(text.titleMedium, 20),
-    titleSmall: size(text.titleSmall, 20),
+    titleMedium: size(text.titleMedium, 22),
+    titleSmall: size(text.titleSmall, 18),
     bodyLarge: size(text.bodyLarge, 20),
     bodyMedium: size(text.bodyMedium, 18),
-    bodySmall: size(text.bodySmall, 18),
-    labelLarge: size(text.labelLarge, 20),
-    labelMedium: size(text.labelMedium, 18),
+    bodySmall: size(text.bodySmall, 16),
+    labelLarge: size(text.labelLarge, 18),
+    labelMedium: size(text.labelMedium, 16),
     labelSmall: size(text.labelSmall, 14),
   );
 
@@ -43,10 +43,24 @@ ThemeData applyTvTheme(ThemeData base) {
             tvText.labelLarge,
           ),
         ),
+        side: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.focused)) {
+            return BorderSide(
+              color: base.colorScheme.onSurface,
+              width: LumaTvLayout.focusStroke,
+            );
+          }
+          return original?.side?.resolve(states);
+        }),
       );
 
   return base.copyWith(
     textTheme: tvText,
+    appBarTheme: base.appBarTheme.copyWith(
+      toolbarHeight: 72,
+      titleTextStyle: tvText.headlineSmall,
+      scrolledUnderElevation: 0,
+    ),
     filledButtonTheme: FilledButtonThemeData(
       style: buttonStyle(base.filledButtonTheme.style),
     ),

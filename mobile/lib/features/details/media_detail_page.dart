@@ -15,6 +15,7 @@ import '../../shared/layout/scroll_to_top_app_bar_title.dart';
 import '../../shared/states/skeleton.dart';
 import 'details_controller.dart';
 import 'widgets/detail_information.dart';
+import 'widgets/tv_media_detail_content.dart';
 
 class MediaDetailPage extends StatefulWidget {
   /// 显示媒体详情，优先使用路由携带条目并在真实入场动画后刷新。
@@ -174,19 +175,16 @@ class _MediaDetailPageState extends State<MediaDetailPage> {
               ),
               body: LayoutBuilder(
                 builder: (context, constraints) {
-                  final info = DetailInformation(
-                    controller: controller,
-                    television: isTelevision,
-                    autofocusPrimary: autofocusPrimary,
-                    playFocusNode: isTelevision ? _playFocus : null,
-                  );
+                  final info = DetailInformation(controller: controller);
                   return SingleChildScrollView(
                     controller: _scroll,
                     padding: LumaLayout.pagePadding(top: LumaSpacing.sm),
                     child: Center(
                       child: ConstrainedBox(
-                        constraints: const BoxConstraints(
-                          maxWidth: LumaLayout.detailMaxWidth,
+                        constraints: BoxConstraints(
+                          maxWidth: isTelevision
+                              ? LumaTvLayout.contentMaxWidth
+                              : LumaLayout.detailMaxWidth,
                         ),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -206,7 +204,14 @@ class _MediaDetailPageState extends State<MediaDetailPage> {
                                   ],
                                 ),
                               ),
-                            if (constraints.maxWidth >=
+                            if (isTelevision)
+                              TvMediaDetailContent(
+                                controller: controller,
+                                artwork: artwork,
+                                playFocusNode: _playFocus,
+                                autofocusPrimary: autofocusPrimary,
+                              )
+                            else if (constraints.maxWidth >=
                                 LumaLayout.detailTwoColumnBreakpoint)
                               Row(
                                 crossAxisAlignment: CrossAxisAlignment.start,

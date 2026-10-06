@@ -16,6 +16,7 @@ import 'dialogs/confirmation_dialog.dart';
 import 'dialogs/server_alias_dialog.dart';
 import 'widgets/application_settings_card.dart';
 import 'widgets/server_settings_card.dart';
+import 'widgets/tv_settings_content.dart';
 import '../../data/repositories/source_repository.dart';
 
 class SettingsPage extends StatefulWidget {
@@ -57,8 +58,18 @@ class _SettingsPageState extends State<SettingsPage> {
         }
         // TV 裁剪管理功能：观看为主，媒体源/成员访问/扫描留在普通端。
         final isTelevision = dependencies.deviceProfile.isTelevision;
+        if (isTelevision) {
+          return Scaffold(
+            body: TvSettingsContent(
+              scrollController: _scroll,
+              onEditAlias: () => _editAlias(context),
+              onClearCache: () => _clearCache(context),
+              onAbout: () => showAboutLumaDialog(context),
+              onDisconnect: () => _disconnect(context),
+            ),
+          );
+        }
         final canManageAccess =
-            !isTelevision &&
             server.userRole == 'admin' &&
             server.capabilities.contains('users.manage') &&
             dependencies.sources != null;
@@ -112,8 +123,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   );
                 },
                 onEditAlias: () => _editAlias(context),
-                // TV 不显示手动/重新扫描入口。
-                canScan: !isTelevision && server.can('scans.manage'),
+                canScan: server.can('scans.manage'),
               ),
               ListTile(
                 contentPadding: const EdgeInsets.symmetric(
@@ -133,13 +143,9 @@ class _SettingsPageState extends State<SettingsPage> {
                 subtitle: const Text('当前服务器会话的网络通道'),
               ),
               const SizedBox(height: LumaSpacing.xl),
-              // TV 隐藏媒体源管理入口。
-              if (!isTelevision) ...[
-                const SectionHeader(title: '媒体库整理'),
-                const SizedBox(height: LumaSpacing.sm),
-              ],
-              if (!isTelevision &&
-                  server.can('sources.manage') &&
+              const SectionHeader(title: '媒体库整理'),
+              const SizedBox(height: LumaSpacing.sm),
+              if (server.can('sources.manage') &&
                   dependencies.sources is MutableSourceRepository)
                 ListTile(
                   contentPadding: const EdgeInsets.symmetric(

@@ -226,10 +226,11 @@ class _TvCollectionFocusEntryState extends State<_TvCollectionFocusEntry> {
           ModalRoute.of(context)?.isCurrent != true) {
         return;
       }
-      // 优先进入滚动内容中的卡片或重试按钮；加载/空状态则使用工具栏。
+      // 优先进入纵向内容中的卡片或重试按钮，横向筛选栏不占用首焦点。
       for (final node in _scope.traversalDescendants) {
         final nodeContext = node.context;
-        if (nodeContext != null && Scrollable.maybeOf(nodeContext) != null) {
+        if (nodeContext != null &&
+            Scrollable.maybeOf(nodeContext, axis: Axis.vertical) != null) {
           node.requestFocus();
           return;
         }

@@ -12,6 +12,7 @@ import 'package:luma/app/app_dependencies.dart';
 import 'package:luma/app/app_device_profile.dart';
 import 'package:luma/app/app_scope.dart';
 import 'package:luma/core/theme.dart';
+import 'package:luma/core/theme/tv_theme.dart';
 import 'package:luma/data/mock/mock_connection_service.dart';
 import 'package:luma/data/mock/mock_media_repository.dart';
 import 'package:luma/data/proxy/proxy_profile_store.dart';
@@ -48,7 +49,7 @@ void main() {
 
   void useTvViewport(WidgetTester tester) {
     tester.view.devicePixelRatio = 1;
-    tester.view.physicalSize = const Size(1280, 720);
+    tester.view.physicalSize = const Size(960, 540);
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
   }
@@ -103,6 +104,42 @@ void main() {
     expect(find.text('结果:我的客厅'), findsOneWidget);
   });
 
+  testWidgets('TV 别名弹窗在 540p 大字体可编辑、取消并通过 IME Done 保存', (tester) async {
+    useTvViewport(tester);
+    final dependencies = tvDependencies();
+    addTearDown(dependencies.dispose);
+    await tester.pumpWidget(
+      AppScope(
+        dependencies: dependencies,
+        child: MaterialApp(
+          theme: applyTvTheme(LumaTheme.dark()),
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(
+              context,
+            ).copyWith(textScaler: const TextScaler.linear(1.6)),
+            child: child!,
+          ),
+          home: const _AliasTrigger(),
+        ),
+      ),
+    );
+    await tester.tap(find.text('别名'));
+    await tester.pumpAndSettle();
+    expect(find.widgetWithText(TextButton, '取消').hitTestable(), findsOneWidget);
+    expect(
+      find.widgetWithText(FilledButton, '保存').hitTestable(),
+      findsOneWidget,
+    );
+    expect(tester.testTextInput.isVisible, isFalse);
+    await press(tester, LogicalKeyboardKey.select);
+    await tester.enterText(find.byType(TextField), '电视别名');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+    expect(find.text('结果:电视别名'), findsOneWidget);
+    expect(find.byType(AlertDialog), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('普通手机别名弹窗：触摸/键盘直编辑，不走 TV 闸门', (tester) async {
     tester.view.devicePixelRatio = 1;
     tester.view.physicalSize = const Size(390, 844);
@@ -148,7 +185,16 @@ void main() {
     await tester.pumpWidget(
       AppScope(
         dependencies: dependencies,
-        child: MaterialApp(home: _ProxyHost(controller: controller)),
+        child: MaterialApp(
+          theme: applyTvTheme(LumaTheme.dark()),
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(
+              context,
+            ).copyWith(textScaler: const TextScaler.linear(1.4)),
+            child: child!,
+          ),
+          home: _ProxyHost(controller: controller),
+        ),
       ),
     );
     await tester.tap(find.text('代理'));

@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 
+import '../../../app/app_scope.dart';
 import '../../../core/theme.dart';
 import '../../media/media_card.dart';
 import '../../media/responsive_media_grid.dart';
+import '../../media/tv_media_grid.dart';
 import 'base.dart';
 
 class MediaGridSkeleton extends StatelessWidget {
@@ -14,34 +16,47 @@ class MediaGridSkeleton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final television =
+        AppScope.maybeOf(context)?.deviceProfile.isTelevision ?? false;
     final detailsHeight = MediaCard.textDetailsHeight(context);
+    final tvMetrics = TvMediaGridGeometry(detailsHeight: detailsHeight);
     final grid = LayoutBuilder(
       builder: (context, constraints) {
         final width = constraints.maxWidth;
         return GridView.builder(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
-          gridDelegate: ResponsiveMediaGrid.sliverGridDelegateForWidth(
-            width,
-            detailsHeight: detailsHeight,
-          ),
+          gridDelegate: television
+              ? SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: tvMetrics.columnsFor(width),
+                  crossAxisSpacing: LumaTvLayout.cardSpacing,
+                  mainAxisSpacing: LumaTvLayout.cardSpacing,
+                  childAspectRatio: tvMetrics.cellAspectRatio(width),
+                )
+              : ResponsiveMediaGrid.sliverGridDelegateForWidth(
+                  width,
+                  detailsHeight: detailsHeight,
+                ),
           itemCount: items,
-          itemBuilder: (context, index) => const Column(
+          itemBuilder: (context, index) => Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               AspectRatio(
-                aspectRatio: 16 / 10,
-                child: SizedBox.expand(
+                aspectRatio: television ? 16 / 9 : 16 / 10,
+                child: const SizedBox.expand(
                   child: SkeletonBox(
                     height: double.infinity,
                     radius: LumaRadii.medium,
                   ),
                 ),
               ),
-              SizedBox(height: LumaSpacing.xs),
-              FractionallySizedBox(widthFactor: 0.72, child: SkeletonBox()),
-              SizedBox(height: LumaSpacing.xs),
-              FractionallySizedBox(
+              const SizedBox(height: LumaSpacing.xs),
+              const FractionallySizedBox(
+                widthFactor: 0.72,
+                child: SkeletonBox(),
+              ),
+              const SizedBox(height: LumaSpacing.xs),
+              const FractionallySizedBox(
                 widthFactor: 0.45,
                 child: SkeletonBox(height: 11),
               ),

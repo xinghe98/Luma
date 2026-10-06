@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../app/app_scope.dart';
 import '../../core/theme.dart';
 import '../../data/models/media_item.dart';
 import '../../data/models/media_types.dart';
@@ -81,12 +82,14 @@ class MediaCard extends StatelessWidget {
     return (width - insets) / (16 / 10) + detailsHeight + insets;
   }
 
-  /// 构建不会因 hover 或键盘焦点改变尺寸的媒体卡片。
+  /// TV 封面使用无内嵌边框的横版画幅；普通端保留既有卡片比例和内距。
   @override
   Widget build(BuildContext context) {
     final duration = formatDuration(item.duration);
+    final television =
+        AppScope.maybeOf(context)?.deviceProfile.isTelevision ?? false;
     final coverRadius = context.luma.coverRadius;
-    final interactionInset = item.type == MediaType.video
+    final interactionInset = !television && item.type == MediaType.video
         ? LumaSpacing.xs
         : 0.0;
     final artworkRadius = coverRadius > interactionInset
@@ -118,12 +121,14 @@ class MediaCard extends StatelessWidget {
       onFocusChange: onFocusChange,
       focusId: focusId,
       focusBorderWidth: focusBorderWidth,
+      paintFocusBorder: !television,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           AspectRatio(
-            aspectRatio: 16 / 10,
-            child: ClipRRect(
+            aspectRatio: television ? 16 / 9 : 16 / 10,
+            child: _TvCardArtwork(
+              television: television,
               borderRadius: BorderRadius.circular(artworkRadius),
               child: Stack(
                 fit: StackFit.expand,
@@ -170,7 +175,14 @@ class MediaCard extends StatelessWidget {
           ),
           const SizedBox(height: LumaSpacing.xxs),
           Text(
-            item.type == MediaType.video
+            television
+                ? (item.type == MediaType.video
+                      ? [
+                          item.resolution,
+                          item.format.toUpperCase(),
+                        ].where((value) => value.isNotEmpty).join(' · ')
+                      : '${item.resolution} · 图片')
+                : item.type == MediaType.video
                 ? '${item.resolution} · ${formatMediaDate(item.addedAt)}'
                 : '${item.resolution} · 图片',
             maxLines: 1,
@@ -183,4 +195,21 @@ class MediaCard extends StatelessWidget {
       ),
     );
   }
+}
+
+class _TvCardArtwork extends StatelessWidget {
+  const _TvCardArtwork({
+    required this.television,
+    required this.borderRadius,
+    required this.child,
+  });
+
+  final bool television;
+  final BorderRadius borderRadius;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => television
+      ? TvArtworkFocus(borderRadius: borderRadius, child: child)
+      : ClipRRect(borderRadius: borderRadius, child: child);
 }

@@ -238,7 +238,7 @@ class _CatalogDetailPageState extends State<CatalogDetailPage> {
     return DetailBackScope(
       builder: (onBack) {
         final page = Scaffold(
-          backgroundColor: item == null
+          backgroundColor: item == null || isTelevision
               ? null
               : CatalogDetailPalette.background,
           // TV 焦点揭示以实际内容视口为边界，避免列表首行被工具栏遮住。
@@ -259,8 +259,12 @@ class _CatalogDetailPageState extends State<CatalogDetailPage> {
                     style: IconButton.styleFrom(
                       minimumSize: const Size.square(48),
                       maximumSize: const Size.square(48),
-                      backgroundColor: CatalogDetailPalette.text,
-                      foregroundColor: CatalogDetailPalette.background,
+                      backgroundColor: isTelevision
+                          ? Theme.of(context).colorScheme.surfaceContainerHigh
+                          : CatalogDetailPalette.text,
+                      foregroundColor: isTelevision
+                          ? Theme.of(context).colorScheme.onSurface
+                          : CatalogDetailPalette.background,
                       shape: const CircleBorder(),
                     ),
                     icon: const Icon(Icons.arrow_back_rounded),
@@ -271,12 +275,14 @@ class _CatalogDetailPageState extends State<CatalogDetailPage> {
             title: item == null ? const Text('作品详情') : null,
             backgroundColor: item == null ? null : Colors.transparent,
             surfaceTintColor: Colors.transparent,
-            foregroundColor: item == null ? null : CatalogDetailPalette.text,
-            systemOverlayStyle: item == null
+            foregroundColor: item == null || isTelevision
+                ? null
+                : CatalogDetailPalette.text,
+            systemOverlayStyle: item == null || isTelevision
                 ? null
                 : SystemUiOverlayStyle.light,
             actions: [
-              if (item != null)
+              if (item != null && !isTelevision)
                 IconButton(
                   onPressed: _savingFavorite ? null : _toggleFavorite,
                   tooltip: _favorite ? '取消收藏' : '收藏',

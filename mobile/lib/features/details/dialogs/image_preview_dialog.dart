@@ -358,8 +358,8 @@ class _ImagePreviewDialogState extends State<ImagePreviewDialog> {
             child: chromeWidget,
           );
     final chrome = Positioned(
-      // TV 工具栏使用安全边距，避免过扫描裁切焦点。
-      top: isTv ? top + size.height * 0.05 : top + LumaSpacing.xs,
+      top: isTv ? null : top + LumaSpacing.xs,
+      bottom: isTv ? size.height * 0.05 : null,
       left: isTv ? size.width * 0.05 : LumaSpacing.xs,
       right: isTv ? size.width * 0.05 : LumaSpacing.xs,
       child: isTv
@@ -556,36 +556,81 @@ class _PreviewChrome extends StatelessWidget {
     if (!television) {
       return Row(children: [detailsButton, const Spacer(), closeButton]);
     }
-    return Row(
-      children: [
-        // 首按钮持焦点，弹窗打开即可用方向键在工具间移动。
-        IconButton.filledTonal(
-          focusNode: toolbarFocusNode,
-          autofocus: true,
-          tooltip: '放大',
-          style: chromeStyle,
-          onPressed: zoomIn,
-          icon: const Icon(Icons.zoom_in_rounded),
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: extras.badgeScrim,
+        borderRadius: BorderRadius.circular(LumaRadii.medium),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        child: Row(
+          children: [
+            _TvPreviewAction(
+              focusNode: toolbarFocusNode,
+              autofocus: true,
+              tooltip: '放大',
+              label: '放大',
+              icon: Icons.zoom_in_rounded,
+              onPressed: zoomIn,
+            ),
+            _TvPreviewAction(
+              tooltip: '缩小',
+              label: '缩小',
+              icon: Icons.zoom_out_rounded,
+              onPressed: zoomOut,
+            ),
+            _TvPreviewAction(
+              tooltip: '还原',
+              label: '还原',
+              icon: Icons.aspect_ratio_rounded,
+              onPressed: onReset,
+            ),
+            _TvPreviewAction(
+              tooltip: '详情',
+              label: '详情',
+              icon: Icons.info_outline_rounded,
+              onPressed: onDetails,
+            ),
+            const Spacer(),
+            _TvPreviewAction(
+              tooltip: '关闭',
+              label: '关闭',
+              icon: Icons.close_rounded,
+              onPressed: onClose,
+            ),
+          ],
         ),
-        const SizedBox(width: LumaSpacing.xs),
-        IconButton.filledTonal(
-          tooltip: '缩小',
-          style: chromeStyle,
-          onPressed: zoomOut,
-          icon: const Icon(Icons.zoom_out_rounded),
-        ),
-        const SizedBox(width: LumaSpacing.xs),
-        IconButton.filledTonal(
-          tooltip: '还原',
-          style: chromeStyle,
-          onPressed: onReset,
-          icon: const Icon(Icons.aspect_ratio_rounded),
-        ),
-        const SizedBox(width: LumaSpacing.xs),
-        detailsButton,
-        const Spacer(),
-        closeButton,
-      ],
+      ),
     );
   }
+}
+
+class _TvPreviewAction extends StatelessWidget {
+  const _TvPreviewAction({
+    required this.tooltip,
+    required this.label,
+    required this.icon,
+    required this.onPressed,
+    this.focusNode,
+    this.autofocus = false,
+  });
+
+  final String tooltip;
+  final String label;
+  final IconData icon;
+  final VoidCallback? onPressed;
+  final FocusNode? focusNode;
+  final bool autofocus;
+
+  @override
+  Widget build(BuildContext context) => Tooltip(
+    message: tooltip,
+    child: TextButton.icon(
+      focusNode: focusNode,
+      autofocus: autofocus,
+      onPressed: onPressed,
+      icon: Icon(icon),
+      label: Text(label),
+    ),
+  );
 }

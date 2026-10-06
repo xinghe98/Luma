@@ -68,11 +68,14 @@ class SearchResults extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               const SizedBox(height: LumaSpacing.xl),
-              const SectionHeader(title: '搜索结果', subtitle: '输入条件后显示'),
+              if (!television)
+                const SectionHeader(title: '搜索结果', subtitle: '输入条件后显示'),
               const SizedBox(height: LumaSpacing.md),
-              const EmptyState(
-                title: '开始搜索',
-                message: '输入关键词，或选择类型、标签来筛选媒体库。',
+              EmptyState(
+                title: television ? '想看什么？' : '开始搜索',
+                message: television
+                    ? '按确定键输入关键词，或选择视频、图片和标签。'
+                    : '输入关键词，或选择类型、标签来筛选媒体库。',
                 icon: Icons.search_rounded,
               ),
             ],
@@ -82,7 +85,9 @@ class SearchResults extends StatelessWidget {
     }
 
     return [
-      const SliverToBoxAdapter(child: SizedBox(height: LumaSpacing.xl)),
+      SliverToBoxAdapter(
+        child: SizedBox(height: television ? 0 : LumaSpacing.xl),
+      ),
       SliverToBoxAdapter(
         child: SectionHeader(
           title: '搜索结果',

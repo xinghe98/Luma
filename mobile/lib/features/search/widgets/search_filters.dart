@@ -13,6 +13,7 @@ class SearchFilters extends StatelessWidget {
     required this.tags,
     required this.onType,
     required this.onTag,
+    this.television = false,
   });
 
   final MediaType? type;
@@ -21,9 +22,70 @@ class SearchFilters extends StatelessWidget {
   final ValueChanged<MediaType?> onType;
   final void Function(String id, String name) onTag;
 
+  /// TV 将类型保留为单行选择，将全部标签收纳到可遥控菜单。
+  final bool television;
+
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    if (television) {
+      final selectedTags = tags.where((tag) => tag.id == tagId);
+      final selectedTag = selectedTags.isEmpty ? null : selectedTags.first;
+      return SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: [
+            for (final option in <(MediaType?, String)>[
+              (null, '全部'),
+              (MediaType.video, '视频'),
+              (MediaType.image, '图片'),
+            ]) ...[
+              ChoiceChip(
+                label: Text(option.$2),
+                selected: type == option.$1,
+                onSelected: (_) => onType(option.$1),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 14,
+                ),
+              ),
+              const SizedBox(width: 12),
+            ],
+            PopupMenuButton<String>(
+              tooltip: '选择标签',
+              onSelected: (id) {
+                final tag = tags.firstWhere((tag) => tag.id == id);
+                onTag(tag.id, tag.name);
+              },
+              itemBuilder: (_) => [
+                for (final tag in tags)
+                  CheckedPopupMenuItem(
+                    value: tag.id,
+                    checked: tag.id == tagId,
+                    child: Text(tag.name),
+                  ),
+              ],
+              enabled: tags.isNotEmpty,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 18,
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.label_outline_rounded),
+                    const SizedBox(width: 10),
+                    Text(selectedTag?.name ?? '标签'),
+                    const Icon(Icons.arrow_drop_down_rounded),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [

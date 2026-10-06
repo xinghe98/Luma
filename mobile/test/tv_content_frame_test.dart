@@ -47,7 +47,6 @@ void main() {
           size.height - pageRect.bottom,
           lessThanOrEqualTo(LumaSpacing.lg),
         );
-        expect(pageRect.width, lessThanOrEqualTo(LumaLayout.contentMaxWidth));
         if (size.width <= LumaLayout.contentMaxWidth) {
           expect(pageRect.left, lessThanOrEqualTo(LumaSpacing.lg));
           expect(

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../app/app_scope.dart';
 import '../../../core/theme.dart';
+import '../../../shared/interaction/tv_key_bindings.dart';
 import '../../shell/widgets/tv_field_gate.dart';
 import 'tv_field_halo.dart';
 
@@ -70,6 +71,10 @@ class _ServerAliasDialogState extends State<_ServerAliasDialog> {
       focusNode: isTelevision ? _fieldFocus : null,
       // TV 由闸门持浏览焦点，OK 才进入编辑弹出 IME；普通端保持自动聚焦。
       autofocus: !isTelevision,
+      textInputAction: isTelevision ? TextInputAction.done : null,
+      onSubmitted: isTelevision
+          ? (_) => Navigator.pop(context, _controller.text)
+          : null,
       maxLength: 80,
       decoration: const InputDecoration(labelText: '仅保存在此设备'),
     );
@@ -84,51 +89,80 @@ class _ServerAliasDialogState extends State<_ServerAliasDialog> {
   }
 
   @override
-  Widget build(BuildContext context) => AlertDialog(
-    scrollable: true,
-    title: const Text('服务器别名'),
-    content: _buildField(),
-    actionsAlignment: MainAxisAlignment.end,
-    actionsOverflowAlignment: OverflowBarAlignment.end,
-    actionsOverflowButtonSpacing: LumaSpacing.xs,
-    actionsPadding: const EdgeInsets.fromLTRB(
-      LumaSpacing.xs,
-      0,
-      LumaSpacing.xs,
-      LumaSpacing.xs,
+  Widget build(BuildContext context) {
+    final actions = _buildActions();
+    if (isTelevision) {
+      return TvKeyBindings(
+        child: AlertDialog(
+          constraints: const BoxConstraints(minWidth: 480, maxWidth: 640),
+          insetPadding: const EdgeInsets.all(LumaSpacing.lg),
+          scrollable: true,
+          title: const Text('服务器别名'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _buildField(),
+              const SizedBox(height: LumaSpacing.md),
+              Wrap(
+                alignment: WrapAlignment.end,
+                spacing: LumaSpacing.xs,
+                runSpacing: LumaSpacing.xs,
+                children: actions,
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+    return AlertDialog(
+      scrollable: true,
+      title: const Text('服务器别名'),
+      content: _buildField(),
+      actionsAlignment: MainAxisAlignment.end,
+      actionsOverflowAlignment: OverflowBarAlignment.end,
+      actionsOverflowButtonSpacing: LumaSpacing.xs,
+      actionsPadding: const EdgeInsets.fromLTRB(
+        LumaSpacing.xs,
+        0,
+        LumaSpacing.xs,
+        LumaSpacing.xs,
+      ),
+      buttonPadding: EdgeInsets.zero,
+      actions: actions,
+    );
+  }
+
+  List<Widget> _buildActions() => [
+    TextButton(
+      style: TextButton.styleFrom(
+        minimumSize: Size(0, _buttonHeight),
+        padding: const EdgeInsets.symmetric(horizontal: LumaSpacing.sm),
+        visualDensity: VisualDensity.standard,
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      ),
+      onPressed: () => Navigator.pop(context, ''),
+      child: const Text('恢复默认'),
     ),
-    buttonPadding: EdgeInsets.zero,
-    actions: [
-      TextButton(
-        style: TextButton.styleFrom(
-          minimumSize: Size(0, _buttonHeight),
-          padding: const EdgeInsets.symmetric(horizontal: LumaSpacing.sm),
-          visualDensity: VisualDensity.standard,
-          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-        ),
-        onPressed: () => Navigator.pop(context, ''),
-        child: const Text('恢复默认'),
+    TextButton(
+      style: TextButton.styleFrom(
+        minimumSize: Size(0, _buttonHeight),
+        padding: const EdgeInsets.symmetric(horizontal: LumaSpacing.sm),
+        visualDensity: VisualDensity.standard,
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
       ),
-      TextButton(
-        style: TextButton.styleFrom(
-          minimumSize: Size(0, _buttonHeight),
-          padding: const EdgeInsets.symmetric(horizontal: LumaSpacing.sm),
-          visualDensity: VisualDensity.standard,
-          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-        ),
-        onPressed: () => Navigator.pop(context),
-        child: const Text('取消'),
+      onPressed: () => Navigator.pop(context),
+      child: const Text('取消'),
+    ),
+    FilledButton(
+      style: FilledButton.styleFrom(
+        minimumSize: Size(0, _buttonHeight),
+        padding: const EdgeInsets.symmetric(horizontal: LumaSpacing.md),
+        visualDensity: VisualDensity.standard,
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
       ),
-      FilledButton(
-        style: FilledButton.styleFrom(
-          minimumSize: Size(0, _buttonHeight),
-          padding: const EdgeInsets.symmetric(horizontal: LumaSpacing.md),
-          visualDensity: VisualDensity.standard,
-          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-        ),
-        onPressed: () => Navigator.pop(context, _controller.text),
-        child: const Text('保存'),
-      ),
-    ],
-  );
+      onPressed: () => Navigator.pop(context, _controller.text),
+      child: const Text('保存'),
+    ),
+  ];
 }

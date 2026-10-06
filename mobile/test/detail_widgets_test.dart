@@ -17,7 +17,7 @@ import 'package:luma/features/details/dialogs/image_preview_dialog.dart';
 import 'package:luma/features/details/media_detail_page.dart';
 import 'package:luma/features/details/widgets/detail_actions.dart';
 import 'package:luma/features/details/widgets/detail_information.dart';
-import 'package:luma/features/details/widgets/detail_sections.dart';
+import 'package:luma/features/details/widgets/tv_media_detail_content.dart';
 import 'package:luma/features/details/widgets/media_metadata.dart';
 import 'package:luma/shared/layout/surface_card.dart';
 import 'package:luma/shared/media/authenticated_media_image.dart';
@@ -60,11 +60,17 @@ void main() {
   });
 
   testWidgets('TV 详情操作：收藏带文字且不小于 56dp，隐藏笔记编辑', (tester) async {
-    final item = buildMediaFixtures().firstWhere(
-      (item) => item.type == MediaType.video,
-    );
+    final item = buildMediaFixtures()
+        .firstWhere((item) => item.type == MediaType.video)
+        .copyWith(filename: '纪录片_海岸线与远方_完整版_2026_2160p_多语言字幕_最终修订版.mkv');
     final media = MediaController(MockMediaRepository())..remember(item);
-    final controller = DetailsController(mediaId: item.id, media: media);
+    final controller = DetailsController(
+      mediaId: item.id,
+      media: media,
+      loadImmediately: false,
+    );
+    final playFocus = FocusNode();
+    addTearDown(playFocus.dispose);
     addTearDown(() {
       controller.dispose();
       media.dispose();
@@ -75,11 +81,13 @@ void main() {
         home: Scaffold(
           body: Padding(
             padding: const EdgeInsets.all(16),
-            child: Column(
-              children: [
-                DetailActions(controller: controller, television: true),
-                DetailSections(controller: controller, allowEditing: false),
-              ],
+            child: SingleChildScrollView(
+              child: TvMediaDetailContent(
+                controller: controller,
+                artwork: const SizedBox.shrink(),
+                playFocusNode: playFocus,
+                autofocusPrimary: false,
+              ),
             ),
           ),
         ),
@@ -91,8 +99,10 @@ void main() {
       find.byKey(const ValueKey('detail-favorite-action')),
     );
     expect(favorite.height, greaterThanOrEqualTo(56));
-    // allowEditing=false：不出现笔记编辑入口。
+    // 电视专用资料保持只读，文件名仍完整可达。
     expect(find.text('编辑'), findsNothing);
+    expect(find.text('文件名'), findsOneWidget);
+    expect(find.text(item.filename), findsOneWidget);
   });
 
   testWidgets('video metadata cards are centered as a group', (tester) async {
@@ -184,9 +194,7 @@ void main() {
     await tester.pumpWidget(
       AppScope(
         dependencies: dependencies,
-        child: MaterialApp(
-          home: MediaDetailPage(mediaId: item.id),
-        ),
+        child: MaterialApp(home: MediaDetailPage(mediaId: item.id)),
       ),
     );
     await tester.pump();
@@ -200,7 +208,6 @@ void main() {
     expect(repository.warmCalls, [item.id]);
     expect(find.byType(MaterialBanner), findsNothing);
   });
-
 
   testWidgets('media detail keeps narrow stack and wide split layout', (
     tester,

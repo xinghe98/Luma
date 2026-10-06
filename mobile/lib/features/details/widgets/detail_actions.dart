@@ -76,35 +76,33 @@ class DetailActions extends StatelessWidget {
             ),
           );
     if (television) {
-      return AdaptiveActionWidth(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            FilledButton.icon(
-              focusNode: canPlay ? connectFocusNode : null,
-              onFocusChange: _revealAction,
-              autofocus: autofocusPrimary && canPlay,
-              onPressed: canPlay ? () => _openPrimary(context, item) : null,
-              style: FilledButton.styleFrom(
-                minimumSize: const Size(0, LumaTvLayout.controlMinHeight),
-              ),
-              icon: Icon(
-                item.type == MediaType.video
-                    ? Icons.play_arrow_rounded
-                    : Icons.fullscreen_rounded,
-              ),
-              label: Text(
-                item.type == MediaType.video
-                    ? (item.status != 'ready'
-                          ? '尚未就绪'
-                          : (item.progress > 0 ? '继续播放' : '播放'))
-                    : '查看大图',
-              ),
+      return Wrap(
+        spacing: LumaSpacing.md,
+        runSpacing: LumaSpacing.sm,
+        children: [
+          FilledButton.icon(
+            focusNode: canPlay ? connectFocusNode : null,
+            onFocusChange: _revealAction,
+            autofocus: autofocusPrimary && canPlay,
+            onPressed: canPlay ? () => _openPrimary(context, item) : null,
+            style: FilledButton.styleFrom(
+              minimumSize: const Size(0, LumaTvLayout.controlMinHeight),
             ),
-            const SizedBox(height: LumaSpacing.sm),
-            favoriteButton,
-          ],
-        ),
+            icon: Icon(
+              item.type == MediaType.video
+                  ? Icons.play_arrow_rounded
+                  : Icons.fullscreen_rounded,
+            ),
+            label: Text(
+              item.type == MediaType.video
+                  ? (item.status != 'ready'
+                        ? '尚未就绪'
+                        : (item.progress > 0 ? '继续播放' : '播放'))
+                  : '查看大图',
+            ),
+          ),
+          favoriteButton,
+        ],
       );
     }
     return AdaptiveActionWidth(

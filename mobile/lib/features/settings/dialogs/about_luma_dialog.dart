@@ -18,7 +18,10 @@ void showAboutLumaDialog(BuildContext context) {
   showDialog<void>(
     context: context,
     animationStyle: AnimationStyle.noAnimation,
-    builder: (_) => _AboutLumaDialog(isTelevision: isTelevision),
+    builder: (_) {
+      final dialog = _AboutLumaDialog(isTelevision: isTelevision);
+      return isTelevision ? TvKeyBindings(child: dialog) : dialog;
+    },
   );
 }
 
@@ -111,6 +114,12 @@ class _AboutLumaDialogState extends State<_AboutLumaDialog> {
       ],
     );
     return AlertDialog(
+      constraints: widget.isTelevision
+          ? const BoxConstraints(minWidth: 480, maxWidth: 640)
+          : null,
+      insetPadding: widget.isTelevision
+          ? const EdgeInsets.all(LumaSpacing.lg)
+          : const EdgeInsets.symmetric(horizontal: 40, vertical: 24),
       scrollable: true,
       title: const BrandMark(variant: BrandMarkVariant.horizontal, height: 32),
       // TV：说明文字放可聚焦滚动区域，方向键可滚动到边界后移出。
@@ -119,6 +128,12 @@ class _AboutLumaDialogState extends State<_AboutLumaDialog> {
           : content,
       actions: [
         TextButton(
+          autofocus: widget.isTelevision,
+          style: widget.isTelevision
+              ? TextButton.styleFrom(
+                  minimumSize: const Size(0, LumaTvLayout.controlMinHeight),
+                )
+              : null,
           focusNode: widget.isTelevision ? _licenseButtonFocus : null,
           onPressed: () {
             if (widget.isTelevision) {
@@ -135,6 +150,11 @@ class _AboutLumaDialogState extends State<_AboutLumaDialog> {
           child: const Text('开源许可'),
         ),
         FilledButton(
+          style: widget.isTelevision
+              ? FilledButton.styleFrom(
+                  minimumSize: const Size(0, LumaTvLayout.controlMinHeight),
+                )
+              : null,
           onPressed: () => Navigator.pop(context),
           child: const Text('知道了'),
         ),

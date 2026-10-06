@@ -42,127 +42,336 @@ class CatalogDetailHero extends StatelessWidget {
   final bool television;
 
   @override
-  Widget build(BuildContext context) => LayoutBuilder(
-    builder: (context, constraints) {
-      final isWide =
-          constraints.maxWidth >= LumaLayout.detailTwoColumnBreakpoint;
-      // 资料区始终与海报并列，常规手机宽度仅缩小海报而不改成上下结构。
-      // 这样评分、时长和标签会持续处于海报右侧的同一视觉组。
-      final stackIdentity = constraints.maxWidth < 260;
-      final posterWidth = isWide
-          ? 208.0
-          : constraints.maxWidth < 360
-          ? 104.0
-          : 128.0;
-      const backdropFallback = ColoredBox(color: CatalogDetailPalette.surface);
-      final posterContent = _HeroPoster(item: item);
-      final poster = SizedBox(
-        width: posterWidth,
-        child: heroTag == null
-            ? posterContent
-            : Hero(
-                tag: heroTag!,
-                createRectTween: CatalogCard.straightRectTween,
-                flightShuttleBuilder: CatalogCard.preserveSourceHeroFlight,
-                child: posterContent,
-              ),
-      );
-      final information = _HeroInformation(item: item);
-      return Stack(
-        children: [
-          Positioned.fill(
-            child: loadBackdrop
-                ? AuthenticatedMediaImage(
-                    path: item.backdropUrl.isEmpty
-                        ? item.thumbnailUrl
-                        : item.backdropUrl,
-                    cacheWidth: isWide ? 1280 : 960,
-                    fadeInDuration: LumaMotion.forContext(
-                      context,
-                      LumaMotion.normal,
+  Widget build(BuildContext context) => television
+      ? _TvCatalogHero(
+          item: item,
+          heroTag: heroTag,
+          loadBackdrop: loadBackdrop,
+          favorite: favorite,
+          savingFavorite: savingFavorite,
+          onPlay: onPlay,
+          onPlayFromStart: onPlayFromStart,
+          onToggleFavorite: onToggleFavorite,
+        )
+      : LayoutBuilder(
+          builder: (context, constraints) {
+            final isWide =
+                constraints.maxWidth >= LumaLayout.detailTwoColumnBreakpoint;
+            // 资料区始终与海报并列，常规手机宽度仅缩小海报而不改成上下结构。
+            // 这样评分、时长和标签会持续处于海报右侧的同一视觉组。
+            final stackIdentity = constraints.maxWidth < 260;
+            final posterWidth = isWide
+                ? 208.0
+                : constraints.maxWidth < 360
+                ? 104.0
+                : 128.0;
+            const backdropFallback = ColoredBox(
+              color: CatalogDetailPalette.surface,
+            );
+            final posterContent = _HeroPoster(item: item);
+            final poster = SizedBox(
+              width: posterWidth,
+              child: heroTag == null
+                  ? posterContent
+                  : Hero(
+                      tag: heroTag!,
+                      createRectTween: CatalogCard.straightRectTween,
+                      flightShuttleBuilder:
+                          CatalogCard.preserveSourceHeroFlight,
+                      child: posterContent,
                     ),
-                    fallback: backdropFallback,
-                  )
-                : backdropFallback,
-          ),
-          const Positioned.fill(
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    Color(0x26000000),
-                    Color(0xAA121310),
-                    CatalogDetailPalette.background,
-                  ],
-                  stops: [0, .57, 1],
+            );
+            final information = _HeroInformation(item: item);
+            return Stack(
+              children: [
+                Positioned.fill(
+                  child: loadBackdrop
+                      ? AuthenticatedMediaImage(
+                          path: item.backdropUrl.isEmpty
+                              ? item.thumbnailUrl
+                              : item.backdropUrl,
+                          cacheWidth: isWide ? 1280 : 960,
+                          fadeInDuration: LumaMotion.forContext(
+                            context,
+                            LumaMotion.normal,
+                          ),
+                          fallback: backdropFallback,
+                        )
+                      : backdropFallback,
                 ),
-              ),
-            ),
-          ),
-          SafeArea(
-            bottom: false,
-            child: Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(
-                  maxWidth: LumaLayout.detailMaxWidth,
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(
-                    LumaSpacing.lg,
-                    kToolbarHeight + LumaSpacing.xl,
-                    LumaSpacing.lg,
-                    LumaSpacing.xl,
+                const Positioned.fill(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          Color(0x26000000),
+                          Color(0xAA121310),
+                          CatalogDetailPalette.background,
+                        ],
+                        stops: [0, .57, 1],
+                      ),
+                    ),
                   ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      if (stackIdentity) ...[
-                        Align(alignment: Alignment.centerLeft, child: poster),
-                        const SizedBox(height: LumaSpacing.lg),
-                        information,
-                      ] else
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.end,
+                ),
+                SafeArea(
+                  bottom: false,
+                  child: Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(
+                        maxWidth: LumaLayout.detailMaxWidth,
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(
+                          LumaSpacing.lg,
+                          kToolbarHeight + LumaSpacing.xl,
+                          LumaSpacing.lg,
+                          LumaSpacing.xl,
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            poster,
-                            const SizedBox(width: LumaSpacing.md),
-                            Expanded(child: information),
+                            if (stackIdentity) ...[
+                              Align(
+                                alignment: Alignment.centerLeft,
+                                child: poster,
+                              ),
+                              const SizedBox(height: LumaSpacing.lg),
+                              information,
+                            ] else
+                              Row(
+                                crossAxisAlignment: CrossAxisAlignment.end,
+                                children: [
+                                  poster,
+                                  const SizedBox(width: LumaSpacing.md),
+                                  Expanded(child: information),
+                                ],
+                              ),
+                            const SizedBox(height: LumaSpacing.xl),
+                            AdaptiveActionWidth(
+                              child: _PrimaryPlayButton(
+                                item: item,
+                                onPlay: onPlay,
+                              ),
+                            ),
+                            const SizedBox(height: LumaSpacing.sm),
+                            AdaptiveActionWidth(
+                              child: _SecondaryActions(
+                                item: item,
+                                vertical: stackIdentity,
+                                favorite: favorite,
+                                savingFavorite: savingFavorite,
+                                onPlayFromStart: onPlayFromStart,
+                                onToggleFavorite: onToggleFavorite,
+                              ),
+                            ),
                           ],
                         ),
-                      const SizedBox(height: LumaSpacing.xl),
-                      AdaptiveActionWidth(
-                        child: _PrimaryPlayButton(
-                          item: item,
-                          onPlay: onPlay,
-                          autofocus: television,
-                        ),
                       ),
-                      const SizedBox(height: LumaSpacing.sm),
-                      AdaptiveActionWidth(
-                        child: _SecondaryActions(
-                          item: item,
-                          television: television,
-                          vertical: stackIdentity,
-                          favorite: favorite,
-                          savingFavorite: savingFavorite,
-                          onPlayFromStart: onPlayFromStart,
-                          onToggleFavorite: onToggleFavorite,
-                          // 主播放不可用（无正片）时 TV 首焦点落到次要操作。
-                          autofocus: television && item.playableMediaId.isEmpty,
-                        ),
-                      ),
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+}
+
+// 电视首屏以横幅与观看动作为中心，海报和完整身份资料放在横幅下方。
+// 背景沿用路由结算开关，来源海报沿用原来的缩略图与 Hero 飞行约束。
+class _TvCatalogHero extends StatelessWidget {
+  const _TvCatalogHero({
+    required this.item,
+    required this.heroTag,
+    required this.loadBackdrop,
+    required this.favorite,
+    required this.savingFavorite,
+    required this.onPlay,
+    required this.onPlayFromStart,
+    required this.onToggleFavorite,
+  });
+
+  final CatalogItem item;
+  final String? heroTag;
+  final bool loadBackdrop;
+  final bool favorite;
+  final bool savingFavorite;
+  final ValueChanged<String> onPlay;
+  final ValueChanged<String> onPlayFromStart;
+  final VoidCallback onToggleFavorite;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+    final poster = _HeroPoster(item: item);
+    final canPlay = item.playableMediaId.isNotEmpty;
+    final metadata = [
+      if (item.year != null) '${item.year}',
+      if (item.kind == CatalogKind.movie && item.durationMs != null)
+        formatDuration(Duration(milliseconds: item.durationMs!)),
+      if (item.kind == CatalogKind.series) '${item.episodeCount} 集',
+      if (item.resolution.isNotEmpty) item.resolution,
+      if (item.communityRating != null)
+        '★ ${item.communityRating!.toStringAsFixed(1)}',
+    ];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Stack(
+          key: const ValueKey('tv-catalog-cinematic-header'),
+          children: [
+            Positioned.fill(
+              child: loadBackdrop
+                  ? AuthenticatedMediaImage(
+                      path: item.backdropUrl.isEmpty
+                          ? item.thumbnailUrl
+                          : item.backdropUrl,
+                      cacheWidth: 1280,
+                      fit: BoxFit.cover,
+                      fallback: ColoredBox(color: colors.surface),
+                    )
+                  : ColoredBox(color: colors.surface),
+            ),
+            Positioned.fill(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      colors.surface,
+                      colors.surface,
+                      colors.surface.withValues(alpha: 0.45),
+                      colors.surface.withValues(alpha: 0),
+                      colors.surface.withValues(alpha: 0.35),
                     ],
+                    stops: const [0, 0.22, 0.42, 0.68, 1],
                   ),
                 ),
               ),
             ),
+            LayoutBuilder(
+              builder: (context, constraints) => Padding(
+                padding: const EdgeInsets.all(LumaSpacing.xl),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(minHeight: 288),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: SizedBox(
+                      width: constraints.maxWidth >= 900
+                          ? constraints.maxWidth * 0.65
+                          : constraints.maxWidth,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            item.title,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.headlineLarge,
+                          ),
+                          const SizedBox(height: LumaSpacing.sm),
+                          Text(
+                            metadata.join(' · '),
+                            style: theme.textTheme.bodyLarge,
+                          ),
+                          const SizedBox(height: LumaSpacing.xl),
+                          Wrap(
+                            spacing: LumaSpacing.md,
+                            runSpacing: LumaSpacing.sm,
+                            children: [
+                              FilledButton.icon(
+                                key: const ValueKey('tv-catalog-play'),
+                                autofocus: canPlay,
+                                onFocusChange: _revealTvAction,
+                                onPressed: canPlay
+                                    ? () => onPlay(item.playableMediaId)
+                                    : null,
+                                icon: const Icon(Icons.play_arrow_rounded),
+                                label: Text(
+                                  item.progressMs > 0 ? '继续观看' : '播放',
+                                ),
+                              ),
+                              OutlinedButton.icon(
+                                autofocus: !canPlay && !savingFavorite,
+                                onFocusChange: _revealTvAction,
+                                onPressed: savingFavorite
+                                    ? null
+                                    : onToggleFavorite,
+                                icon: Icon(
+                                  favorite
+                                      ? Icons.favorite_rounded
+                                      : Icons.favorite_border_rounded,
+                                ),
+                                label: Text(favorite ? '已收藏' : '加入喜欢'),
+                              ),
+                              if (_startMediaId(item).isNotEmpty)
+                                TextButton.icon(
+                                  onFocusChange: _revealTvAction,
+                                  onPressed: () =>
+                                      onPlayFromStart(_startMediaId(item)),
+                                  icon: const Icon(Icons.replay_rounded),
+                                  label: const Text('从头播放'),
+                                ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+        Padding(
+          key: const ValueKey('tv-catalog-identity'),
+          padding: const EdgeInsets.all(LumaSpacing.xl),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(
+                width: 120,
+                child: heroTag == null
+                    ? poster
+                    : Hero(
+                        tag: heroTag!,
+                        createRectTween: CatalogCard.straightRectTween,
+                        flightShuttleBuilder:
+                            CatalogCard.preserveSourceHeroFlight,
+                        child: poster,
+                      ),
+              ),
+              const SizedBox(width: LumaSpacing.lg),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (item.originalTitle.isNotEmpty &&
+                        item.originalTitle != item.title)
+                      Text(
+                        item.originalTitle,
+                        style: theme.textTheme.titleMedium,
+                      ),
+                    const SizedBox(height: LumaSpacing.sm),
+                    Text(
+                      [
+                        ...item.genres.map((genre) => genre.name),
+                        ...item.countries.map((country) => country.name),
+                        if (item.certification.isNotEmpty) item.certification,
+                      ].join(' · '),
+                      style: theme.textTheme.bodyMedium,
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
-        ],
-      );
-    },
-  );
+        ),
+      ],
+    );
+  }
 }
 
 class _SecondaryActions extends StatelessWidget {
@@ -173,8 +382,6 @@ class _SecondaryActions extends StatelessWidget {
     required this.savingFavorite,
     required this.onPlayFromStart,
     required this.onToggleFavorite,
-    this.autofocus = false,
-    this.television = false,
   });
 
   final CatalogItem item;
@@ -184,17 +391,11 @@ class _SecondaryActions extends StatelessWidget {
   final ValueChanged<String> onPlayFromStart;
   final VoidCallback onToggleFavorite;
 
-  /// 主播放不可用时 TV 的初始焦点：优先从头播放，其次收藏。
-  final bool autofocus;
-  final bool television;
-
   @override
   Widget build(BuildContext context) {
     final canPlayFromStart = _startMediaId(item).isNotEmpty;
     final children = [
       OutlinedButton.icon(
-        autofocus: autofocus && canPlayFromStart,
-        onFocusChange: television ? _revealTvAction : null,
         onPressed: canPlayFromStart
             ? () => onPlayFromStart(_startMediaId(item))
             : null,
@@ -203,8 +404,6 @@ class _SecondaryActions extends StatelessWidget {
         style: _secondaryActionStyle(),
       ),
       OutlinedButton.icon(
-        autofocus: autofocus && !canPlayFromStart && !savingFavorite,
-        onFocusChange: television ? _revealTvAction : null,
         onPressed: savingFavorite ? null : onToggleFavorite,
         icon: Icon(
           favorite ? Icons.favorite_rounded : Icons.favorite_border_rounded,
@@ -353,24 +552,15 @@ class _HeroInformation extends StatelessWidget {
 }
 
 class _PrimaryPlayButton extends StatelessWidget {
-  const _PrimaryPlayButton({
-    required this.item,
-    required this.onPlay,
-    this.autofocus = false,
-  });
+  const _PrimaryPlayButton({required this.item, required this.onPlay});
 
   final CatalogItem item;
   final ValueChanged<String> onPlay;
-
-  /// TV 首次有效内容聚焦主播放；不可播放时由次要操作接住焦点。
-  final bool autofocus;
 
   @override
   Widget build(BuildContext context) {
     return SizedBox(
       child: FilledButton.icon(
-        autofocus: autofocus && item.playableMediaId.isNotEmpty,
-        onFocusChange: autofocus ? _revealTvAction : null,
         onPressed: item.playableMediaId.isEmpty
             ? null
             : () => onPlay(item.playableMediaId),

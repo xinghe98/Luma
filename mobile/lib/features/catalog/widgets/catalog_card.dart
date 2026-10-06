@@ -95,7 +95,7 @@ class CatalogCard extends StatelessWidget {
                   ),
                 ),
               );
-              return ClipRRect(
+              final poster = ClipRRect(
                 borderRadius: BorderRadius.circular(LumaRadii.large),
                 child: Stack(
                   fit: StackFit.expand,
@@ -120,6 +120,11 @@ class CatalogCard extends StatelessWidget {
                   ],
                 ),
               );
+              if (focusId == null) return poster;
+              return TvArtworkFocus(
+                borderRadius: BorderRadius.circular(LumaRadii.large),
+                child: poster,
+              );
             },
           ),
         ),
@@ -133,7 +138,9 @@ class CatalogCard extends StatelessWidget {
         const SizedBox(height: LumaSpacing.xxs),
         Text(
           subtitle.isEmpty
-              ? (item.kind == CatalogKind.movie ? '电影' : '剧集')
+              ? (focusId != null
+                    ? ''
+                    : (item.kind == CatalogKind.movie ? '电影' : '剧集'))
               : subtitle,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
@@ -143,7 +150,7 @@ class CatalogCard extends StatelessWidget {
         ),
       ],
     );
-    // TV 路径：焦点描边由 LumaFocusableSurface 提供，语义与激活行为一致。
+    // TV 路径：封面自己画焦点，语义与激活行为仍由表面提供。
     if (focusId != null) {
       return LumaFocusableSurface(
         label: '${item.title}，$subtitle',
@@ -153,6 +160,7 @@ class CatalogCard extends StatelessWidget {
         autofocus: autofocus,
         onFocusChange: onFocusChange,
         focusBorderWidth: focusBorderWidth,
+        paintFocusBorder: false,
         child: content,
       );
     }

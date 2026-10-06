@@ -1,4 +1,4 @@
-// TV 左侧常驻导航：五分支上下移动焦点、OK 切换分支、向右进入内容。
+// TV 导航在内容浏览时收合，返回或左移时展开；覆盖式展开不挤动媒体布局。
 // 返回优先级：退出字段编辑 → 内容回导航 → 非首页回首页 → 首页退出系统；
 // 弹层与根层详情页的返回由各自路由先行处理。
 import 'dart:async';
@@ -169,6 +169,7 @@ class _TvAppNavigationState extends State<TvAppNavigation> {
     return KeyEventResult.ignored;
   }
 
+  /// 内容始终保留同一宽度与导航实例，展开菜单不会改变卡片位置或焦点身份。
   @override
   Widget build(BuildContext context) {
     return PopScope(
@@ -177,35 +178,13 @@ class _TvAppNavigationState extends State<TvAppNavigation> {
         if (!didPop) _handleBack();
       },
       child: Scaffold(
-        body: Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
+        body: Stack(
+          fit: StackFit.expand,
           children: [
-            FocusTraversalGroup(
-              child: FocusScope(
-                node: _navScope,
-                onKeyEvent: _handleNavigationKey,
-                onFocusChange: (focused) {
-                  if (focused && _contentActive) {
-                    setState(() => _contentActive = false);
-                  }
-                },
-                child: LayoutBuilder(
-                  builder: (context, constraints) {
-                    final compact =
-                        MediaQuery.sizeOf(context).width <
-                        LumaLayout.navigationRailBreakpoint;
-                    return _TvNavigationRail(
-                      selectedIndex: widget.selectedIndex,
-                      onSelect: _selectBranch,
-                      itemNodes: _itemNodes,
-                      compact: compact,
-                    );
-                  },
-                ),
+            Padding(
+              padding: const EdgeInsets.only(
+                left: LumaTvLayout.navigationWidthCompact,
               ),
-            ),
-            const VerticalDivider(width: 1),
-            Expanded(
               child: FocusTraversalGroup(
                 child: ExcludeFocus(
                   excluding: !_contentActive,
@@ -213,6 +192,28 @@ class _TvAppNavigationState extends State<TvAppNavigation> {
                     node: _contentScope,
                     onKeyEvent: _handleContentKey,
                     child: TvContentFrame(child: widget.content),
+                  ),
+                ),
+              ),
+            ),
+            Positioned(
+              left: 0,
+              top: 0,
+              bottom: 0,
+              child: FocusTraversalGroup(
+                child: FocusScope(
+                  node: _navScope,
+                  onKeyEvent: _handleNavigationKey,
+                  onFocusChange: (focused) {
+                    if (focused && _contentActive) {
+                      setState(() => _contentActive = false);
+                    }
+                  },
+                  child: _TvNavigationRail(
+                    selectedIndex: widget.selectedIndex,
+                    onSelect: _selectBranch,
+                    itemNodes: _itemNodes,
+                    compact: _contentActive,
                   ),
                 ),
               ),
@@ -239,40 +240,59 @@ class _TvNavigationRail extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final railWidth = compact
-        ? LumaTvLayout.navigationWidthCompact
-        : LumaTvLayout.navigationWidth;
-    return ColoredBox(
-      color: Theme.of(context).colorScheme.surfaceContainer,
-      child: SizedBox(
-        width: railWidth,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Padding(
-              padding: const EdgeInsets.only(
-                top: LumaSpacing.lg,
-                bottom: LumaSpacing.lg,
-              ),
-              child: Center(
-                child: BrandMark(
-                  variant: BrandMarkVariant.symbol,
-                  compact: true,
-                  height: compact ? 32 : 40,
+    final theme = Theme.of(context);
+    return SizedBox(
+      key: const ValueKey('tv-navigation-drawer'),
+      width: compact
+          ? LumaTvLayout.navigationWidthCompact
+          : LumaTvLayout.navigationWidth,
+      child: ColoredBox(
+        color: theme.colorScheme.surfaceContainerLow,
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: LumaSpacing.lg),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                SizedBox(
+                  height: 56,
+                  child: Row(
+                    children: [
+                      const SizedBox(
+                        width: LumaTvLayout.navigationWidthCompact,
+                        child: Center(
+                          child: BrandMark(
+                            variant: BrandMarkVariant.symbol,
+                            compact: true,
+                            height: 36,
+                          ),
+                        ),
+                      ),
+                      if (!compact)
+                        Text('轻影', style: theme.textTheme.titleLarge),
+                    ],
+                  ),
                 ),
-              ),
+                const SizedBox(height: LumaSpacing.lg),
+                Expanded(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      for (final destination in AppDestination.values)
+                        _TvNavigationItem(
+                          destination: destination,
+                          selected: destination.index == selectedIndex,
+                          compact: compact,
+                          focusNode: itemNodes[destination.index]!,
+                          autofocus: destination.index == selectedIndex,
+                          onSelect: onSelect,
+                        ),
+                    ],
+                  ),
+                ),
+              ],
             ),
-            for (final destination in AppDestination.values)
-              _TvNavigationItem(
-                destination: destination,
-                selected: destination.index == selectedIndex,
-                compact: compact,
-                focusNode: itemNodes[destination.index]!,
-                autofocus: destination.index == selectedIndex,
-                onSelect: onSelect,
-              ),
-            const Spacer(),
-          ],
+          ),
         ),
       ),
     );
@@ -298,7 +318,8 @@ class _TvNavigationItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
     return Padding(
       padding: const EdgeInsets.symmetric(
         horizontal: LumaSpacing.sm,
@@ -309,45 +330,46 @@ class _TvNavigationItem extends StatelessWidget {
         focusNode: focusNode,
         autofocus: autofocus,
         focusBorderWidth: LumaTvLayout.focusStroke,
-        borderRadius: BorderRadius.circular(LumaRadii.medium),
+        borderRadius: BorderRadius.circular(LumaRadii.small),
         onActivate: () => onSelect(destination.index),
-        child: AnimatedContainer(
-          duration: LumaMotion.forContext(context, LumaMotion.fast),
-          curve: Curves.easeOutQuart,
-          height: compact ? LumaTvLayout.controlMinHeight : 72,
+        child: Container(
+          constraints: const BoxConstraints(
+            minHeight: LumaTvLayout.controlMinHeight,
+          ),
           decoration: BoxDecoration(
             color: selected ? colors.secondaryContainer : Colors.transparent,
-            borderRadius: BorderRadius.circular(LumaRadii.medium),
+            borderRadius: BorderRadius.circular(LumaRadii.small),
           ),
-          child: compact
-              ? Icon(
+          child: Row(
+            children: [
+              SizedBox(
+                width: LumaTvLayout.controlMinHeight,
+                height: LumaTvLayout.controlMinHeight,
+                child: Icon(
                   selected ? destination.selectedIcon : destination.icon,
                   color: selected
                       ? colors.onSecondaryContainer
                       : colors.onSurfaceVariant,
-                )
-              : Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      selected ? destination.selectedIcon : destination.icon,
-                      color: selected
-                          ? colors.onSecondaryContainer
-                          : colors.onSurfaceVariant,
+                ),
+              ),
+              if (!compact)
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      vertical: LumaSpacing.sm,
                     ),
-                    const SizedBox(height: LumaSpacing.xxs),
-                    Text(
+                    child: Text(
                       destination.label,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                      style: theme.textTheme.labelLarge?.copyWith(
                         color: selected
                             ? colors.onSecondaryContainer
                             : colors.onSurfaceVariant,
                       ),
                     ),
-                  ],
+                  ),
                 ),
+            ],
+          ),
         ),
       ),
     );

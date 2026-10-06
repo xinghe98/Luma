@@ -16,6 +16,7 @@ import '../../shared/states/error_state.dart';
 import '../../shared/states/skeleton.dart';
 import 'catalog_controller.dart';
 import 'widgets/catalog_card.dart';
+import 'widgets/tv_catalog_header.dart';
 
 /// “查看全部”进入的完整作品列表，保留原有海报网格、刷新与错误状态。
 /// TV 使用固定行高海报网格与逐项焦点；触控端保持既有网格与下拉刷新。
@@ -49,17 +50,28 @@ class _CatalogCollectionPageState extends State<CatalogCollectionPage> {
       initialItems: widget.initialItems,
       onOpenCatalog: widget.onOpenCatalog,
     );
+    if (isTelevision) {
+      return TvKeyBindings(
+        child: TvContentFrame(
+          child: Scaffold(
+            body: Column(
+              children: [
+                TvCatalogCollectionHeader(
+                  title: widget.kind == CatalogKind.movie ? '电影' : '电视剧',
+                  onSearch: widget.onOpenSearch,
+                  onRefresh: () => _bodyKey.currentState?.refresh(),
+                ),
+                Expanded(child: body),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
     final scaffold = Scaffold(
       appBar: AppBar(
         title: Text(widget.kind == CatalogKind.movie ? '电影' : '电视剧'),
         actions: [
-          // TV 使用可见刷新按钮，调用既有加载；下拉刷新保留在触控分支。
-          if (isTelevision)
-            IconButton(
-              tooltip: '刷新',
-              onPressed: () => _bodyKey.currentState?.refresh(),
-              icon: const Icon(Icons.refresh_rounded),
-            ),
           IconButton(
             tooltip: '搜索',
             onPressed: widget.onOpenSearch,
@@ -69,10 +81,7 @@ class _CatalogCollectionPageState extends State<CatalogCollectionPage> {
       ),
       body: body,
     );
-    // 根层集合页在 TV 套安全边距并接确认键映射；触控端保持原样。
-    return isTelevision
-        ? TvKeyBindings(child: TvContentFrame(child: scaffold))
-        : scaffold;
+    return scaffold;
   }
 }
 
@@ -173,16 +182,48 @@ class CatalogCollectionBodyState extends State<CatalogCollectionBody>
           slivers: [
             if (controller.state == CatalogLoadState.loading &&
                 controller.items.isEmpty)
-              const SliverPadding(
-                padding: EdgeInsets.fromLTRB(
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(
                   LumaLayout.pagePaddingH,
                   LumaSpacing.lg,
                   LumaLayout.pagePaddingH,
                   LumaSpacing.xl,
                 ),
-                sliver: SliverToBoxAdapter(
-                  child: PosterGridSkeleton(items: 10),
-                ),
+                sliver: isTelevision
+                    ? SliverLayoutBuilder(
+                        builder: (context, constraints) => SliverGrid.builder(
+                          itemCount: 10,
+                          gridDelegate:
+                              SliverGridDelegateWithFixedCrossAxisCount(
+                                crossAxisCount: _posterMetrics.columnsFor(
+                                  constraints.crossAxisExtent,
+                                ),
+                                crossAxisSpacing: LumaTvLayout.cardSpacing,
+                                mainAxisSpacing: LumaTvLayout.cardSpacing,
+                                childAspectRatio: _posterMetrics
+                                    .cellAspectRatio(
+                                      constraints.crossAxisExtent,
+                                    ),
+                              ),
+                          itemBuilder: (_, _) => const Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Expanded(
+                                child: SkeletonBox(
+                                  height: double.infinity,
+                                  radius: LumaRadii.large,
+                                ),
+                              ),
+                              SizedBox(height: 12),
+                              SkeletonBox(height: 18),
+                              SizedBox(height: 24),
+                            ],
+                          ),
+                        ),
+                      )
+                    : const SliverToBoxAdapter(
+                        child: PosterGridSkeleton(items: 10),
+                      ),
               )
             else if (controller.state == CatalogLoadState.error &&
                 controller.items.isEmpty)
@@ -207,6 +248,16 @@ class CatalogCollectionBodyState extends State<CatalogCollectionBody>
               if (controller.state == CatalogLoadState.loading)
                 const SliverToBoxAdapter(
                   child: LinearProgressIndicator(minHeight: 2),
+                ),
+              if (isTelevision && controller.state == CatalogLoadState.error)
+                SliverToBoxAdapter(
+                  child: ErrorState(
+                    compact: true,
+                    title: '刷新失败',
+                    message: '仍可浏览已加载的作品。',
+                    retryLabel: '重新刷新',
+                    onRetry: controller.load,
+                  ),
                 ),
               SliverPadding(
                 padding: const EdgeInsets.fromLTRB(

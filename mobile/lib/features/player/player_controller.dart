@@ -4,6 +4,7 @@
 // 命令被原生接受后读取 mpv `seeking` 与当前 time-pos 判定定位是否结束，
 // 原生缓冲事件独立叠加展示，等待期间屏蔽过时位置，
 // 被取代或已释放请求的异步续作不会写回新会话。
+// 回环路由失败时把诊断快照并入错误提示，并隐去本机转发地址；直接路由原样展示。
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
@@ -93,6 +94,12 @@ class PlayerController extends ChangeNotifier {
   final List<Player> _disposingPlayers = [];
   final List<StreamSubscription<dynamic>> _playerSubscriptions = [];
   String? _mediaRouteToken;
+
+  /// 当前生成的回环路由失败诊断回调；直接路由为 null，不产出任何诊断。
+  String Function()? _mediaRouteFailureDescriber;
+
+  /// 当前生成的回环路由完整地址；用于把原生错误里的地址替换为占位词。
+  String? _mediaRouteUrl;
   String? _error;
   bool _disposed = false;
   bool _initialized = false;
@@ -180,6 +187,7 @@ class PlayerController extends ChangeNotifier {
       final access = session.resolveResource(streamUrl);
       _mediaRequestRouter.revoke(_mediaRouteToken);
       _mediaRouteToken = null;
+      _clearMediaRouteDiagnostics();
       final previous = _player;
       _player = null;
       _videoController = null;
@@ -220,6 +228,8 @@ class PlayerController extends ChangeNotifier {
       }
       final mediaRoute = _mediaRequestRouter.route(access.url, access.headers);
       _mediaRouteToken = mediaRoute.token;
+      _mediaRouteFailureDescriber = mediaRoute.describeFailure;
+      _mediaRouteUrl = mediaRoute.url;
       final initial = _startAtZero ? Duration.zero : _position;
       _pendingResumePosition = initial > Duration.zero ? initial : null;
       await player.open(
@@ -282,11 +292,14 @@ class PlayerController extends ChangeNotifier {
     _bufferingWatchdog?.cancel();
     _bufferingWatchdog = null;
     _resetSeekState();
+    _clearMediaRouteDiagnostics();
   }
 
   /// 初始化失败或超时时收束资源，先撤销旧会话，再异步释放底层播放器。
   void _collapseInitialization(int generation, String error) {
     if (_disposed || generation != _initializationGeneration) return;
+    // 撤销路由前先合成诊断快照；此时回环请求的进度仍然可见。
+    final message = _composeMediaRouteFailure(error);
     _initializationGeneration++;
     _initializationWatchdog?.cancel();
     _initializationWatchdog = null;
@@ -296,6 +309,7 @@ class PlayerController extends ChangeNotifier {
     _syncThrottle?.cancel();
     _syncThrottle = null;
     _mediaRouteToken = null;
+    _clearMediaRouteDiagnostics();
     final player = _player;
     _player = null;
     _videoController = null;
@@ -304,10 +318,42 @@ class PlayerController extends ChangeNotifier {
     _initializationFailed = true;
     _resetSeekState();
     _playing = false;
-    _error = error;
+    _error = message;
     if (player != null) unawaited(_disposePlayer(player));
     notifyListeners();
   }
+
+  /// 把失败消息与当前路由的诊断快照合成一条提示；
+  /// 直接路由（无回调）原样返回，行为与过去完全一致。
+  /// 回环路由先把消息里的本机回环地址整体替换为“本机视频入口”，
+  /// 避免转发凭据出现在界面上，再附上撤销前取得的安全进度快照。
+  String _composeMediaRouteFailure(String baseMessage) {
+    final describeFailure = _mediaRouteFailureDescriber;
+    final routedUrl = _mediaRouteUrl;
+    if (describeFailure == null || routedUrl == null) return baseMessage;
+    final message = baseMessage.replaceAll(routedUrl, '本机视频入口');
+    final String? summary;
+    try {
+      summary = describeFailure();
+    } on Object {
+      // 诊断快照失败不能吞掉原始错误，只省略诊断部分。
+      return message;
+    }
+    if (summary.isEmpty) return message;
+    return '$message（$summary）';
+  }
+
+  /// 丢弃当前路由的诊断状态；与 token 生命周期同步调用，
+  /// 重试与销毁不会把旧链路的回调或地址带进新一代会话。
+  void _clearMediaRouteDiagnostics() {
+    _mediaRouteFailureDescriber = null;
+    _mediaRouteUrl = null;
+  }
+
+  /// mpv 打不开流的终态错误片段。初始化期间仅它触发收束，
+  /// 其余 stream.error 告警（解码、外挂字幕等）照常只上报，不中断初始化。
+  static bool _isTerminalOpenFailure(String message) =>
+      message.contains('Failed to open');
 
   Future<void> _disposePlayer(Player player) async {
     if (_disposingPlayers.any((item) => identical(item, player))) {
@@ -390,9 +436,17 @@ class PlayerController extends ChangeNotifier {
       }),
       player.stream.error.listen((message) {
         if (_disposed || generation != _initializationGeneration) return;
+        // 打不开流是初始化的终态失败：直接走收束流程，避免随后
+        // 完成路径把错误静默清空。其余非致命告警照常仅上报。
+        if (!_initialized &&
+            _isInitializing &&
+            _isTerminalOpenFailure(message)) {
+          _collapseInitialization(generation, message);
+          return;
+        }
         // 解码错误照实上报；等待中的定位一并结束，避免错误后还有续作恢复播放。
         _endPendingSeek();
-        _error = message;
+        _error = _composeMediaRouteFailure(message);
         _playing = false;
         _notifyPlaybackState(immediate: true);
       }),
@@ -652,7 +706,7 @@ class PlayerController extends ChangeNotifier {
     if (_disposed) return;
     // 等待中的定位一并结束，错误提示后不留下会恢复播放的旧请求。
     _endPendingSeek();
-    _error = '播放缓冲超时，请稍后重试';
+    _error = _composeMediaRouteFailure('播放缓冲超时，请稍后重试');
     _playing = false;
     final player = _player;
     if (player != null) unawaited(_runCommand(player.pause));
@@ -1045,6 +1099,7 @@ class PlayerController extends ChangeNotifier {
     _resetSeekState();
     _mediaRequestRouter.revoke(_mediaRouteToken);
     _mediaRouteToken = null;
+    _clearMediaRouteDiagnostics();
     final player = _player;
     _player = null;
     _videoController = null;

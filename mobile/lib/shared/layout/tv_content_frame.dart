@@ -6,11 +6,11 @@ import 'package:flutter/material.dart';
 import '../../core/theme.dart';
 
 class TvContentFrame extends StatelessWidget {
-  /// [maxWidth] 复用 LumaLayout 的 content/detail/form 最大宽度档位。
+  /// [maxWidth] 默认采用 TV 内容宽度；表单和详情可提供各自的宽度上限。
   const TvContentFrame({
     super.key,
     required this.child,
-    this.maxWidth = LumaLayout.contentMaxWidth,
+    this.maxWidth = LumaTvLayout.contentMaxWidth,
     this.backgroundColor,
   });
 

@@ -21,6 +21,7 @@ class LumaFocusableSurface extends StatefulWidget {
     this.onFocusChange,
     this.focusId,
     this.focusBorderWidth = 2,
+    this.paintFocusBorder = true,
   });
 
   final String label;
@@ -46,6 +47,9 @@ class LumaFocusableSurface extends StatefulWidget {
 
   /// 聚焦描边宽度；TV 使用 3dp 保证观看距离可见，普通端保持 2dp。
   final double focusBorderWidth;
+
+  /// 为 false 时不在整张卡片上描边，子组件用 [LumaFocusMark] 只标出封面。
+  final bool paintFocusBorder;
 
   @override
   State<LumaFocusableSurface> createState() => _LumaFocusableSurfaceState();
@@ -120,8 +124,35 @@ class _LumaFocusableSurfaceState extends State<LumaFocusableSurface> {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
+    final interactive = Material(
+      type: MaterialType.transparency,
+      child: InkWell(
+        mouseCursor: SystemMouseCursors.click,
+        focusNode: widget.focusNode ?? _ownedNode,
+        autofocus: widget.autofocus,
+        onTap: widget.onActivate,
+        onLongPress: widget.onLongPress,
+        onFocusChange: _handleFocusChange,
+        onHover: (value) => setState(() => _hovered = value),
+        splashFactory: NoSplash.splashFactory,
+        overlayColor: const WidgetStatePropertyAll(Colors.transparent),
+        borderRadius: widget.borderRadius,
+        child: LumaFocusMark(
+          focused: _focused,
+          child: Padding(padding: widget.contentPadding, child: widget.child),
+        ),
+      ),
+    );
+    if (!widget.paintFocusBorder) {
+      return Semantics(button: true, label: widget.label, child: interactive);
+    }
     final border = _focused
-        ? Border.all(color: colors.primary, width: widget.focusBorderWidth)
+        ? Border.all(
+            color: widget.focusBorderWidth >= LumaTvLayout.focusStroke
+                ? colors.onSurface
+                : colors.primary,
+            width: widget.focusBorderWidth,
+          )
         : _hovered
         ? Border.all(color: colors.outlineVariant)
         : null;
@@ -135,23 +166,66 @@ class _LumaFocusableSurfaceState extends State<LumaFocusableSurface> {
           borderRadius: widget.borderRadius,
           border: border,
         ),
-        child: Material(
-          type: MaterialType.transparency,
-          child: InkWell(
-            mouseCursor: SystemMouseCursors.click,
-            focusNode: widget.focusNode ?? _ownedNode,
-            autofocus: widget.autofocus,
-            onTap: widget.onActivate,
-            onLongPress: widget.onLongPress,
-            onFocusChange: _handleFocusChange,
-            onHover: (value) => setState(() => _hovered = value),
-            splashFactory: NoSplash.splashFactory,
-            overlayColor: const WidgetStatePropertyAll(Colors.transparent),
-            borderRadius: widget.borderRadius,
-            child: Padding(padding: widget.contentPadding, child: widget.child),
-          ),
+        child: interactive,
+      ),
+    );
+  }
+}
+
+/// 把当前表面的焦点传给封面等局部装饰，不额外占用布局。
+class LumaFocusMark extends InheritedWidget {
+  const LumaFocusMark({super.key, required this.focused, required super.child});
+
+  final bool focused;
+
+  /// 最近一层可聚焦表面是否持有焦点；没有表面时视为未聚焦。
+  static bool focusedOf(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<LumaFocusMark>()?.focused ??
+      false;
+
+  @override
+  bool updateShouldNotify(LumaFocusMark oldWidget) =>
+      focused != oldWidget.focused;
+}
+
+/// 只沿封面绘制电视焦点，标题留在描边外面，避免笔画切进文字。
+class TvArtworkFocus extends StatelessWidget {
+  const TvArtworkFocus({
+    super.key,
+    required this.borderRadius,
+    required this.child,
+  });
+
+  final BorderRadius borderRadius;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final focused = LumaFocusMark.focusedOf(context);
+    final color = Theme.of(context).colorScheme.onSurface;
+    return AnimatedContainer(
+      duration: LumaMotion.forContext(context, LumaMotion.fast),
+      curve: Curves.easeOutQuart,
+      decoration: BoxDecoration(
+        borderRadius: borderRadius,
+        boxShadow: focused
+            ? [
+                BoxShadow(
+                  color: color.withValues(alpha: 0.24),
+                  blurRadius: 16,
+                  spreadRadius: 1,
+                ),
+              ]
+            : null,
+      ),
+      foregroundDecoration: BoxDecoration(
+        borderRadius: borderRadius,
+        border: Border.all(
+          color: focused ? color : const Color(0x00000000),
+          width: LumaTvLayout.focusStroke,
         ),
       ),
+      child: ClipRRect(borderRadius: borderRadius, child: child),
     );
   }
 }

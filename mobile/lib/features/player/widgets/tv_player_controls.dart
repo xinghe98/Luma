@@ -135,114 +135,135 @@ class _TvPlayerControlsState extends State<TvPlayerControls> {
           horizontal: viewport.width * LumaTvLayout.safeAreaRatio,
           vertical: viewport.height * LumaTvLayout.safeAreaRatio,
         );
-        return Padding(
-          padding: safePadding,
-          child: FocusTraversalGroup(
-            // 拉伸使进度条占满整行，速度按钮可靠左对齐。
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Row(
-                  children: [
-                    _TvControl(
-                      key: const ValueKey('tv-player-close'),
-                      label: '关闭播放器',
-                      icon: Icons.close_rounded,
-                      onActivate: widget.onClose,
-                      focusNode: _closeNode,
+        return DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                extras.playerInk.withValues(alpha: 0),
+                extras.playerInk.withValues(alpha: 0.85),
+              ],
+              stops: const [0.35, 1],
+            ),
+          ),
+          child: Padding(
+            padding: safePadding,
+            child: FocusTraversalGroup(
+              child: Column(
+                key: const ValueKey('tv-player-bottom-controls'),
+                mainAxisAlignment: MainAxisAlignment.end,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    controller.item.title,
+                    key: const ValueKey('tv-player-title'),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: titleStyle,
+                  ),
+                  if (controller.item.resolution.isNotEmpty)
+                    Text(controller.item.resolution, style: subtitleStyle),
+                  const SizedBox(height: LumaSpacing.md),
+                  // 时间轴独立一行；左右键仍按十秒步长定位，确认键播放或暂停。
+                  Shortcuts(
+                    shortcuts: {
+                      SingleActivator(LogicalKeyboardKey.arrowLeft):
+                          VoidCallbackIntent(() => controller.seekBy(-10)),
+                      SingleActivator(LogicalKeyboardKey.arrowRight):
+                          VoidCallbackIntent(() => controller.seekBy(10)),
+                    },
+                    child: LumaFocusableSurface(
+                      key: const ValueKey('tv-player-timeline'),
+                      label: '播放进度：左右键快退快进 10 秒，确认键播放或暂停',
+                      onActivate: controller.togglePlay,
+                      focusNode: _timelineNode,
+                      focusBorderWidth: LumaTvLayout.focusStroke,
+                      borderRadius: BorderRadius.circular(LumaRadii.small),
+                      child: ExcludeFocus(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            vertical: LumaSpacing.xs,
+                          ),
+                          child: PlayerTimeline(controller: controller),
+                        ),
+                      ),
                     ),
-                    const SizedBox(width: LumaSpacing.sm),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                  ),
+                  const SizedBox(height: LumaSpacing.md),
+                  LayoutBuilder(
+                    builder: (context, constraints) {
+                      final transport = Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Text(
-                            controller.item.title,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: titleStyle,
+                          _TvControl(
+                            key: const ValueKey('tv-player-rewind'),
+                            label: '后退 10 秒',
+                            icon: Icons.replay_10_rounded,
+                            onActivate: () => controller.seekBy(-10),
                           ),
-                          if (controller.item.resolution.isNotEmpty)
-                            Text(
-                              controller.item.resolution,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: subtitleStyle,
-                            ),
+                          const SizedBox(width: LumaSpacing.sm),
+                          _TvControl(
+                            key: const ValueKey('tv-player-play'),
+                            label: controller.playing ? '暂停' : '播放',
+                            icon: controller.playing
+                                ? Icons.pause_rounded
+                                : Icons.play_arrow_rounded,
+                            onActivate: controller.togglePlay,
+                            focusNode: _playNode,
+                            autofocus: true,
+                            primary: true,
+                          ),
+                          const SizedBox(width: LumaSpacing.sm),
+                          _TvControl(
+                            key: const ValueKey('tv-player-forward'),
+                            label: '快进 10 秒',
+                            icon: Icons.forward_10_rounded,
+                            onActivate: () => controller.seekBy(10),
+                          ),
                         ],
-                      ),
-                    ),
-                  ],
-                ),
-                const Spacer(),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    _TvControl(
-                      label: '后退 10 秒',
-                      icon: Icons.replay_10_rounded,
-                      onActivate: () => controller.seekBy(-10),
-                    ),
-                    const SizedBox(width: LumaSpacing.lg),
-                    _TvControl(
-                      key: const ValueKey('tv-player-play'),
-                      label: controller.playing ? '暂停' : '播放',
-                      icon: controller.playing
-                          ? Icons.pause_rounded
-                          : Icons.play_arrow_rounded,
-                      onActivate: controller.togglePlay,
-                      focusNode: _playNode,
-                      autofocus: true,
-                    ),
-                    const SizedBox(width: LumaSpacing.lg),
-                    _TvControl(
-                      label: '快进 10 秒',
-                      icon: Icons.forward_10_rounded,
-                      onActivate: () => controller.seekBy(10),
-                    ),
-                  ],
-                ),
-                const Spacer(),
-                // 进度条：外层表面获得焦点，左右键按 ±10 秒定位（非百分比步长），
-                // 确认键切换播放；内部 Slider 不参与焦点，避免其默认键盘步长。
-                Shortcuts(
-                  shortcuts: {
-                    SingleActivator(LogicalKeyboardKey.arrowLeft):
-                        VoidCallbackIntent(() => controller.seekBy(-10)),
-                    SingleActivator(LogicalKeyboardKey.arrowRight):
-                        VoidCallbackIntent(() => controller.seekBy(10)),
-                  },
-                  child: LumaFocusableSurface(
-                    key: const ValueKey('tv-player-timeline'),
-                    label: '播放进度：左右键快退快进 10 秒，确认键播放或暂停',
-                    onActivate: controller.togglePlay,
-                    focusNode: _timelineNode,
-                    focusBorderWidth: LumaTvLayout.focusStroke,
-                    borderRadius: BorderRadius.circular(LumaRadii.small),
-                    child: ExcludeFocus(
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                          vertical: LumaSpacing.xs,
-                        ),
-                        child: PlayerTimeline(controller: controller),
-                      ),
-                    ),
+                      );
+                      final secondary = Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          _TvControl(
+                            key: const ValueKey('tv-player-speed'),
+                            label: '播放速度',
+                            icon: Icons.speed_rounded,
+                            trailing: '${controller.speed}x',
+                            onActivate: _chooseSpeed,
+                            focusNode: _speedNode,
+                          ),
+                          const SizedBox(width: LumaSpacing.sm),
+                          _TvControl(
+                            key: const ValueKey('tv-player-close'),
+                            label: '关闭播放器',
+                            icon: Icons.close_rounded,
+                            onActivate: widget.onClose,
+                            focusNode: _closeNode,
+                          ),
+                        ],
+                      );
+                      // 窄电视窗口为次要操作另起一行，主运输区仍保持左右顺序。
+                      if (constraints.maxWidth < 520) {
+                        return Column(
+                          key: const ValueKey('tv-player-transport'),
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            transport,
+                            const SizedBox(height: LumaSpacing.sm),
+                            secondary,
+                          ],
+                        );
+                      }
+                      return Row(
+                        key: const ValueKey('tv-player-transport'),
+                        children: [transport, const Spacer(), secondary],
+                      );
+                    },
                   ),
-                ),
-                const SizedBox(height: LumaSpacing.sm),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: _TvControl(
-                    key: const ValueKey('tv-player-speed'),
-                    label: '播放速度',
-                    icon: Icons.speed_rounded,
-                    trailing: '${controller.speed}x',
-                    onActivate: _chooseSpeed,
-                    focusNode: _speedNode,
-                  ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         );
@@ -261,6 +282,7 @@ class _TvControl extends StatelessWidget {
     this.trailing,
     this.focusNode,
     this.autofocus = false,
+    this.primary = false,
   });
 
   final String label;
@@ -271,6 +293,7 @@ class _TvControl extends StatelessWidget {
   final String? trailing;
   final FocusNode? focusNode;
   final bool autofocus;
+  final bool primary;
 
   @override
   Widget build(BuildContext context) {
@@ -289,6 +312,12 @@ class _TvControl extends StatelessWidget {
       child: Container(
         height: LumaTvLayout.controlMinHeight,
         padding: const EdgeInsets.symmetric(horizontal: LumaSpacing.md),
+        decoration: primary
+            ? BoxDecoration(
+                color: extras.onPlayerInk.withValues(alpha: 0.18),
+                borderRadius: BorderRadius.circular(LumaRadii.small),
+              )
+            : null,
         alignment: Alignment.center,
         child: Row(
           mainAxisSize: MainAxisSize.min,

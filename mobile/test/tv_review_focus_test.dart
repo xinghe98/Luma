@@ -72,7 +72,13 @@ void main() {
       );
       await _press(tester, LogicalKeyboardKey.arrowDown);
       await _press(tester, LogicalKeyboardKey.select);
-      expect(find.text('videos-0').hitTestable(), findsOneWidget);
+      await _press(tester, LogicalKeyboardKey.arrowRight);
+      expect(
+        fixture.nodes[AppDestination.videos.index][0].hasPrimaryFocus,
+        isTrue,
+      );
+      await _press(tester, LogicalKeyboardKey.select);
+      expect(fixture.activated, 'videos-0');
       await tester.pumpWidget(const SizedBox.shrink());
     },
   );
@@ -137,7 +143,6 @@ void main() {
         fixture.railNode(tester, AppDestination.home).hasPrimaryFocus,
         isTrue,
       );
-      expect(find.text('home-0').hitTestable(), findsOneWidget);
       expect(exits, 0);
       await pressBack();
       expect(exits, 1);

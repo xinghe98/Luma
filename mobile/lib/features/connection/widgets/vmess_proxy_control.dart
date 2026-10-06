@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import '../../../app/app_scope.dart';
 import '../../../core/theme.dart';
 import '../../../data/proxy/vmess_proxy_controller.dart';
+import '../../../shared/interaction/tv_key_bindings.dart';
 import '../../../shared/layout/surface_card.dart';
 import '../../settings/dialogs/confirmation_dialog.dart';
 import '../../settings/dialogs/tv_field_halo.dart';
@@ -32,6 +33,8 @@ class VmessProxyAppBarAction extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final television =
+        AppScope.maybeOf(context)?.deviceProfile.isTelevision ?? false;
     return ListenableBuilder(
       listenable: controller,
       builder: (context, _) {
@@ -51,9 +54,11 @@ class VmessProxyAppBarAction extends StatelessWidget {
               : null,
           style: TextButton.styleFrom(
             foregroundColor: Theme.of(context).colorScheme.primary,
-            minimumSize: const Size(
+            minimumSize: Size(
               LumaLayout.minTapTarget,
-              LumaLayout.minTapTarget,
+              television
+                  ? LumaTvLayout.controlMinHeight
+                  : LumaLayout.minTapTarget,
             ),
             padding: const EdgeInsets.symmetric(horizontal: LumaSpacing.sm),
           ),
@@ -76,13 +81,18 @@ Future<void> showVmessProxyDialog(
   return showDialog<void>(
     context: context,
     animationStyle: AnimationStyle.noAnimation,
-    builder: (_) => _VmessProxyDialog(
-      controller: controller,
-      onStart: onStart,
-      onStop: onStop,
-      onImport: onImport,
-      onDelete: onDelete,
-    ),
+    builder: (context) {
+      final dialog = _VmessProxyDialog(
+        controller: controller,
+        onStart: onStart,
+        onStop: onStop,
+        onImport: onImport,
+        onDelete: onDelete,
+      );
+      return AppScope.maybeOf(context)?.deviceProfile.isTelevision == true
+          ? TvKeyBindings(child: dialog)
+          : dialog;
+    },
   );
 }
 
@@ -189,7 +199,9 @@ class _VmessProxyDialogState extends State<_VmessProxyDialog> {
         alignLabelWithHint: true,
         suffixIcon: IconButton(
           tooltip: '粘贴',
-          visualDensity: VisualDensity.compact,
+          visualDensity: isTelevision
+              ? VisualDensity.standard
+              : VisualDensity.compact,
           onPressed: !enabled ? null : () => unawaited(_paste()),
           icon: const Icon(Icons.content_paste_rounded),
         ),
@@ -201,8 +213,8 @@ class _VmessProxyDialogState extends State<_VmessProxyDialog> {
     );
     if (!isTelevision) return field;
     return TvTextFieldGate(
-      // 无已存配置时打开弹窗即落在字段闸门；更换节点视图不抢走按钮焦点。
-      autofocus: !_hasSavedProfile,
+      // 编辑区首次挂载即落在闸门，打开或更换节点均不自动弹出 IME。
+      autofocus: true,
       fieldFocusNode: _linkFocus,
       builder: (context, focused) =>
           TvFieldHalo(focused: focused, child: field),
@@ -220,6 +232,12 @@ class _VmessProxyDialogState extends State<_VmessProxyDialog> {
     final muted = theme.colorScheme.onSurfaceVariant;
 
     return AlertDialog(
+      constraints: isTelevision
+          ? const BoxConstraints(minWidth: 480, maxWidth: 640)
+          : null,
+      insetPadding: isTelevision
+          ? const EdgeInsets.all(LumaSpacing.lg)
+          : const EdgeInsets.symmetric(horizontal: 40, vertical: 24),
       scrollable: true,
       title: Text(_dialogTitle(showDisconnect: showDisconnect)),
       titlePadding: const EdgeInsets.fromLTRB(
@@ -287,6 +305,7 @@ class _VmessProxyDialogState extends State<_VmessProxyDialog> {
   List<Widget> _buildActionColumn({required bool showDisconnect}) {
     final primary = showDisconnect
         ? FilledButton(
+            autofocus: isTelevision,
             style: _primaryStyle(),
             onPressed: _busy ? null : () => unawaited(_disconnect()),
             child: Text(_disconnectLabel),
@@ -300,6 +319,7 @@ class _VmessProxyDialogState extends State<_VmessProxyDialog> {
             child: Text(_replaceLabel),
           )
         : FilledButton(
+            autofocus: isTelevision && _hasSavedProfile,
             style: _primaryStyle(),
             onPressed: _busy ? null : () => unawaited(_onPrimaryPressed()),
             child: Text(_primaryLabel),

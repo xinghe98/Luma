@@ -72,10 +72,8 @@ void main() {
           });
           final items = List.generate(60, _item);
           String? activated;
-          final width = (size.width - 169 - size.width * 0.1 - 40).clamp(
-            0.0,
-            1240.0,
-          );
+          final width = (size.width - LumaTvLayout.navigationWidthCompact - 88)
+              .clamp(0.0, LumaTvLayout.contentMaxWidth);
           final columns = const TvMediaGridGeometry().columnsFor(width);
           await tester.pumpWidget(
             AppScope(

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../app/app_scope.dart';
 import '../../core/theme.dart';
 import '../../data/models/media_item.dart';
 import '../../data/models/media_types.dart';
@@ -44,6 +45,8 @@ class MediaArtwork extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final television =
+        AppScope.maybeOf(context)?.deviceProfile.isTelevision ?? false;
     final imagePath = useCardThumbnail && item.cardThumbnailUrl.isNotEmpty
         ? item.cardThumbnailUrl
         : item.thumbnailUrl;
@@ -62,7 +65,7 @@ class MediaArtwork extends StatelessWidget {
                 final dpr = MediaQuery.devicePixelRatioOf(context);
                 final logicalWidth = constraints.maxWidth;
                 final logicalHeight = constraints.maxHeight;
-                // 卡片同时约束物理宽高，避免竖图解码最终会被 cover 裁掉的像素。
+                // TV 横版画幅可能裁切服务端缩略图，解码时必须保留原图比例。
                 final resolvedCacheWidth =
                     cacheWidth ??
                     (logicalWidth.isFinite && logicalWidth > 0
@@ -81,6 +84,9 @@ class MediaArtwork extends StatelessWidget {
                   fallback: placeholder,
                   cacheWidth: resolvedCacheWidth,
                   cacheHeight: resolvedCacheHeight,
+                  resizePolicy: television
+                      ? ResizeImagePolicy.fit
+                      : ResizeImagePolicy.exact,
                 );
               },
             )

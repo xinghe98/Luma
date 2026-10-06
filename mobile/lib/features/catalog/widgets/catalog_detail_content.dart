@@ -148,7 +148,7 @@ class _CatalogDetailContentState extends State<CatalogDetailContent> {
           LumaSpacing.sm;
     }
     final scrollBody = Theme(
-      data: catalogDetailTheme(context),
+      data: isTelevision ? Theme.of(context) : catalogDetailTheme(context),
       child: CustomScrollView(
         controller: _scroll,
         cacheExtent: LumaLayout.scrollCacheExtent,
@@ -169,8 +169,10 @@ class _CatalogDetailContentState extends State<CatalogDetailContent> {
           SliverToBoxAdapter(
             child: Center(
               child: ConstrainedBox(
-                constraints: const BoxConstraints(
-                  maxWidth: LumaLayout.detailMaxWidth,
+                constraints: BoxConstraints(
+                  maxWidth: isTelevision
+                      ? LumaTvLayout.contentMaxWidth
+                      : LumaLayout.detailMaxWidth,
                 ),
                 child: Padding(
                   padding: LumaLayout.pagePadding(
@@ -195,7 +197,11 @@ class _CatalogDetailContentState extends State<CatalogDetailContent> {
                                 widget.item.overview,
                                 style: Theme.of(context).textTheme.bodyLarge
                                     ?.copyWith(
-                                      color: CatalogDetailPalette.text,
+                                      color: isTelevision
+                                          ? Theme.of(
+                                              context,
+                                            ).colorScheme.onSurface
+                                          : CatalogDetailPalette.text,
                                       fontWeight: FontWeight.w500,
                                       letterSpacing: 0.1,
                                     ),
@@ -213,7 +219,11 @@ class _CatalogDetailContentState extends State<CatalogDetailContent> {
                                   ].join(' · '),
                                   style: Theme.of(context).textTheme.bodyMedium
                                       ?.copyWith(
-                                        color: CatalogDetailPalette.muted,
+                                        color: isTelevision
+                                            ? Theme.of(
+                                                context,
+                                              ).colorScheme.onSurfaceVariant
+                                            : CatalogDetailPalette.muted,
                                       ),
                                 ),
                               ],
@@ -223,6 +233,7 @@ class _CatalogDetailContentState extends State<CatalogDetailContent> {
                                 const SizedBox(height: LumaSpacing.md),
                                 CatalogCreditStrip(
                                   credits: widget.item.credits,
+                                  television: isTelevision,
                                 ),
                               ],
                             ],
@@ -237,7 +248,10 @@ class _CatalogDetailContentState extends State<CatalogDetailContent> {
                             children: [
                               const CatalogSectionHeading(title: '演职员'),
                               const SizedBox(height: LumaSpacing.md),
-                              CatalogCreditStrip(credits: widget.item.credits),
+                              CatalogCreditStrip(
+                                credits: widget.item.credits,
+                                television: isTelevision,
+                              ),
                             ],
                           ),
                         ),
@@ -290,9 +304,14 @@ class _CatalogDetailContentState extends State<CatalogDetailContent> {
           if (episodeRows.isNotEmpty)
             SliverLayoutBuilder(
               builder: (context, constraints) {
+                final maxWidth = isTelevision
+                    ? LumaTvLayout.contentMaxWidth
+                    : LumaLayout.detailMaxWidth;
                 final outside =
-                    ((constraints.crossAxisExtent - LumaLayout.detailMaxWidth)
-                        .clamp(0, double.infinity)) /
+                    ((constraints.crossAxisExtent - maxWidth).clamp(
+                      0,
+                      double.infinity,
+                    )) /
                     2;
                 return SliverPadding(
                   padding: EdgeInsets.fromLTRB(

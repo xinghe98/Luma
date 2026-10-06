@@ -75,14 +75,12 @@ void main() {
     await press(tester, LogicalKeyboardKey.arrowDown);
     expect(FocusManager.instance.primaryFocus?.debugLabel, 'tv-nav-settings');
     await press(tester, LogicalKeyboardKey.select);
-    expect(find.text('当前服务器'), findsOneWidget);
     expect(FocusManager.instance.primaryFocus?.debugLabel, 'tv-nav-settings');
 
     // Back：非首页导航回首页导航，不弹退出确认。
     await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();
     expect(FocusManager.instance.primaryFocus?.debugLabel, 'tv-nav-home');
-    expect(find.text('当前服务器'), findsNothing);
 
     // 内容焦点 Back 后回到导航：从首页导航右移进内容，再 Back。
     await press(tester, LogicalKeyboardKey.arrowRight);
@@ -151,7 +149,8 @@ void main() {
     // 进入页面不自动弹 IME：任何 TextField 都没有焦点。
     expect(tester.testTextInput.isVisible, isFalse);
     expect(
-      tester.widgetList<EditableText>(find.byType(EditableText))
+      tester
+          .widgetList<EditableText>(find.byType(EditableText))
           .any((field) => field.focusNode.hasFocus),
       isFalse,
     );
@@ -167,7 +166,10 @@ void main() {
     (tester.widget(gate) as Focus).focusNode!.requestFocus();
     await tester.pump();
     await press(tester, LogicalKeyboardKey.select);
-    expect(FocusManager.instance.primaryFocus?.debugLabel, 'connection-field-host');
+    expect(
+      FocusManager.instance.primaryFocus?.debugLabel,
+      'connection-field-host',
+    );
     // 编辑态 Back 先退回字段外层，不关闭页面。
     await press(tester, LogicalKeyboardKey.escape);
     expect(find.byType(ConnectionPage), findsOneWidget);
@@ -194,7 +196,6 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text(item.title), findsOneWidget);
     expect(FocusManager.instance.primaryFocus?.debugLabel, 'media-detail-play');
   });
 

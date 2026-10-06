@@ -228,22 +228,61 @@ class _SearchPageState extends State<SearchPage>
               ),
               sliver: SliverList(
                 delegate: SliverChildListDelegate.fixed([
-                  // TV：外层字段持浏览焦点，OK 才进入编辑并弹出 IME；
-                  // 防抖更新与结果返回都不得抢走编辑焦点。
-                  if (isTelevision)
-                    TvTextFieldGate(
-                      fieldFocusNode: _searchFocus,
-                      builder: (context, gateFocused) => SearchInput(
-                        textController: _text,
-                        focusNode: _searchFocus,
-                        autofocus: false,
-                        television: gateFocused,
-                        onChanged: controller.setQuery,
-                        onSubmitted: _onSubmitted,
-                        onClear: _clearQuery,
+                  if (isTelevision) ...[
+                    Padding(
+                      padding: const EdgeInsets.only(top: 16, bottom: 24),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              '搜索',
+                              style: Theme.of(context).textTheme.headlineLarge,
+                            ),
+                          ),
+                          RecentSearches(
+                            terms: controller.recent,
+                            onSelect: _selectRecent,
+                            onClear: controller.clearRecent,
+                            television: true,
+                          ),
+                        ],
                       ),
-                    )
-                  else
+                    ),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TvTextFieldGate(
+                            fieldFocusNode: _searchFocus,
+                            builder: (context, gateFocused) => SearchInput(
+                              textController: _text,
+                              focusNode: _searchFocus,
+                              autofocus: false,
+                              television: gateFocused,
+                              remoteLayout: true,
+                              onChanged: controller.setQuery,
+                              onSubmitted: _onSubmitted,
+                              onClear: _clearQuery,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        FilledButton.icon(
+                          key: const ValueKey('tv-submit-search'),
+                          onPressed: () => _onSubmitted(_text.text),
+                          icon: const Icon(Icons.search_rounded),
+                          label: const Text('搜索'),
+                        ),
+                        if (controller.hasCriteria) ...[
+                          const SizedBox(width: 12),
+                          TextButton(
+                            onPressed: _clearAll,
+                            child: const Text('清除'),
+                          ),
+                        ],
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+                  ] else
                     SearchInput(
                       textController: _text,
                       focusNode: _searchFocus,
@@ -252,18 +291,21 @@ class _SearchPageState extends State<SearchPage>
                       onSubmitted: controller.remember,
                       onClear: _clearQuery,
                     ),
-                  RecentSearches(
-                    terms: controller.recent,
-                    onSelect: _selectRecent,
-                    onClear: controller.clearRecent,
-                  ),
+                  if (!isTelevision)
+                    RecentSearches(
+                      terms: controller.recent,
+                      onSelect: _selectRecent,
+                      onClear: controller.clearRecent,
+                    ),
                   SearchFilters(
                     type: controller.type,
                     tagId: controller.tagId,
                     tags: controller.tags,
                     onType: controller.setType,
                     onTag: controller.toggleTag,
+                    television: isTelevision,
                   ),
+                  if (isTelevision) const SizedBox(height: 24),
                 ]),
               ),
             ),
@@ -296,13 +338,20 @@ class _SearchPageState extends State<SearchPage>
               )
             : scrollBody;
         return Scaffold(
-          appBar: AppBar(
-            title: ScrollToTopAppBarTitle(title: '搜索', controller: _scroll),
-          ),
+          appBar: isTelevision
+              ? null
+              : AppBar(
+                  title: ScrollToTopAppBarTitle(
+                    title: '搜索',
+                    controller: _scroll,
+                  ),
+                ),
           body: Center(
             child: ConstrainedBox(
-              constraints: const BoxConstraints(
-                maxWidth: LumaLayout.contentMaxWidth,
+              constraints: BoxConstraints(
+                maxWidth: isTelevision
+                    ? LumaTvLayout.contentMaxWidth
+                    : LumaLayout.contentMaxWidth,
               ),
               child: content,
             ),

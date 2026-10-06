@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../../../core/theme.dart';
 import '../../../shared/layout/adaptive_action_width.dart';
+import '../../settings/dialogs/tv_field_halo.dart';
 import '../../shell/widgets/tv_field_gate.dart';
 import '../connection_controller.dart';
 import 'connection_notice.dart';
@@ -76,56 +77,68 @@ class _ConnectionFormState extends State<ConnectionForm> {
   @override
   Widget build(BuildContext context) {
     // TV 焦点顺序：地址 → 端口 → 用户名 → 密码 → 立即连接；代理入口
-    // 在 AppBar 上独立可达。Next/Done 沿用既有提交；普通端维持原布局。
+    // 位于表单标题旁。Next/Done 沿用既有提交；普通端维持原布局。
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              flex: 3,
-              child: _tvField(
-                fieldFocusNode: _host,
-                child: TextField(
-                  controller: widget.hostController,
-                  focusNode: _host,
-                  autofocus: false,
-                  enabled: widget.enabled && !widget.controller.isLoading,
-                  keyboardType: TextInputType.url,
-                  textInputAction: TextInputAction.next,
-                  autocorrect: false,
-                  onSubmitted: widget.television ? _submitHost : null,
-                  decoration: const InputDecoration(
-                    labelText: 'IP 地址',
-                    hintText: '192.168.1.10',
-                    prefixIcon: Icon(Icons.dns_outlined),
-                  ),
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final host = _tvField(
+              fieldFocusNode: _host,
+              child: TextField(
+                controller: widget.hostController,
+                focusNode: _host,
+                autofocus: false,
+                enabled: widget.enabled && !widget.controller.isLoading,
+                keyboardType: TextInputType.url,
+                textInputAction: TextInputAction.next,
+                autocorrect: false,
+                onSubmitted: widget.television ? _submitHost : null,
+                decoration: const InputDecoration(
+                  labelText: 'IP 地址',
+                  hintText: '192.168.1.10',
+                  prefixIcon: Icon(Icons.dns_outlined),
                 ),
               ),
-            ),
-            const SizedBox(width: LumaSpacing.sm),
-            Expanded(
-              flex: 2,
-              child: _tvField(
-                fieldFocusNode: _port,
-                child: TextField(
-                  controller: widget.portController,
-                  focusNode: _port,
-                  enabled: widget.enabled && !widget.controller.isLoading,
-                  keyboardType: TextInputType.number,
-                  textInputAction: TextInputAction.next,
-                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                  onSubmitted: widget.television ? _submitPort : null,
-                  decoration: const InputDecoration(
-                    labelText: '端口',
-                    hintText: '8080',
-                    prefixIcon: Icon(Icons.tag_rounded),
-                  ),
+            );
+            final port = _tvField(
+              fieldFocusNode: _port,
+              child: TextField(
+                controller: widget.portController,
+                focusNode: _port,
+                enabled: widget.enabled && !widget.controller.isLoading,
+                keyboardType: TextInputType.number,
+                textInputAction: TextInputAction.next,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                onSubmitted: widget.television ? _submitPort : null,
+                decoration: const InputDecoration(
+                  labelText: '端口',
+                  hintText: '8080',
+                  prefixIcon: Icon(Icons.tag_rounded),
                 ),
               ),
-            ),
-          ],
+            );
+            if (widget.television &&
+                (constraints.maxWidth < 400 ||
+                    MediaQuery.textScalerOf(context).scale(18) > 25)) {
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  host,
+                  const SizedBox(height: LumaSpacing.md),
+                  port,
+                ],
+              );
+            }
+            return Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(flex: 3, child: host),
+                const SizedBox(width: LumaSpacing.sm),
+                Expanded(flex: 2, child: port),
+              ],
+            );
+          },
         ),
         const SizedBox(height: LumaSpacing.md),
         _tvField(
@@ -177,7 +190,14 @@ class _ConnectionFormState extends State<ConnectionForm> {
         ),
         const SizedBox(height: LumaSpacing.md),
         AdaptiveActionWidth(
+          maxWidth: widget.television ? 520 : LumaLayout.actionMaxWidth,
           child: FilledButton.icon(
+            style: widget.television
+                ? FilledButton.styleFrom(
+                    minimumSize: const Size(0, LumaTvLayout.controlMinHeight),
+                    textStyle: const TextStyle(fontSize: 18),
+                  )
+                : null,
             focusNode: widget.connectFocusNode,
             onPressed: !widget.enabled || widget.controller.isLoading
                 ? null
@@ -210,41 +230,31 @@ class _ConnectionFormState extends State<ConnectionForm> {
     );
   }
 
-  /// TV：字段包一层浏览闸门，闸门持焦点时用主色描边提示可进入编辑；
+  /// TV：字段包一层浏览闸门，闸门持焦点时描边并确保字段可见；
   /// 普通端原样返回，不引入额外焦点层。
   Widget _tvField({required FocusNode fieldFocusNode, required Widget child}) {
     if (!widget.television) return child;
     return TvTextFieldGate(
       fieldFocusNode: fieldFocusNode,
       autofocus: identical(fieldFocusNode, _host),
-      builder: (context, gateFocused) =>
-          _GateFocusHalo(focused: gateFocused, child: child),
-    );
-  }
-}
-
-/// 闸门浏览焦点的描边；不改字段布局尺寸。
-class _GateFocusHalo extends StatelessWidget {
-  const _GateFocusHalo({required this.focused, required this.child});
-
-  final Widget child;
-  final bool focused;
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedContainer(
-      duration: LumaMotion.forContext(context, LumaMotion.fast),
-      curve: Curves.easeOutQuart,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(LumaRadii.medium),
-        border: focused
-            ? Border.all(
-                color: Theme.of(context).colorScheme.primary,
-                width: LumaTvLayout.focusStroke,
-              )
-            : null,
+      builder: (context, gateFocused) => TvFieldHalo(
+        focused: gateFocused,
+        child: Theme(
+          data: Theme.of(context).copyWith(
+            inputDecorationTheme: Theme.of(context).inputDecorationTheme
+                .copyWith(
+                  constraints: const BoxConstraints(
+                    minHeight: LumaTvLayout.controlMinHeight,
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: LumaSpacing.md,
+                    vertical: LumaSpacing.md,
+                  ),
+                ),
+          ),
+          child: child,
+        ),
       ),
-      child: child,
     );
   }
 }

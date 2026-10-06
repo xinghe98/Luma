@@ -23,7 +23,7 @@ import 'package:luma/features/details/media_detail_page.dart';
 import 'package:luma/features/details/widgets/tv_scrollable_detail_region.dart';
 
 void main() {
-  testWidgets('TV 媒体播放向下到可见收藏，确认只切换收藏', (tester) async {
+  testWidgets('TV 媒体首屏横幅内左右切换播放与收藏，确认只切换收藏', (tester) async {
     final media = _DetailMediaRepository(_media());
     await _mount(
       tester,
@@ -34,7 +34,14 @@ void main() {
     final play = find.byType(FilledButton);
     final favorite = find.byKey(const ValueKey('detail-favorite-action'));
     expect(_node(tester, play).hasPrimaryFocus, isTrue);
-    await _press(tester, LogicalKeyboardKey.arrowDown);
+    final header = find.byKey(const ValueKey('tv-media-viewing-header'));
+    expect(header, findsOneWidget);
+    expect(find.descendant(of: header, matching: play), findsOneWidget);
+    expect(find.descendant(of: header, matching: favorite), findsOneWidget);
+    expect(tester.getRect(play).center.dy, tester.getRect(favorite).center.dy);
+    _expectVisible(tester, play);
+    _expectVisible(tester, favorite);
+    await _press(tester, LogicalKeyboardKey.arrowRight);
     expect(_node(tester, favorite).hasPrimaryFocus, isTrue);
     _expectVisible(tester, favorite);
     await _press(tester, LogicalKeyboardKey.select);
@@ -43,7 +50,7 @@ void main() {
       find.descendant(of: favorite, matching: find.text('已收藏')),
       findsOneWidget,
     );
-    await _press(tester, LogicalKeyboardKey.arrowUp);
+    await _press(tester, LogicalKeyboardKey.arrowLeft);
     expect(_node(tester, play).hasPrimaryFocus, isTrue);
     _expectVisible(tester, play);
   });
@@ -91,6 +98,30 @@ void main() {
         brightness: playable ? Brightness.light : Brightness.dark,
         page: _catalogPage(item, repository, played),
       );
+      final cinematic = find.byKey(
+        const ValueKey('tv-catalog-cinematic-header'),
+      );
+      final identity = find.byKey(const ValueKey('tv-catalog-identity'));
+      expect(cinematic, findsOneWidget);
+      expect(tester.getSize(cinematic).aspectRatio, greaterThan(1.5));
+      expect(
+        tester.getRect(identity).top,
+        greaterThanOrEqualTo(tester.getRect(cinematic).bottom),
+      );
+      expect(
+        find.descendant(of: cinematic, matching: find.byType(FilledButton)),
+        findsOneWidget,
+      );
+      final theme = Theme.of(
+        tester.element(find.byKey(const ValueKey('tv-catalog-play'))),
+      );
+      expect(theme.brightness, playable ? Brightness.light : Brightness.dark);
+      expect(
+        theme.colorScheme.surface,
+        playable
+            ? LumaTheme.light().colorScheme.surface
+            : LumaTheme.dark().colorScheme.surface,
+      );
       final action = playable
           ? find.byType(FilledButton)
           : find.widgetWithText(OutlinedButton, '加入喜欢');
@@ -105,6 +136,33 @@ void main() {
       }
     });
   }
+
+  testWidgets('TV 作品首屏播放与收藏同排，遥控下移可进入选集', (tester) async {
+    final item = _catalog(episodeCount: 3);
+    final repository = _DetailCatalogRepository(item);
+    final played = <String>[];
+    await _mount(
+      tester,
+      size: const Size(1280, 720),
+      page: _catalogPage(item, repository, played),
+    );
+    final play = find.byKey(const ValueKey('tv-catalog-play'));
+    final favorite = find.widgetWithText(OutlinedButton, '加入喜欢');
+    expect(tester.getRect(play).center.dy, tester.getRect(favorite).center.dy);
+    await _press(tester, LogicalKeyboardKey.arrowRight);
+    expect(_node(tester, favorite).hasPrimaryFocus, isTrue);
+    await _press(tester, LogicalKeyboardKey.select);
+    expect(repository.savedFavorite, isTrue);
+    await _press(tester, LogicalKeyboardKey.arrowLeft);
+    expect(_node(tester, play).hasPrimaryFocus, isTrue);
+    await _press(tester, LogicalKeyboardKey.arrowDown);
+    final first = find.byKey(const ValueKey('episode-1'));
+    expect(first, findsOneWidget);
+    expect(_node(tester, first).hasPrimaryFocus, isTrue);
+    _expectVisible(tester, first);
+    await _press(tester, LogicalKeyboardKey.select);
+    expect(played, ['episode-media-1']);
+  });
 
   testWidgets('TV 长简介只滚动自身范围并向下交接第一集', (tester) async {
     final item = _catalog(
@@ -261,6 +319,10 @@ void main() {
       expect(media.item.isFavorite, isTrue);
       expect(find.byTooltip('取消收藏'), findsOneWidget);
       expect(find.byType(TvScrollableDetailRegion), findsNothing);
+      expect(
+        find.byKey(const ValueKey('tv-media-viewing-header')),
+        findsNothing,
+      );
       expect(tester.takeException(), isNull);
 
       // 新路由树避免复用上一页已注册的焦点与控制器。
@@ -293,6 +355,10 @@ void main() {
       expect(played, ['episode-media-1', 'episode-media-1']);
       _expectVisible(tester, first);
       expect(find.byType(TvScrollableDetailRegion), findsNothing);
+      expect(
+        find.byKey(const ValueKey('tv-catalog-cinematic-header')),
+        findsNothing,
+      );
       expect(tester.takeException(), isNull);
     });
   }

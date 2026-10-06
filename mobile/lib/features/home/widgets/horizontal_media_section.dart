@@ -208,7 +208,10 @@ class _HorizontalMediaSectionState extends State<HorizontalMediaSection> {
       stepExtent: cardWidth + spacing,
     );
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: LumaSpacing.md),
+      padding: const EdgeInsets.only(
+        top: LumaSpacing.xs,
+        bottom: LumaSpacing.sm,
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -216,10 +219,7 @@ class _HorizontalMediaSectionState extends State<HorizontalMediaSection> {
             padding: const EdgeInsets.symmetric(
               horizontal: LumaLayout.pagePaddingH,
             ),
-            child: SectionHeader(
-              title: widget.title,
-              subtitle: widget.subtitle,
-            ),
+            child: SectionHeader(title: widget.title),
           ),
           const SizedBox(height: LumaSpacing.md),
           TvFocusCollection(
@@ -229,9 +229,8 @@ class _HorizontalMediaSectionState extends State<HorizontalMediaSection> {
             revealIndex: reveal.revealIndex,
             child: SizedBox(
               height:
-                  cardWidth / 1.6 +
-                  MediaCard.textDetailsHeight(context, titleLines: 1) +
-                  LumaSpacing.xs * 2,
+                  cardWidth / (16 / 9) +
+                  MediaCard.textDetailsHeight(context, titleLines: 1),
               child: ListView.separated(
                 controller: _scroll,
                 padding: const EdgeInsets.symmetric(

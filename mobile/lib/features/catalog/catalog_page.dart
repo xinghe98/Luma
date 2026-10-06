@@ -20,6 +20,7 @@ import '../library/library_controller.dart';
 import '../shell/shell_entry_gate.dart';
 import 'catalog_controller.dart';
 import 'widgets/catalog_card.dart';
+import 'widgets/tv_catalog_header.dart';
 
 export 'catalog_collection_page.dart';
 
@@ -182,26 +183,21 @@ class _CatalogPageState extends State<CatalogPage>
           personalItems.take(6).toList(growable: false),
         );
         return Scaffold(
-          appBar: AppBar(
-            title: ScrollToTopAppBarTitle(
-              title: '影视库',
-              onScrollToTop: _scrollToTop,
-            ),
-            actions: [
-              // TV 使用可见刷新按钮；下拉刷新保留在触控分支。
-              if (isTelevision)
-                IconButton(
-                  tooltip: '刷新影视库',
-                  onPressed: _refresh,
-                  icon: const Icon(Icons.refresh_rounded),
+          appBar: isTelevision
+              ? null
+              : AppBar(
+                  title: ScrollToTopAppBarTitle(
+                    title: '影视库',
+                    onScrollToTop: _scrollToTop,
+                  ),
+                  actions: [
+                    IconButton(
+                      tooltip: '搜索',
+                      onPressed: widget.onOpenSearch,
+                      icon: const Icon(Icons.search_rounded),
+                    ),
+                  ],
                 ),
-              IconButton(
-                tooltip: '搜索',
-                onPressed: widget.onOpenSearch,
-                icon: const Icon(Icons.search_rounded),
-              ),
-            ],
-          ),
           body: NotificationListener<ScrollNotification>(
             onNotification: (notification) {
               if (notification is ScrollUpdateNotification &&
@@ -255,6 +251,20 @@ class _CatalogPageState extends State<CatalogPage>
       physics: const AlwaysScrollableScrollPhysics(),
       cacheExtent: _entrySettled ? LumaLayout.scrollCacheExtent : 0,
       slivers: [
+        if (isTelevision)
+          SliverToBoxAdapter(
+            child: TvCatalogHeader(
+              onSearch: widget.onOpenSearch,
+              onRefresh: _refresh,
+              onMovies: () => widget.onOpenMovies(
+                movies.items.take(12).toList(growable: false),
+              ),
+              onSeries: () => widget.onOpenSeries(
+                series.items.take(12).toList(growable: false),
+              ),
+              onPersonalVideos: openPersonalVideos,
+            ),
+          ),
         if (allEmpty)
           const SliverFillRemaining(
             hasScrollBody: false,

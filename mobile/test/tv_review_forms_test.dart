@@ -199,7 +199,7 @@ void main() {
       expect(
         actionFocus.hasPrimaryFocus,
         isTrue,
-        reason: '方向键应从连接表单移动到 AppBar 的代理入口',
+        reason: '方向键应从连接表单移动到标题旁的代理入口',
       );
 
       await _heldConfirm(tester, LogicalKeyboardKey.select);
@@ -312,7 +312,7 @@ void main() {
 
   for (final (name, size, brightness) in [
     ('手机', const Size(390, 844), Brightness.light),
-    ('宽屏', const Size(1200, 800), Brightness.dark),
+    ('宽屏', const Size(1280, 800), Brightness.dark),
   ]) {
     testWidgets('$name 搜索可直接点按编辑和清除，连接表单直接编辑并 Done 提交', (tester) async {
       _viewport(tester, size);

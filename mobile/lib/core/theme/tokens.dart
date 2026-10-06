@@ -209,13 +209,16 @@ abstract final class LumaLayout {
 abstract final class LumaTvLayout {
   /// 四边安全边距占视口比例，避免电视过扫描裁切内容与焦点。
   static const safeAreaRatio = 0.05;
-  static const navigationWidth = 168.0;
-  static const navigationWidthCompact = 72.0;
+  static const navigationWidth = 224.0;
+  static const navigationWidthCompact = 80.0;
   static const focusStroke = 3.0;
   static const controlMinHeight = 56.0;
   static const cardSpacing = 24.0;
   static const posterMinWidth = 160.0;
-  static const landscapeCardMinWidth = 208.0;
+  static const landscapeCardMinWidth = 256.0;
+  static const featureMinWidth = 760.0;
+  static const contentMaxWidth = 1600.0;
+  static const pagePadding = 32.0;
 
   /// 按扣除导航与边距后的局部宽度计算规则网格列数，夹在 1–5 列。
   static int gridColumns(double width, {double minItemWidth = posterMinWidth}) {

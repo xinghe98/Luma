@@ -8,7 +8,6 @@ import '../../../shared/formatters/duration_formatter.dart';
 import '../../../shared/interaction/luma_focusable_surface.dart';
 import '../../../shared/media/authenticated_media_image.dart';
 import '../../../shared/media/media_card.dart';
-import 'catalog_detail_theme.dart';
 
 /// 显示详情分区标题及可选的右侧摘要。
 class CatalogSectionHeading extends StatelessWidget {
@@ -26,9 +25,9 @@ class CatalogSectionHeading extends StatelessWidget {
       if (trailing != null)
         Text(
           trailing!,
-          style: Theme.of(
-            context,
-          ).textTheme.bodySmall?.copyWith(color: CatalogDetailPalette.muted),
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
         ),
     ],
   );
@@ -36,12 +35,61 @@ class CatalogSectionHeading extends StatelessWidget {
 
 /// 横向显示演员头像，图片容器先固定为正方形再裁成正圆。
 class CatalogCreditStrip extends StatelessWidget {
-  const CatalogCreditStrip({super.key, required this.credits});
+  /// 普通端保留横向头像条，电视端展开完整演职员供上下键逐屏阅读。
+  const CatalogCreditStrip({
+    super.key,
+    required this.credits,
+    this.television = false,
+  });
 
   final List<CatalogCredit> credits;
+  final bool television;
 
   @override
   Widget build(BuildContext context) {
+    if (television) {
+      return Wrap(
+        spacing: LumaSpacing.lg,
+        runSpacing: LumaSpacing.lg,
+        children: [
+          for (final credit in credits)
+            SizedBox(
+              width: 168,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  ClipOval(
+                    child: SizedBox.square(
+                      dimension: 72,
+                      child: AuthenticatedMediaImage(
+                        path: credit.profileUrl,
+                        cacheWidth: 144,
+                        cacheHeight: 144,
+                        fallback: ColoredBox(
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.surfaceContainerHigh,
+                          child: const Icon(Icons.person_rounded),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: LumaSpacing.sm),
+                  Text(
+                    credit.name,
+                    style: Theme.of(context).textTheme.titleSmall,
+                  ),
+                  if (credit.character.isNotEmpty)
+                    Text(
+                      credit.character,
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                ],
+              ),
+            ),
+        ],
+      );
+    }
     final cast = credits
         .where((credit) => credit.role == 'actor')
         .take(12)
@@ -79,11 +127,11 @@ class _CreditPortrait extends StatelessWidget {
               cacheWidth: 112,
               cacheHeight: 112,
               fit: BoxFit.cover,
-              fallback: const ColoredBox(
-                color: CatalogDetailPalette.surfaceHigh,
+              fallback: ColoredBox(
+                color: Theme.of(context).colorScheme.surfaceContainerHigh,
                 child: Icon(
                   Icons.person_rounded,
-                  color: CatalogDetailPalette.muted,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
               ),
             ),
@@ -101,9 +149,9 @@ class _CreditPortrait extends StatelessWidget {
             credit.character,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: Theme.of(
-              context,
-            ).textTheme.bodySmall?.copyWith(color: CatalogDetailPalette.muted),
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
           ),
       ],
     ),
@@ -139,9 +187,11 @@ class CatalogVersionTile extends StatelessWidget {
     ].join(' · ');
     final content = Container(
       padding: const EdgeInsets.symmetric(vertical: LumaSpacing.sm),
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         border: Border(
-          bottom: BorderSide(color: CatalogDetailPalette.outlineVariant),
+          bottom: BorderSide(
+            color: Theme.of(context).colorScheme.outlineVariant,
+          ),
         ),
       ),
       child: Row(
@@ -160,7 +210,7 @@ class CatalogVersionTile extends StatelessWidget {
                   Text(
                     metadata,
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: CatalogDetailPalette.muted,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
                     ),
                   ),
               ],
@@ -170,13 +220,13 @@ class CatalogVersionTile extends StatelessWidget {
             Text(
               _formatFileSize(version.fileSize),
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: CatalogDetailPalette.muted,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
             ),
           const SizedBox(width: LumaSpacing.sm),
-          const Icon(
+          Icon(
             Icons.chevron_right_rounded,
-            color: CatalogDetailPalette.muted,
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
           ),
         ],
       ),
@@ -219,15 +269,17 @@ class _VersionBadge extends StatelessWidget {
       height: 58,
       alignment: Alignment.center,
       decoration: BoxDecoration(
-        border: Border.all(color: CatalogDetailPalette.muted),
+        border: Border.all(
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
+        ),
         borderRadius: BorderRadius.circular(LumaRadii.small),
       ),
       child: Text(
         display,
         textAlign: TextAlign.center,
-        style: Theme.of(
-          context,
-        ).textTheme.labelMedium?.copyWith(color: CatalogDetailPalette.text),
+        style: Theme.of(context).textTheme.labelMedium?.copyWith(
+          color: Theme.of(context).colorScheme.onSurface,
+        ),
       ),
     );
   }
@@ -302,11 +354,11 @@ class CatalogEpisodeTile extends StatelessWidget {
               child: AuthenticatedMediaImage(
                 path: episode.thumbnailUrl,
                 cacheWidth: 224,
-                fallback: const ColoredBox(
-                  color: CatalogDetailPalette.surfaceHigh,
+                fallback: ColoredBox(
+                  color: Theme.of(context).colorScheme.surfaceContainerHigh,
                   child: Icon(
                     Icons.play_circle_outline_rounded,
-                    color: CatalogDetailPalette.muted,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                   ),
                 ),
               ),
@@ -330,14 +382,17 @@ class CatalogEpisodeTile extends StatelessWidget {
                   child: Text(
                     metadata,
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: CatalogDetailPalette.muted,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
                     ),
                   ),
                 ),
             ],
           ),
         ),
-        const Icon(Icons.play_arrow_rounded, color: CatalogDetailPalette.muted),
+        Icon(
+          Icons.play_arrow_rounded,
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
+        ),
       ],
     );
     final body = InkWell(

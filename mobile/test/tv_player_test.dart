@@ -201,6 +201,74 @@ void main() {
       expect(find.byType(PlayerGestureLayer), findsNothing);
     });
 
+    testWidgets('电视控制层底部运输区、时间轴与标题分层，遥控可到倍速和关闭', (tester) async {
+      final harness = _TvSceneHarness.create();
+      addTearDown(harness.dispose);
+      await harness.pump(tester);
+      final transport = tester.getRect(
+        find.byKey(const ValueKey('tv-player-transport')),
+      );
+      final timeline = tester.getRect(
+        find.byKey(const ValueKey('tv-player-timeline')),
+      );
+      final title = tester.getRect(
+        find.byKey(const ValueKey('tv-player-title')),
+      );
+      expect(transport.top, greaterThan(720 * 0.7));
+      expect(timeline.bottom, lessThanOrEqualTo(transport.top));
+      expect(title.bottom, lessThan(timeline.top));
+      expect(
+        find.byKey(const ValueKey('tv-player-close')).hitTestable(),
+        findsOneWidget,
+      );
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+      await tester.pump();
+      expect(
+        harness.surfaceNode(tester, 'tv-player-timeline').hasFocus,
+        isTrue,
+      );
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      await tester.pump();
+      expect(harness.surfaceNode(tester, 'tv-player-play').hasFocus, isTrue);
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+      await tester.pump();
+      expect(harness.surfaceNode(tester, 'tv-player-forward').hasFocus, isTrue);
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+      await tester.pump();
+      expect(harness.surfaceNode(tester, 'tv-player-speed').hasFocus, isTrue);
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+      await tester.pump();
+      expect(harness.surfaceNode(tester, 'tv-player-close').hasFocus, isTrue);
+      await tester.sendKeyEvent(LogicalKeyboardKey.select);
+      await tester.pump();
+      expect(harness.backCalls, 1);
+    });
+
+    for (final width in [320.0, 390.0]) {
+      testWidgets('TV 窄窗口 $width 次要播放器操作换行且全部可见', (tester) async {
+        final harness = _TvSceneHarness.create();
+        addTearDown(harness.dispose);
+        await harness.pump(tester);
+        tester.view.physicalSize = Size(width, 844);
+        await tester.pump();
+        final play = tester.getRect(
+          find.byKey(const ValueKey('tv-player-play')),
+        );
+        final speed = tester.getRect(
+          find.byKey(const ValueKey('tv-player-speed')),
+        );
+        expect(speed.top, greaterThan(play.bottom));
+        for (final key in ['rewind', 'play', 'forward', 'speed', 'close']) {
+          final finder = find.byKey(ValueKey('tv-player-$key'));
+          expect(finder.hitTestable(), findsOneWidget);
+          final rect = tester.getRect(finder);
+          expect(rect.left, greaterThanOrEqualTo(0));
+          expect(rect.right, lessThanOrEqualTo(width));
+        }
+        expect(tester.takeException(), isNull);
+      });
+    }
+
     testWidgets('控制层隐藏时确认键切换播放、显示控制层并把焦点交给播放按钮', (tester) async {
       final harness = _TvSceneHarness.create();
       addTearDown(harness.dispose);
@@ -286,13 +354,13 @@ void main() {
       final volumeBefore = harness.player.volume;
       final positionBefore = harness.player.position;
 
-      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
       await tester.pump();
       expect(playNode.hasFocus, isFalse, reason: '方向键只移动焦点');
       expect(harness.player.volume, volumeBefore);
       expect(harness.player.position, positionBefore);
 
-      await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
       await tester.pump();
       expect(harness.player.volume, volumeBefore);
       expect(harness.player.position, positionBefore);
@@ -599,15 +667,16 @@ class _TvSceneHarness {
     expect(player.initialized, isTrue);
   }
 
-  /// TV 控制层各动作的焦点节点；LumaFocusableSurface 的 InkWell 持有它。
-  FocusNode surfaceNode(WidgetTester tester, String key) => tester
-      .widget<InkWell>(
-        find.descendant(
-          of: find.byKey(ValueKey<String>(key)),
-          matching: find.byType(InkWell),
-        ),
-      )
-      .focusNode!;
+  /// 从按钮真实子树读取 Focus，兼容 InkWell 自己创建的焦点节点。
+  FocusNode surfaceNode(WidgetTester tester, String key) {
+    final surface = tester.widget<InkWell>(
+      find.descendant(
+        of: find.byKey(ValueKey<String>(key)),
+        matching: find.byType(InkWell),
+      ),
+    );
+    return Focus.of(tester.element(find.byWidget(surface.child!).first));
+  }
 
   bool _disposed = false;
 

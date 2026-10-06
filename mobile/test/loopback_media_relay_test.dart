@@ -527,6 +527,296 @@ void main() {
       client.close(force: true);
     },
   );
+
+  test('401 metadata and 206 bytes produce distinct snapshots', () async {
+    final deny = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    addTearDown(() => deny.close(force: true));
+    deny.listen((request) async {
+      // 只回 401 状态，不带响应体，观察快照是否只记录状态而不虚报字节。
+      request.response.statusCode = HttpStatus.unauthorized;
+      await request.response.close();
+    });
+    final client = HttpClient()..findProxy = (_) => 'DIRECT';
+    addTearDown(() => client.close(force: true));
+
+    final deniedRoute = relay.route(
+      'http://127.0.0.1:${deny.port}/video',
+      const {},
+    );
+    final deniedResponse = await (await client.getUrl(
+      Uri.parse(deniedRoute.url),
+    )).close();
+    expect(deniedResponse.statusCode, HttpStatus.unauthorized);
+    await _body(deniedResponse);
+    final deniedSnapshot = deniedRoute.describeFailure!();
+    expect(deniedSnapshot, contains('HTTP 401'));
+    expect(deniedSnapshot, isNot(contains('字节')));
+    _expectSafeSnapshot(deniedSnapshot);
+
+    final mediaRoute = relay.route(
+      'http://127.0.0.1:${upstream.port}/video',
+      const {},
+    );
+    final mediaRequest = await client.getUrl(Uri.parse(mediaRoute.url));
+    mediaRequest.headers.set(HttpHeaders.rangeHeader, 'bytes=2-5');
+    final mediaResponse = await mediaRequest.close();
+    expect(mediaResponse.statusCode, HttpStatus.partialContent);
+    expect(utf8.decode(await _body(mediaResponse)), '2345');
+    final mediaSnapshot = mediaRoute.describeFailure!();
+    expect(mediaSnapshot, contains('HTTP 206'));
+    expect(mediaSnapshot, contains('4 字节'));
+    _expectSafeSnapshot(mediaSnapshot);
+  });
+
+  test(
+    'connection refused reports upstream failure without addresses',
+    () async {
+      final dead = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      final deadPort = dead.port;
+      await dead.close(force: true);
+
+      final route = relay.route('http://127.0.0.1:$deadPort/video', const {});
+      final client = HttpClient()..findProxy = (_) => 'DIRECT';
+      addTearDown(() => client.close(force: true));
+      final snapshotBefore = route.describeFailure!();
+      expect(snapshotBefore, contains('尚未'));
+
+      final response = await (await client.getUrl(
+        Uri.parse(route.url),
+      )).close();
+      expect(response.statusCode, HttpStatus.badGateway);
+      await _body(response);
+
+      final snapshot = route.describeFailure!();
+      expect(snapshot, isNot(contains('尚未')));
+      expect(snapshot, contains('连接失败'));
+      expect(snapshot, isNot(contains('取消')));
+      expect(snapshot, isNot(contains('$deadPort')));
+      _expectSafeSnapshot(snapshot);
+    },
+  );
+
+  test('timed-out upstream headers are classified as timeout', () async {
+    final stalled = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    addTearDown(() => stalled.close(force: true));
+    stalled.listen((request) async {
+      // 收到请求但不返回响应，让转发器的响应头等待超时触发。
+    });
+    await relay.close();
+    relay = LoopbackMediaRelay(
+      createHttpClient: () => HttpClient()..findProxy = (_) => 'DIRECT',
+      authorizationHeadersFor: (_) => const {},
+      responseHeadersTimeout: const Duration(milliseconds: 150),
+    );
+    await relay.start();
+
+    final route = relay.route(
+      'http://127.0.0.1:${stalled.port}/video',
+      const {},
+    );
+    final client = HttpClient()..findProxy = (_) => 'DIRECT';
+    addTearDown(() => client.close(force: true));
+    final response = await (await client.getUrl(Uri.parse(route.url))).close();
+    expect(response.statusCode, HttpStatus.badGateway);
+    await _body(response);
+
+    final snapshot = route.describeFailure!();
+    expect(snapshot, contains('超时'));
+    expect(snapshot, isNot(contains('尚未')));
+    expect(snapshot, isNot(contains('取消')));
+    _expectSafeSnapshot(snapshot);
+  });
+
+  test(
+    'older failed range does not overwrite snapshot of newer range',
+    () async {
+      var requests = 0;
+      final rangeArrived = Completer<void>();
+      final releaseRange = Completer<void>();
+      final origin = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      addTearDown(() => origin.close(force: true));
+      origin.listen((request) async {
+        requests++;
+        if (requests == 1) {
+          // 首次请求成功返回全量，让该路由固定表示。
+          request.response
+            ..statusCode = HttpStatus.ok
+            ..headers.set(HttpHeaders.acceptRangesHeader, 'bytes')
+            ..headers.contentType = ContentType.binary
+            ..contentLength = media.length;
+          if (request.method != 'HEAD') request.response.add(media);
+          await request.response.close();
+          return;
+        }
+        if (requests == 2) {
+          // 挂起较旧的 Range A，等较新的 Range B 完成后再断开其连接。
+          rangeArrived.complete();
+          await releaseRange.future;
+          final socket = await request.response.detachSocket(
+            writeHeaders: false,
+          );
+          socket.destroy();
+          return;
+        }
+        request.response
+          ..statusCode = HttpStatus.partialContent
+          ..headers.set(HttpHeaders.contentRangeHeader, 'bytes 2-5/10')
+          ..headers.contentType = ContentType.binary
+          ..contentLength = 4;
+        if (request.method != 'HEAD') request.response.write('2345');
+        await request.response.close();
+      });
+      final route = relay.route(
+        'http://127.0.0.1:${origin.port}/stream',
+        const {},
+      );
+      final client = HttpClient()..findProxy = (_) => 'DIRECT';
+      addTearDown(() => client.close(force: true));
+
+      // 先成功 warm/pin 同一表示，使后续 Range 不再互相等待地址选择。
+      final warm = await client.getUrl(Uri.parse(route.url));
+      expect(utf8.decode(await _body(await warm.close())), '0123456789');
+
+      // Range A：上游挂起（已到达 origin），此时登记的快照随即被 B 取代。
+      final requestA = await client.getUrl(Uri.parse(route.url));
+      requestA.headers.set(HttpHeaders.rangeHeader, 'bytes=2-5');
+      final outcomeA = requestA.close().then<int>((response) async {
+        await response.drain<void>();
+        return response.statusCode;
+      }, onError: (Object _) => -1);
+      await rangeArrived.future;
+
+      // Range B：在 A 挂起期间正常完成。
+      final requestB = await client.getUrl(Uri.parse(route.url));
+      requestB.headers.set(HttpHeaders.rangeHeader, 'bytes=2-5');
+      final responseB = await requestB.close().timeout(
+        const Duration(seconds: 2),
+      );
+      expect(responseB.statusCode, HttpStatus.partialContent);
+      expect(utf8.decode(await _body(responseB)), '2345');
+
+      // 释放 A：其失败发生在 B 完成之后（乱序），快照必须仍是 B 的。
+      releaseRange.complete();
+      expect(await outcomeA, HttpStatus.badGateway);
+
+      final snapshot = route.describeFailure!();
+      expect(snapshot, contains('HTTP 206'));
+      expect(snapshot, contains('4 字节'));
+      expect(snapshot, isNot(contains('失败')));
+      expect(snapshot, isNot(contains('超时')));
+      _expectSafeSnapshot(snapshot);
+    },
+  );
+
+  test(
+    'truncated upstream body is not reported as player cancellation',
+    () async {
+      final origin = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      addTearDown(() => origin.close(force: true));
+      origin.listen((request) async {
+        // 声明 Content-Length 100 只发送 40 字节后销毁连接，模拟上游断流。
+        final socket = await request.response.detachSocket(writeHeaders: false);
+        socket.write(
+          'HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\n'
+          'Content-Length: 100\r\nConnection: close\r\n\r\n',
+        );
+        socket.add(List<int>.filled(40, 7));
+        await socket.flush();
+        socket.destroy();
+      });
+      final route = relay.route(
+        'http://127.0.0.1:${origin.port}/stream',
+        const {},
+      );
+      final client = HttpClient()..findProxy = (_) => 'DIRECT';
+      addTearDown(() => client.close(force: true));
+      final response = await (await client.getUrl(
+        Uri.parse(route.url),
+      )).close();
+      expect(response.statusCode, HttpStatus.ok);
+      final ended = Completer<void>();
+      late StreamSubscription<List<int>> subscription;
+      subscription = response.listen(
+        (_) {},
+        onError: (Object _) {
+          if (!ended.isCompleted) ended.complete();
+          unawaited(subscription.cancel());
+        },
+        onDone: () {
+          if (!ended.isCompleted) ended.complete();
+        },
+      );
+      await ended.future.timeout(const Duration(seconds: 2));
+      client.close(force: true);
+      // 等待转发器两侧（下游 done、上游读取）都结束后再读取快照。
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+
+      final snapshot = route.describeFailure!();
+      expect(snapshot, contains('失败'));
+      expect(snapshot, isNot(contains('取消')));
+      expect(snapshot, contains('40 字节'));
+      _expectSafeSnapshot(snapshot);
+    },
+  );
+
+  test('snapshot survives revoke while fresh route starts clean', () async {
+    final route = relay.route(
+      'http://127.0.0.1:${upstream.port}/video',
+      const {},
+    );
+    final client = HttpClient()..findProxy = (_) => 'DIRECT';
+    addTearDown(() => client.close(force: true));
+    final request = await client.getUrl(Uri.parse(route.url));
+    request.headers.set(HttpHeaders.rangeHeader, 'bytes=2-5');
+    final response = await request.close();
+    expect(utf8.decode(await _body(response)), '2345');
+    expect(route.describeFailure!(), contains('HTTP 206'));
+
+    relay.revoke(route.token);
+    final revoked = await client.getUrl(Uri.parse(route.url));
+    expect((await revoked.close()).statusCode, HttpStatus.notFound);
+
+    // 回调由路由闭包持有，revoke 后仍能读取最后一次快照。
+    final snapshot = route.describeFailure!();
+    expect(snapshot, contains('HTTP 206'));
+    _expectSafeSnapshot(snapshot);
+
+    final freshRoute = relay.route(
+      'http://127.0.0.1:${upstream.port}/video',
+      const {},
+    );
+    final freshSnapshot = freshRoute.describeFailure!();
+    expect(freshSnapshot, contains('尚未'));
+    expect(freshSnapshot, isNot(contains('206')));
+    _expectSafeSnapshot(freshSnapshot);
+  });
+
+  test('player cancellation is not reported as upstream failure', () async {
+    final route = relay.route(
+      'http://127.0.0.1:${upstream.port}/slow',
+      const {},
+    );
+    final client = HttpClient()..findProxy = (_) => 'DIRECT';
+    addTearDown(() => client.close(force: true));
+    final response = await (await client.getUrl(Uri.parse(route.url))).close();
+    final firstChunk = Completer<void>();
+    late StreamSubscription<List<int>> subscription;
+    subscription = response.listen((_) {
+      if (!firstChunk.isCompleted) {
+        firstChunk.complete();
+        unawaited(subscription.cancel());
+      }
+    });
+    await firstChunk.future.timeout(const Duration(seconds: 2));
+    client.close(force: true);
+    await relay.close();
+    await Future<void>.delayed(Duration.zero);
+
+    final snapshot = route.describeFailure!();
+    expect(snapshot, isNot(contains('失败')));
+    expect(snapshot, isNot(contains('超时')));
+    _expectSafeSnapshot(snapshot);
+  });
 }
 
 Future<List<int>> _body(HttpClientResponse response) {
@@ -534,4 +824,12 @@ Future<List<int>> _body(HttpClientResponse response) {
     body.addAll(chunk);
     return body;
   });
+}
+
+void _expectSafeSnapshot(String snapshot) {
+  // 快照不得暴露令牌、入口地址或转发路径等敏感信息。
+  expect(snapshot, isNot(contains('127.0.0.1')));
+  expect(snapshot, isNot(contains('Bearer')));
+  expect(snapshot, isNot(contains('/media')));
+  expect(snapshot, isNot(contains('token')));
 }

@@ -80,6 +80,7 @@ void main() {
       // 未连接时路由重定向到 /connect；TV 字段外层闸门持浏览焦点。
       expect(find.text('IP 地址'), findsOneWidget);
       expect(_focusDebugLabel(), 'tv-field-gate');
+      await _captureScreenshot(tester, binding, 'tv-connection');
       // OK 进入编辑：弹出（测试）IME，字段获得焦点。
       await _press(tester, LogicalKeyboardKey.select);
       final fields = find.byType(TextField);
@@ -123,7 +124,8 @@ void main() {
       final refresh = find.byTooltip('刷新媒体库');
       expect(refresh, findsOneWidget);
       final refreshCallsBefore = mediaRepo.refreshCalls;
-      await tester.tap(refresh);
+      await _press(tester, LogicalKeyboardKey.arrowRight);
+      await _press(tester, LogicalKeyboardKey.select);
       await _pumpUntil(
         tester,
         () => mediaRepo.refreshCalls > refreshCallsBefore,
@@ -166,6 +168,7 @@ void main() {
 
       // 三类“查看全部”打开新路由后，不手动指定焦点，直接用遥控器操作。
       await _press(tester, LogicalKeyboardKey.arrowRight);
+      await _captureScreenshot(tester, binding, 'tv-catalog');
       for (final sectionTitle in ['电影', '电视剧', '个人视频']) {
         final section = find.byWidgetPredicate(
           (widget) => widget is SectionHeader && widget.title == sectionTitle,
@@ -456,7 +459,16 @@ void main() {
         timeout: const Duration(seconds: 10),
         reason: '图片库网格未加载',
       );
-      await tester.tap(find.text('相册风景 0').first);
+      await _press(tester, LogicalKeyboardKey.arrowRight);
+      for (
+        var step = 0;
+        step < 8 && _focusedCollectionItemId() == null;
+        step++
+      ) {
+        await _press(tester, LogicalKeyboardKey.arrowDown);
+      }
+      expect(_focusedCollectionItemId(), isNotNull);
+      await _press(tester, LogicalKeyboardKey.select);
       await _pumpUntil(
         tester,
         () => find.byTooltip('放大').evaluate().isNotEmpty,
@@ -504,8 +516,9 @@ void main() {
       );
 
       // ── 设置 ──────────────────────────────────────────────────────────
-      // 弹出图片详情后焦点还原到导航项（进入详情前焦点在导航上），
-      // 此时直接下移切设置分支，不能再发 Back（会被判为「非首页回首页」）。
+      // 预览关闭后回到原图片，再按 Back 把焦点交回图片库导航。
+      expect(_focusedCollectionItemId(), isNotNull);
+      await _popBack(tester);
       expect(_focusDebugLabel(), 'tv-nav-photos');
       await _press(tester, LogicalKeyboardKey.arrowDown);
       await _press(tester, LogicalKeyboardKey.arrowDown);
@@ -514,12 +527,26 @@ void main() {
       await _press(tester, LogicalKeyboardKey.select);
       await _pumpUntil(
         tester,
-        () => find.text('当前服务器').evaluate().isNotEmpty,
+        () => find
+            .byKey(const ValueKey('tv-settings-summary'))
+            .evaluate()
+            .isNotEmpty,
         timeout: const Duration(seconds: 10),
         reason: '设置分支未打开',
       );
       expect(find.text('烟测服务器'), findsOneWidget);
+      await _press(tester, LogicalKeyboardKey.arrowRight);
       await _captureScreenshot(tester, binding, 'tv-settings');
+      // 显示主题行是设置首焦点，确认切换后直接检查浅色布局与首页。
+      await _press(tester, LogicalKeyboardKey.select);
+      await _captureScreenshot(tester, binding, 'tv-settings-light');
+      await _popBack(tester);
+      for (var step = 0; step < 4; step++) {
+        await _press(tester, LogicalKeyboardKey.arrowUp);
+      }
+      await _press(tester, LogicalKeyboardKey.select);
+      await _press(tester, LogicalKeyboardKey.arrowRight);
+      await _captureScreenshot(tester, binding, 'tv-home-light');
 
       // ── 全链路收尾断言 ────────────────────────────────────────────────
       expect(server.authFailures, 0, reason: '全链路不允许出现未认证请求');

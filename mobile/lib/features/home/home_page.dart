@@ -12,6 +12,7 @@ import 'home_controller.dart';
 import 'widgets/home_header.dart';
 import 'widgets/horizontal_media_section.dart';
 import 'widgets/recent_media_section.dart';
+import 'widgets/tv_home_feature.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({
@@ -80,17 +81,27 @@ class _HomePageState extends State<HomePage>
         controller.media.items.isNotEmpty) {
       _scheduleBranchPrewarm();
     }
+    final continuing = controller.continuing;
+    final recent = controller.recent;
+    final featured = continuing.firstOrNull ?? recent.firstOrNull;
     return CustomScrollView(
       key: const PageStorageKey('home-scroll'),
       controller: _scroll,
       physics: const AlwaysScrollableScrollPhysics(),
       slivers: [
         SliverToBoxAdapter(
-          child: HomeHeader(
-            onOpenSearch: widget.onOpenSearch,
-            onScrollToTop: _scrollToTop,
-            onRefresh: isTelevision ? controller.media.refresh : null,
-          ),
+          child: isTelevision
+              ? TvHomeFeature(
+                  item: featured,
+                  onOpen: () {
+                    if (featured != null) widget.onOpenMedia(featured);
+                  },
+                  onRefresh: controller.media.refresh,
+                )
+              : HomeHeader(
+                  onOpenSearch: widget.onOpenSearch,
+                  onScrollToTop: _scrollToTop,
+                ),
         ),
         if (controller.media.loadState == LoadState.loading &&
             controller.media.items.isEmpty)
@@ -130,7 +141,7 @@ class _HomePageState extends State<HomePage>
               title: '继续观看',
               subtitle: '回到上次停下的位置',
               heroPrefix: 'continue',
-              items: controller.continuing,
+              items: continuing,
               onOpenMedia: widget.onOpenMedia,
               onFavorite: (item) =>
                   context.toggleFavoriteWithFeedback(controller.media, item),
@@ -138,11 +149,10 @@ class _HomePageState extends State<HomePage>
           ),
           SliverToBoxAdapter(
             child: RecentMediaSection(
-              items: controller.recent,
+              items: recent,
               onOpenMedia: widget.onOpenMedia,
               onFavorite: (item) =>
                   context.toggleFavoriteWithFeedback(controller.media, item),
-              scrollController: isTelevision ? _scroll : null,
             ),
           ),
           SliverToBoxAdapter(

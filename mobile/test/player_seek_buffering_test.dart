@@ -1,5 +1,7 @@
 // 覆盖定位等待链路：快进、拖动提交与取消在等待期间显示缓冲提示，
 // 原生确认定位结束后才收束，过时位置不拉回滑块，被取代、重试或释放的请求不写回状态。
+// 同时覆盖回环路由失败诊断：错误消息脱敏去凭据、诊断随重试切换、
+// 初始化期间的终态打开失败不被完成路径清空，普通告警不中断初始化。
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -12,6 +14,7 @@ import 'package:luma/data/fixtures/media_fixtures.dart';
 import 'package:luma/data/mock/mock_media_repository.dart';
 import 'package:luma/data/models/media_item.dart';
 import 'package:luma/data/models/media_types.dart';
+import 'package:luma/data/proxy/loopback_media_relay.dart';
 import 'package:luma/features/player/player_controller.dart';
 import 'package:luma/features/player/player_device_controls.dart';
 import 'package:luma/features/player/player_interaction_controller.dart';
@@ -394,6 +397,115 @@ void main() {
     expect(harness.repository.progressUpdates, 0);
   });
 
+  test('回环路由的原生失败附带脱敏诊断且不暴露转发凭据', () async {
+    const routedUrl = 'http://127.0.0.1:45678/relay/route?token=SECRET';
+    final harness = _SeekHarness.create(
+      router: _LoopbackMediaRequestRouter(
+        url: routedUrl,
+        summary: '上游返回 HTTP 401，本机尚未收到数据',
+      ),
+    );
+    addTearDown(harness.dispose);
+    await harness.start();
+
+    harness.fake.emitError('Failed to open $routedUrl.');
+    await pumpEventQueue();
+
+    expect(harness.player.error, contains('Failed to open 本机视频入口'));
+    expect(harness.player.error, contains('上游返回 HTTP 401，本机尚未收到数据'));
+    expect(harness.player.error, isNot(contains('SECRET')));
+    expect(harness.player.error, isNot(contains('token=')));
+  });
+
+  test('直接路由的原生失败保持原样，不附加诊断', () async {
+    final harness = _SeekHarness.create();
+    addTearDown(harness.dispose);
+    await harness.start();
+
+    const message = 'Failed to open http://192.168.1.8:8000/movie.mkv';
+    harness.fake.emitError(message);
+    await pumpEventQueue();
+
+    expect(harness.player.error, message);
+  });
+
+  test('初始化期间的终态打开失败走收束流程，不会被完成路径清空', () async {
+    const routedUrl = 'http://127.0.0.1:45678/relay/route?token=SECRET';
+    final harness = _SeekHarness.create(
+      router: _LoopbackMediaRequestRouter(
+        url: routedUrl,
+        summary: '上游返回 HTTP 401，本机尚未收到数据',
+      ),
+      holdPlay: true,
+    );
+    addTearDown(harness.dispose);
+
+    harness.player.start();
+    await pumpEventQueue();
+    expect(harness.player.initialized, isFalse);
+
+    harness.fake.emitError('Failed to open $routedUrl');
+    await pumpEventQueue();
+
+    expect(harness.player.initialized, isFalse);
+    expect(harness.player.error, contains('Failed to open 本机视频入口'));
+    expect(harness.player.error, contains('上游返回 HTTP 401'));
+    expect(harness.player.error, isNot(contains('SECRET')));
+
+    // 挂起的起播命令结束后，完成路径不得覆盖已收束的终态失败。
+    harness.fake.playGate!.complete();
+    await pumpEventQueue();
+    expect(harness.player.initialized, isFalse);
+    expect(harness.player.error, isNotNull);
+    expect(harness.player.playing, isFalse);
+  });
+
+  test('初始化期间的普通告警不视为致命，初始化照常完成', () async {
+    final harness = _SeekHarness.create(holdPlay: true);
+    addTearDown(harness.dispose);
+
+    harness.player.start();
+    await pumpEventQueue();
+    harness.fake.emitError('解码像素格式告警');
+    harness.fake.playGate!.complete();
+    await pumpEventQueue();
+
+    expect(harness.player.initialized, isTrue);
+    expect(harness.player.error, isNull);
+    expect(harness.player.playing, isTrue);
+  });
+
+  test('重试后只展示当前链路的诊断，旧会话错误不再写回', () async {
+    const routedUrl = 'http://127.0.0.1:45678/relay/route?token=SECRET';
+    final router = _LoopbackMediaRequestRouter(
+      url: routedUrl,
+      summary: '第一条链路诊断',
+    );
+    final harness = _SeekHarness.create(router: router);
+    addTearDown(harness.dispose);
+    await harness.start();
+
+    harness.fake.emitError('Failed to open $routedUrl');
+    await pumpEventQueue();
+    expect(harness.player.error, contains('第一条链路诊断'));
+    expect(harness.player.error, isNot(contains('SECRET')));
+
+    router.summary = '第二条链路诊断';
+    // 旧会话的错误事件在重试开始后才送达，也要被新一代丢弃。
+    harness.fakes.first.emitError('解码中断');
+    await harness.player.retry();
+    await pumpEventQueue();
+
+    expect(harness.player.initialized, isTrue);
+    expect(harness.player.error, isNull);
+
+    harness.fake.emitError('解码中断');
+    await pumpEventQueue();
+    expect(harness.player.error, contains('第二条链路诊断'));
+    expect(harness.player.error, isNot(contains('第一条链路诊断')));
+    expect(harness.player.error, isNot(contains('SECRET')));
+  });
+
   testWidgets('手机拖动进度时立即显示缓冲圈并在落地后移除', (tester) async {
     final harness = _SeekHarness.create();
     try {
@@ -455,6 +567,79 @@ void main() {
       harness.dispose();
     }
   });
+
+  testWidgets('错误提示附带的诊断在手机与宽屏都不溢出', (tester) async {
+    const routedUrl = 'http://127.0.0.1:45678/relay/route?token=SECRET';
+    for (final size in const [Size(320, 693), Size(1280, 800)]) {
+      final harness = _SeekHarness.create(
+        router: _LoopbackMediaRequestRouter(
+          url: routedUrl,
+          summary: '上游返回 HTTP 401，本机已重试 2 次仍未收到数据，正在等待上游响应',
+        ),
+      );
+      try {
+        await harness.startWidgets(
+          tester,
+          isDesktop: size.width >= 960,
+          size: size,
+        );
+
+        harness.fake.emitError('Failed to open $routedUrl.');
+        await tester.pump();
+        await tester.pump();
+
+        expect(tester.takeException(), isNull);
+        expect(find.textContaining('本机视频入口'), findsOneWidget);
+        expect(find.textContaining('上游返回 HTTP 401'), findsOneWidget);
+        expect(find.text('重试播放'), findsOneWidget);
+        expect(find.textContaining('SECRET'), findsNothing);
+        expect(find.textContaining('token='), findsNothing);
+        final scene = tester.getRect(find.byType(PlayerScene));
+        final errorRect = tester.getRect(find.textContaining('本机视频入口'));
+        final retryRect = tester.getRect(
+          find.widgetWithText(FilledButton, '重试播放'),
+        );
+        expect(scene.contains(errorRect.topLeft), isTrue);
+        expect(scene.contains(errorRect.bottomRight), isTrue);
+        expect(scene.contains(retryRect.bottomRight), isTrue);
+        await tester.pumpWidget(const SizedBox.shrink());
+      } finally {
+        harness.dispose();
+      }
+    }
+  });
+
+  testWidgets('缓冲超时提示附带当前链路的诊断快照', (tester) async {
+    const routedUrl = 'http://127.0.0.1:45678/relay/route?token=SECRET';
+    final harness = _SeekHarness.create(
+      router: _LoopbackMediaRequestRouter(
+        url: routedUrl,
+        summary: '上游 3 秒未返回数据',
+      ),
+      bufferingTimeout: const Duration(milliseconds: 120),
+    );
+    try {
+      await harness.startWidgets(tester);
+      final gate = harness.fake.holdSeek();
+      harness.player.seekBy(30);
+      await tester.pump();
+      expect(harness.player.buffering, isTrue);
+
+      await tester.pump(const Duration(milliseconds: 200));
+      gate.complete();
+      await tester.pump();
+
+      expect(harness.player.error, contains('播放缓冲超时，请稍后重试'));
+      expect(harness.player.error, contains('上游 3 秒未返回数据'));
+      expect(harness.player.error, isNot(contains('SECRET')));
+      expect(find.textContaining('本机视频入口'), findsNothing);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+    } finally {
+      harness.dispose();
+    }
+  });
+
   testWidgets('缓冲提示适应手机平板宽屏、浅深主题与桌面 DPI', (tester) async {
     for (final size in const [
       Size(320, 693),
@@ -519,6 +704,12 @@ class _FakePlatformPlayer extends PlatformPlayer {
   bool nativeSeeking = false;
   Duration nativePosition = Duration.zero;
 
+  /// 挂起起播命令，用于在初始化中途注入原生事件。
+  Completer<void>? playGate;
+
+  /// 推送一次原生错误事件。
+  void emitError(String message) => errorController.add(message);
+
   /// 让接下来的一次定位命令挂起，返回放行用的 completer。
   Completer<void> holdSeek() {
     final gate = Completer<void>();
@@ -537,6 +728,7 @@ class _FakePlatformPlayer extends PlatformPlayer {
   Future<void> play() async {
     commands.add('play');
     playCount++;
+    await playGate?.future;
     state = state.copyWith(playing: true);
     playingController.add(true);
   }
@@ -586,11 +778,15 @@ class _SeekTestController extends PlayerController {
     required super.item,
     required super.media,
     required List<_FakePlatformPlayer> fakes,
+    super.mediaRequestRouter,
+    super.bufferingTimeout,
+    bool holdPlay = false,
   }) : _fakes = fakes,
        super(
          apiSession: ApiSession(),
          debugPlatformPlayerFactory: (configuration) {
            final fake = _FakePlatformPlayer(configuration: configuration);
+           if (holdPlay) fake.playGate = Completer<void>();
            fakes.add(fake);
            return fake;
          },
@@ -645,7 +841,11 @@ class _SeekHarness {
     matching: find.byType(Slider),
   );
 
-  static _SeekHarness create() {
+  static _SeekHarness create({
+    MediaRequestRouter? router,
+    bool holdPlay = false,
+    Duration bufferingTimeout = const Duration(seconds: 45),
+  }) {
     final repository = _CountingMediaRepository();
     final media = MediaController(repository);
     final item = buildMediaFixtures()
@@ -655,7 +855,14 @@ class _SeekHarness {
         );
     media.remember(item, notify: false);
     final fakes = <_FakePlatformPlayer>[];
-    final player = _SeekTestController(item: item, media: media, fakes: fakes);
+    final player = _SeekTestController(
+      item: item,
+      media: media,
+      fakes: fakes,
+      mediaRequestRouter: router,
+      bufferingTimeout: bufferingTimeout,
+      holdPlay: holdPlay,
+    );
     return _SeekHarness._(repository, media, player, fakes);
   }
 
@@ -719,6 +926,38 @@ class _CountingMediaRepository extends MockMediaRepository {
     lastPositionMs = positionMs;
     return super.updateProgress(id, positionMs);
   }
+}
+
+/// 假回环路由：返回携带凭据的本机地址与诊断快照，验证错误消息脱敏。
+/// 测试在重试间改写 [summary]，模拟链路诊断随会话切换。
+class _LoopbackMediaRequestRouter implements MediaRequestRouter {
+  _LoopbackMediaRequestRouter({required this.url, this.summary = '链路诊断缺失'});
+
+  final String url;
+
+  /// 当前诊断快照；由路由目标闭包持有，撤销后仍可读取。
+  String summary;
+
+  /// 记录撤销过的转发凭据，供测试核对生命周期。
+  final List<String> revokedTokens = [];
+
+  @override
+  MediaRequestRoute route(String url, Map<String, String> headers) {
+    return MediaRequestRoute(
+      url: this.url,
+      headers: headers,
+      token: 'route-token-SECRET',
+      describeFailure: () => summary,
+    );
+  }
+
+  @override
+  void revoke(String? token) {
+    if (token != null) revokedTokens.add(token);
+  }
+
+  @override
+  void revokeAll() {}
 }
 
 class _NoopDeviceControls implements PlayerDeviceControls {

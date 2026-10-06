@@ -40,7 +40,7 @@ class AppShell extends StatelessWidget {
   }
 }
 
-/// TV 壳层：确认键映射激活、左侧常驻导航、内容区安全边距。
+/// TV 壳层：确认键映射激活、按焦点展开侧栏、内容区安全边距。
 /// 相同分支按 OK 不重置页面；返回层级由 TvAppNavigation 统一处理。
 class _TvShell extends StatelessWidget {
   const _TvShell({required this.navigationShell});

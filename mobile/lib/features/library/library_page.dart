@@ -23,6 +23,7 @@ import '../../shared/layout/scroll_to_top_app_bar_title.dart';
 import '../shell/shell_entry_gate.dart';
 import 'dialogs/library_filter_sheet.dart';
 import 'library_controller.dart';
+import 'widgets/tv_library_header.dart';
 
 /// 固定类型的媒体库页：底部导航拆分为影音库与图片库两个入口。
 class LibraryPage extends StatefulWidget {
@@ -184,8 +185,10 @@ class _LibraryPageState extends State<LibraryPage>
             loadState == LoadState.loading && items.isEmpty;
         final scrollContent = Center(
           child: ConstrainedBox(
-            constraints: const BoxConstraints(
-              maxWidth: LumaLayout.contentMaxWidth,
+            constraints: BoxConstraints(
+              maxWidth: isTelevision
+                  ? LumaTvLayout.contentMaxWidth
+                  : LumaLayout.contentMaxWidth,
             ),
             child: CustomScrollView(
               key: PageStorageKey(
@@ -200,7 +203,7 @@ class _LibraryPageState extends State<LibraryPage>
                   const SliverToBoxAdapter(
                     child: LinearProgressIndicator(minHeight: 2),
                   ),
-                if (controller.hasExtraFilters)
+                if (controller.hasExtraFilters && !isTelevision)
                   SliverPadding(
                     padding: const EdgeInsets.fromLTRB(
                       LumaLayout.pagePaddingH,
@@ -219,7 +222,7 @@ class _LibraryPageState extends State<LibraryPage>
                       ),
                     ),
                   ),
-                if (showInitialSkeleton && isVideo)
+                if (showInitialSkeleton && (isVideo || isTelevision))
                   const SliverPadding(
                     padding: EdgeInsets.fromLTRB(
                       LumaLayout.pagePaddingH,
@@ -381,7 +384,10 @@ class _LibraryPageState extends State<LibraryPage>
                   itemIds: _tvIds,
                   axis: Axis.vertical,
                   columns: const TvMediaGridGeometry().columnsFor(
-                    constraints.maxWidth.clamp(0, LumaLayout.contentMaxWidth) -
+                    constraints.maxWidth.clamp(
+                          0,
+                          LumaTvLayout.contentMaxWidth,
+                        ) -
                         2 * LumaLayout.pagePaddingH,
                   ),
                   revealIndex: _tvRevealSafe.revealIndex,
@@ -389,6 +395,35 @@ class _LibraryPageState extends State<LibraryPage>
                 ),
               )
             : body;
+        if (isTelevision) {
+          final tvPage = Scaffold(
+            body: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                TvLibraryHeader(
+                  title: widget.title ?? (isVideo ? '影音库' : '图片库'),
+                  isVideo: isVideo,
+                  showBack: !widget.inShell && !widget.embedded,
+                  hasExtraFilters: controller.hasExtraFilters,
+                  favoritesOnly: controller.favoritesOnly,
+                  sort: controller.sort,
+                  onSearch: widget.embedded ? null : widget.onOpenSearch,
+                  onRefresh: controller.refresh,
+                  onFilters: _openFilters,
+                  onFavorites: (selected) => controller.applyFilters(
+                    LibraryFilters(favoritesOnly: selected),
+                  ),
+                  onSort: controller.setSort,
+                  onClear: controller.clearFilters,
+                ),
+                Expanded(child: scrollHost),
+              ],
+            ),
+          );
+          return widget.inShell || widget.embedded
+              ? tvPage
+              : TvKeyBindings(child: TvContentFrame(child: tvPage));
+        }
         if (widget.embedded) {
           return Column(
             children: [
@@ -413,10 +448,6 @@ class _LibraryPageState extends State<LibraryPage>
           ),
           body: scrollHost,
         );
-        // 根层路由（个人视频）在 TV 套安全边距；分支页面由壳层统一处理。
-        if (isTelevision && !widget.inShell) {
-          return TvKeyBindings(child: TvContentFrame(child: scaffold));
-        }
         return scaffold;
       },
     );
@@ -428,12 +459,6 @@ class _LibraryPageState extends State<LibraryPage>
         tooltip: '搜索',
         onPressed: widget.onOpenSearch,
         icon: const Icon(Icons.search_rounded),
-      ),
-    if (AppScope.of(context).deviceProfile.isTelevision)
-      IconButton(
-        tooltip: '刷新',
-        onPressed: _controller?.refresh,
-        icon: const Icon(Icons.refresh_rounded),
       ),
     if (widget.type == MediaType.video)
       IconButton(

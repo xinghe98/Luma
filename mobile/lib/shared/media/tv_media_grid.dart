@@ -94,33 +94,32 @@ class TvGridReveal {
 class TvMediaGridGeometry implements TvGridMetrics {
   const TvMediaGridGeometry({this.detailsHeight = 96});
 
-  /// 按当前字体与缩放分配两行标题、一行元数据和视频卡片内边距。
-  factory TvMediaGridGeometry.of(BuildContext context) => TvMediaGridGeometry(
-    detailsHeight: MediaCard.textDetailsHeight(context) + LumaSpacing.xs * 2,
-  );
+  /// 按当前字体与缩放分配两行标题和一行元数据。
+  factory TvMediaGridGeometry.of(BuildContext context) =>
+      TvMediaGridGeometry(detailsHeight: MediaCard.textDetailsHeight(context));
 
   final double detailsHeight;
 
   @override
   int columnsFor(double width) => LumaTvLayout.gridColumns(
     width,
-    minItemWidth: LumaTvLayout.posterMinWidth,
+    minItemWidth: LumaTvLayout.landscapeCardMinWidth,
   );
 
-  /// 单元格高度 = 宽 / 1.6（16:10 封面）+ 文字区；行高再叠加纵向间距。
+  /// 单元格高度按 16:9 封面与文字区计算，滚动步长额外计入纵向间距。
   @override
   double rowExtentFor(double width) {
     final columns = columnsFor(width);
     final cellWidth =
         (width - LumaTvLayout.cardSpacing * (columns - 1)) / columns;
-    return cellWidth / 1.6 + detailsHeight + LumaTvLayout.cardSpacing;
+    return cellWidth / (16 / 9) + detailsHeight + LumaTvLayout.cardSpacing;
   }
 
   double cellAspectRatio(double width) {
     final columns = columnsFor(width);
     final cellWidth =
         (width - LumaTvLayout.cardSpacing * (columns - 1)) / columns;
-    return cellWidth / (cellWidth / 1.6 + detailsHeight);
+    return cellWidth / (cellWidth / (16 / 9) + detailsHeight);
   }
 }
 

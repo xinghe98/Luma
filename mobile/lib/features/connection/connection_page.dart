@@ -13,6 +13,7 @@ import 'widgets/connection_brand_header.dart';
 import 'widgets/connection_form.dart';
 import 'widgets/recent_servers.dart';
 import 'widgets/vmess_proxy_control.dart';
+import 'widgets/tv_connection_layout.dart';
 
 class ConnectionPage extends StatefulWidget {
   const ConnectionPage({super.key});
@@ -132,6 +133,56 @@ class _ConnectionPageState extends State<ConnectionPage> {
       builder: (context, _) {
         final restoring = dependencies.restoring.value;
         final isTelevision = dependencies.deviceProfile.isTelevision;
+        final connectionForm = ConnectionForm(
+          controller: controller,
+          hostController: _host,
+          portController: _port,
+          usernameController: _username,
+          passwordController: _password,
+          proxied: proxy?.isActive ?? false,
+          enabled: !restoring,
+          television: isTelevision,
+          connectFocusNode: isTelevision ? _connectButtonFocus : null,
+          onConnect: () {
+            // ignore: discarded_futures
+            _connect();
+          },
+        );
+        final proxyAction = proxy == null
+            ? null
+            : VmessProxyAppBarAction(
+                controller: proxy,
+                enabled: dependencies.canConfigureProxy,
+                onStart: dependencies.startProxy,
+                onStop: dependencies.stopProxy,
+                onImport: dependencies.importProxyProfile,
+                onDelete: dependencies.deleteProxyProfile,
+              );
+        if (isTelevision) {
+          return Scaffold(
+            body: SafeArea(
+              child: TvKeyBindings(
+                child: TvContentFrame(
+                  maxWidth: LumaTvLayout.contentMaxWidth,
+                  child: TvConnectionLayout(
+                    proxyAction: proxyAction,
+                    form: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        connectionForm,
+                        if (restoring) const Text('正在恢复已保存的服务器连接…'),
+                        RecentServers(
+                          enabled: !restoring && !controller.isLoading,
+                          onSelect: _selectServer,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          );
+        }
         final form = SingleChildScrollView(
           child: Center(
             child: ConstrainedBox(
@@ -152,35 +203,16 @@ class _ConnectionPageState extends State<ConnectionPage> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        ConnectionForm(
-                          controller: controller,
-                          hostController: _host,
-                          portController: _port,
-                          usernameController: _username,
-                          passwordController: _password,
-                          proxied: proxy?.isActive ?? false,
-                          enabled: !restoring,
-                          television: isTelevision,
-                          connectFocusNode: isTelevision
-                              ? _connectButtonFocus
-                              : null,
-                          onConnect: () {
-                            // ignore: discarded_futures
-                            _connect();
-                          },
-                        ),
+                        connectionForm,
                         if (restoring) ...[
                           const SizedBox(height: LumaSpacing.sm),
                           const Text('正在恢复已保存的服务器连接…'),
                         ],
-                        // RecentServers 目前是空常量占位；TV 不显示历史服务器。
-                        if (!isTelevision) ...[
-                          const SizedBox(height: LumaSpacing.lg),
-                          RecentServers(
-                            enabled: !restoring && !controller.isLoading,
-                            onSelect: _selectServer,
-                          ),
-                        ],
+                        const SizedBox(height: LumaSpacing.lg),
+                        RecentServers(
+                          enabled: !restoring && !controller.isLoading,
+                          onSelect: _selectServer,
+                        ),
                       ],
                     ),
                   ),
@@ -189,33 +221,13 @@ class _ConnectionPageState extends State<ConnectionPage> {
             ),
           ),
         );
-        final body = SafeArea(
-          // TV：连接页属于独立根路由，套安全边距并保持居中表单；
-          // 确认键映射与壳层一致（忽略长按重复）。
-          child: isTelevision
-              ? TvKeyBindings(
-                  child: TvContentFrame(
-                    maxWidth: LumaLayout.formMaxWidth,
-                    child: form,
-                  ),
-                )
-              : form,
-        );
+        final body = SafeArea(child: form);
         return Scaffold(
-          appBar: proxy == null
+          appBar: proxyAction == null
               ? null
               : AppBar(
                   automaticallyImplyLeading: false,
-                  actions: [
-                    VmessProxyAppBarAction(
-                      controller: proxy,
-                      enabled: dependencies.canConfigureProxy,
-                      onStart: dependencies.startProxy,
-                      onStop: dependencies.stopProxy,
-                      onImport: dependencies.importProxyProfile,
-                      onDelete: dependencies.deleteProxyProfile,
-                    ),
-                  ],
+                  actions: [proxyAction],
                 ),
           body: body,
         );

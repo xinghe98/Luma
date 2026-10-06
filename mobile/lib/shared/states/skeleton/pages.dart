@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../../app/app_scope.dart';
+import '../../media/media_card.dart';
 import '../../../core/theme.dart';
 import 'base.dart';
 import 'media.dart';
@@ -109,12 +111,67 @@ class DetailPageSkeleton extends StatelessWidget {
   );
 }
 
-/// 首页加载时的分区骨架（横向卡片 + 网格）。
+/// 首页骨架按设备呈现货架或网格，保持加载前后的内容浏览方向。
 class HomeFeedSkeleton extends StatelessWidget {
   const HomeFeedSkeleton({super.key});
 
   @override
   Widget build(BuildContext context) {
+    if (AppScope.maybeOf(context)?.deviceProfile.isTelevision ?? false) {
+      return SkeletonPulse(
+        child: Column(
+          children: [
+            for (var row = 0; row < 2; row++)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: LumaSpacing.lg),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Padding(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: LumaLayout.pagePaddingH,
+                      ),
+                      child: SkeletonBox(width: 110, height: 28),
+                    ),
+                    const SizedBox(height: LumaSpacing.md),
+                    SizedBox(
+                      height:
+                          LumaTvLayout.landscapeCardMinWidth / (16 / 9) +
+                          MediaCard.textDetailsHeight(context, titleLines: 1),
+                      child: ListView.separated(
+                        scrollDirection: Axis.horizontal,
+                        physics: const NeverScrollableScrollPhysics(),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: LumaLayout.pagePaddingH,
+                        ),
+                        itemCount: 4,
+                        separatorBuilder: (_, _) =>
+                            const SizedBox(width: LumaTvLayout.cardSpacing),
+                        itemBuilder: (_, _) => const SizedBox(
+                          width: LumaTvLayout.landscapeCardMinWidth,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              AspectRatio(
+                                aspectRatio: 16 / 9,
+                                child: SkeletonBox(height: double.infinity),
+                              ),
+                              SizedBox(height: LumaSpacing.sm),
+                              SkeletonBox(width: 144, height: 18),
+                              SizedBox(height: LumaSpacing.xs),
+                              SkeletonBox(width: 80, height: 14),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        ),
+      );
+    }
     return const SkeletonPulse(
       child: Padding(
         padding: EdgeInsets.symmetric(horizontal: LumaLayout.pagePaddingH),

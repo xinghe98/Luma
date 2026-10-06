@@ -31,6 +31,60 @@ const _categories = [
 ];
 
 void main() {
+  testWidgets('TV 分类入口同排，方向键切换后确认进入完整分类', (tester) async {
+    final harness = await _mount(tester);
+    final movie = find.byKey(const ValueKey('tv-category-movies'));
+    final series = find.byKey(const ValueKey('tv-category-series'));
+    final personal = find.byKey(const ValueKey('tv-category-personal'));
+    expect(tester.getTopLeft(movie).dy, tester.getTopLeft(series).dy);
+    expect(tester.getTopLeft(series).dy, tester.getTopLeft(personal).dy);
+    // TV 壳层先用 Right 进入内容区；导航展开时内容不参与 Tab 遍历。
+    await _press(tester, LogicalKeyboardKey.arrowRight);
+    for (var step = 0; step < 24 && !_focusWithin(movie); step++) {
+      await _press(tester, LogicalKeyboardKey.tab);
+    }
+    expect(_focusWithin(movie), isTrue);
+    await _press(tester, LogicalKeyboardKey.arrowRight);
+    expect(_focusWithin(series), isTrue);
+    await _press(tester, LogicalKeyboardKey.arrowRight);
+    expect(_focusWithin(personal), isTrue);
+    await _press(tester, LogicalKeyboardKey.arrowLeft);
+    expect(_focusWithin(series), isTrue);
+    await _press(tester, LogicalKeyboardKey.select);
+    expect(_location(harness.router), '/videos/series');
+    expect(_focusedCardId(), isNotNull);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('TV 分类刷新失败仍显示作品和显式重试入口', (tester) async {
+    final repository = _CatalogRepository()..fail = true;
+    await _mount(
+      tester,
+      catalog: repository,
+      location: '/videos/movies',
+      initial: repository.movies,
+    );
+    expect(find.byType(CatalogCard), findsWidgets);
+    expect(find.text('刷新失败'), findsOneWidget);
+    final retry = find.byWidgetPredicate(
+      (widget) => widget is IconButton && widget.tooltip == '重新刷新',
+    );
+    expect(retry, findsOneWidget);
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+    for (var step = 0; step < 24 && !_focusWithin(retry); step++) {
+      await _press(tester, LogicalKeyboardKey.tab);
+    }
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+    expect(_focusWithin(retry), isTrue);
+    repository.fail = false;
+    await _press(tester, LogicalKeyboardKey.select);
+    await tester.pumpAndSettle();
+    expect(find.text('刷新失败'), findsNothing);
+    expect(find.byType(CatalogCard), findsWidgets);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
   for (final device in [
     (size: const Size(390, 844), tv: false, platform: TargetPlatform.android),
     (size: const Size(1280, 720), tv: true, platform: TargetPlatform.android),
@@ -241,6 +295,18 @@ void main() {
       });
     }
   }
+}
+
+bool _focusWithin(Finder finder) {
+  final focused = FocusManager.instance.primaryFocus?.context;
+  if (focused == null) return false;
+  final elements = finder.evaluate().toSet();
+  var found = elements.contains(focused);
+  focused.visitAncestorElements((element) {
+    if (elements.contains(element)) found = true;
+    return !found;
+  });
+  return found;
 }
 
 // pushNamed 保留浏览器地址时，仍以真实 Navigator 匹配栈断言当前页面。

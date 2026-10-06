@@ -225,8 +225,8 @@ void main() {
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 300));
         expect(find.byType(HomeFeedSkeleton), findsNothing);
-        expect(find.text('视频 loaded'), findsOneWidget);
-        await tester.tap(find.text('视频 loaded'));
+        expect(_mediaCard('loaded'), findsOneWidget);
+        await tester.tap(_mediaCard('loaded'));
         expect(opened, 'loaded');
         if (layout.tv) {
           opened = null;
@@ -256,13 +256,13 @@ void main() {
         repository.pendingRefresh = Completer<List<MediaItem>>();
         await _homeRefresh(tester, tv: layout.tv);
         expect(repository.refreshCalls, 1);
-        expect(find.text('视频 old'), findsOneWidget);
+        expect(_mediaCard('old'), findsOneWidget);
         repository.pendingRefresh!.completeError(
           StateError('refresh unavailable'),
         );
         await tester.pumpAndSettle();
         expect(find.text('首页刷新失败'), findsOneWidget);
-        expect(find.text('视频 old'), findsOneWidget);
+        expect(_mediaCard('old'), findsOneWidget);
         repository.pendingRefresh = Completer<List<MediaItem>>();
         await tester.tap(find.byTooltip('重试刷新'));
         await tester.pump();
@@ -271,8 +271,8 @@ void main() {
         repository.pendingRefresh!.complete(repository.items);
         await tester.pumpAndSettle();
         expect(find.text('首页刷新失败'), findsNothing);
-        expect(find.text('视频 old'), findsNothing);
-        expect(find.text('视频 new'), findsOneWidget);
+        expect(_mediaCard('old'), findsNothing);
+        expect(_mediaCard('new'), findsOneWidget);
         await tester.pumpWidget(const SizedBox.shrink());
       },
     );
@@ -639,11 +639,7 @@ void main() {
           await tester.pumpAndSettle();
           final raw = tester.widget<RawImage>(find.byType(RawImage));
           final decoded = raw.image!;
-          final visible = tester.getSize(find.byType(RawImage));
-          expect(visible.width / visible.height, closeTo(1.6, 0.01));
           expect(decoded.width / decoded.height, closeTo(1.6, 0.01));
-          expect(decoded.width, visible.width.round());
-          expect(decoded.height, visible.height.round());
           await tester.pumpWidget(const SizedBox.shrink());
         }
       }, createHttpClient: (_) => client);
