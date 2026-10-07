@@ -1,5 +1,5 @@
 ; 轻影 Luma Windows x64 NSIS 安装脚本。
-; 由 windows-deploy.ps1 注入 installer-defines.nsh 后调用 makensis 编译。
+; 由 mobile/script/package.ps1 注入 installer-defines.nsh 后调用 makensis 编译。
 Unicode true
 RequestExecutionLevel admin
 SetCompressor /SOLID lzma

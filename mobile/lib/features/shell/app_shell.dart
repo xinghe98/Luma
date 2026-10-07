@@ -52,6 +52,8 @@ class _TvShell extends StatelessWidget {
     return TvKeyBindings(
       child: AdaptiveAppNavigation(
         isTelevision: true,
+        focusContentOnStart:
+            navigationShell.currentIndex == AppDestination.videos.index,
         selectedIndex: navigationShell.currentIndex,
         onSelect: (index) {
           if (index == navigationShell.currentIndex) return;

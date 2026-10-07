@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Pre-Flutter launch surface. The white lockup remains legible on graphite. -->
+<!-- Pre-Flutter launch surface: symbol only; Flutter 接管后再呈现完整 lockup，与 Android 12+ 系统开屏一致。 -->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
     <item android:drawable="@color/luma_splash_background" />
     <item>
         <bitmap
             android:gravity="center"
-            android:src="@drawable/luma_splash_lockup" />
+            android:src="@drawable/luma_splash_symbol" />
     </item>
 </layer-list>

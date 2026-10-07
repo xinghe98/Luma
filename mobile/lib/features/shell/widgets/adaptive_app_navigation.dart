@@ -15,6 +15,7 @@ class AdaptiveAppNavigation extends StatelessWidget {
     required this.onSelect,
     required this.content,
     this.isTelevision = false,
+    this.focusContentOnStart = false,
   });
 
   final int selectedIndex;
@@ -24,6 +25,9 @@ class AdaptiveAppNavigation extends StatelessWidget {
   /// TV 使用左侧常驻导航；手机底部导航与宽屏 Rail 分支保持不变。
   final bool isTelevision;
 
+  /// 电视首次进入时收起导航并浏览内容；手机和桌面忽略。
+  final bool focusContentOnStart;
+
   @override
   Widget build(BuildContext context) {
     if (isTelevision) {
@@ -31,6 +35,7 @@ class AdaptiveAppNavigation extends StatelessWidget {
         selectedIndex: selectedIndex,
         onSelect: onSelect,
         content: content,
+        focusContentOnStart: focusContentOnStart,
       );
     }
     return LayoutBuilder(
@@ -175,8 +180,7 @@ class _LumaBottomNavigationState extends State<_LumaBottomNavigation> {
                     builder: (context, constraints) {
                       final destinationCount = AppDestination.values.length;
                       const trackInset = LumaSpacing.xs;
-                      final trackWidth =
-                          constraints.maxWidth - trackInset * 2;
+                      final trackWidth = constraints.maxWidth - trackInset * 2;
                       final slotWidth = trackWidth / destinationCount;
                       final indicatorWidth = (slotWidth + LumaSpacing.xs)
                           .clamp(64.0, 88.0)
@@ -184,9 +188,7 @@ class _LumaBottomNavigationState extends State<_LumaBottomNavigation> {
                       return Stack(
                         children: [
                           Positioned(
-                            left:
-                                trackInset +
-                                (slotWidth - indicatorWidth) / 2,
+                            left: trackInset + (slotWidth - indicatorWidth) / 2,
                             top: 10,
                             width: indicatorWidth,
                             height: 44,
@@ -321,11 +323,10 @@ class _BottomDestination extends StatelessWidget {
                       return FadeTransition(
                         opacity: entrance,
                         child: SlideTransition(
-                          position:
-                              Tween<Offset>(
-                                begin: const Offset(0.06, 0),
-                                end: Offset.zero,
-                              ).animate(entrance),
+                          position: Tween<Offset>(
+                            begin: const Offset(0.06, 0),
+                            end: Offset.zero,
+                          ).animate(entrance),
                           child: child,
                         ),
                       );

@@ -51,6 +51,10 @@ enum AppDestination {
   final IconData icon;
   final IconData selectedIcon;
 
+  /// 电视冷启动进入影视库，手机和桌面仍进入首页。
+  static String landingPath({required bool television}) =>
+      television ? videos.path : home.path;
+
   NavigationRailDestination toNavigationRailDestination() =>
       NavigationRailDestination(
         icon: Icon(icon),

@@ -62,6 +62,7 @@ class _CatalogPageState extends State<CatalogPage>
   Future<void>? _entryGate;
   bool _entrySettled = false;
   bool _loadCheckScheduled = false;
+  bool _entryFocused = false;
 
   /// TV 个人视频预览固定展示的条数。
   static const _tvPersonalPreviewCount = 6;
@@ -245,6 +246,10 @@ class _CatalogPageState extends State<CatalogPage>
     final movies = _movies!;
     final series = _series!;
     final personalVideos = _personalVideos!;
+    final entry = _entryTarget(
+      wantsEntry: isTelevision && TvShellEntry.focusContentOf(context),
+      personalItems: personalItems,
+    );
     return CustomScrollView(
       key: const PageStorageKey('catalog-overview-scroll'),
       controller: _scroll,
@@ -263,6 +268,8 @@ class _CatalogPageState extends State<CatalogPage>
                 series.items.take(12).toList(growable: false),
               ),
               onPersonalVideos: openPersonalVideos,
+              autofocusFirst: entry.header,
+              onEntryFocused: _completeEntryFocus,
             ),
           ),
         if (allEmpty)
@@ -281,6 +288,8 @@ class _CatalogPageState extends State<CatalogPage>
               controller: movies,
               onOpenCatalog: widget.onOpenCatalog,
               onOpenAll: widget.onOpenMovies,
+              entryFocusId: entry.movieId,
+              onEntryFocused: _completeEntryFocus,
             ),
           ),
           SliverToBoxAdapter(
@@ -291,6 +300,8 @@ class _CatalogPageState extends State<CatalogPage>
                 controller: series,
                 onOpenCatalog: widget.onOpenCatalog,
                 onOpenAll: widget.onOpenSeries,
+                entryFocusId: entry.seriesId,
+                onEntryFocused: _completeEntryFocus,
               ),
             ),
           ),
@@ -375,6 +386,8 @@ class _CatalogPageState extends State<CatalogPage>
                         items: tvPersonalPreview,
                         onOpenPersonalMedia: widget.onOpenPersonalMedia,
                         scrollController: _scroll,
+                        entryFocusId: entry.personalId,
+                        onEntryFocused: _completeEntryFocus,
                       ),
                     )
                   : ResponsiveMediaSliverGrid(
@@ -400,4 +413,59 @@ class _CatalogPageState extends State<CatalogPage>
     if (!mounted || _entrySettled) return;
     setState(() => _entrySettled = true);
   }
+
+  /// 电影未加载完时不落焦点，避免先停在页头按钮上。
+  _CatalogEntry _entryTarget({
+    required bool wantsEntry,
+    required List<MediaItem> personalItems,
+  }) {
+    if (!wantsEntry || _entryFocused) return const _CatalogEntry();
+    final movies = _movies!;
+    final series = _series!;
+    final personal = _personalVideos!;
+    if (movies.items.isNotEmpty) {
+      return _CatalogEntry(movieId: movies.items.first.id);
+    }
+    if (!_catalogSettled(movies)) return const _CatalogEntry();
+    if (series.items.isNotEmpty) {
+      return _CatalogEntry(seriesId: series.items.first.id);
+    }
+    if (!_catalogSettled(series)) return const _CatalogEntry();
+    if (personalItems.isNotEmpty) {
+      return _CatalogEntry(personalId: personalItems.first.id);
+    }
+    final personalSettled =
+        personal.hasStarted &&
+        personal.loadState != LoadState.loading &&
+        personal.loadState != LoadState.idle;
+    if (!personalSettled) return const _CatalogEntry();
+    return const _CatalogEntry(header: true);
+  }
+
+  bool _catalogSettled(CatalogController controller) =>
+      controller.hasStarted &&
+      controller.state != CatalogLoadState.loading &&
+      controller.state != CatalogLoadState.idle;
+
+  void _completeEntryFocus() {
+    if (_entryFocused) return;
+    _entryFocused = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) setState(() {});
+    });
+  }
+}
+
+class _CatalogEntry {
+  const _CatalogEntry({
+    this.movieId,
+    this.seriesId,
+    this.personalId,
+    this.header = false,
+  });
+
+  final String? movieId;
+  final String? seriesId;
+  final String? personalId;
+  final bool header;
 }

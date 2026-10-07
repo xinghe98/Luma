@@ -1,4 +1,5 @@
 // TV 导航在内容浏览时收合，返回或左移时展开；覆盖式展开不挤动媒体布局。
+// 冷启动可直接进入内容：导航收起，焦点由影视库交给第一张卡片。
 // 返回优先级：退出字段编辑 → 内容回导航 → 非首页回首页 → 首页退出系统；
 // 弹层与根层详情页的返回由各自路由先行处理。
 import 'dart:async';
@@ -11,6 +12,7 @@ import '../../../shared/branding/brand_mark.dart';
 import '../../../shared/interaction/luma_focusable_surface.dart';
 import '../../../shared/layout/tv_content_frame.dart';
 import '../app_destination.dart';
+import '../shell_entry_gate.dart';
 import 'tv_field_gate.dart';
 
 class TvAppNavigation extends StatefulWidget {
@@ -19,6 +21,7 @@ class TvAppNavigation extends StatefulWidget {
     required this.selectedIndex,
     required this.onSelect,
     required this.content,
+    this.focusContentOnStart = false,
   });
 
   final int selectedIndex;
@@ -26,6 +29,9 @@ class TvAppNavigation extends StatefulWidget {
 
   /// 当前分支内容；未选分支由导航容器排除焦点，详情覆盖时保留来源焦点。
   final Widget content;
+
+  /// 为 true 时首次构建就浏览内容，不把焦点留在展开的导航项上。
+  final bool focusContentOnStart;
 
   @override
   State<TvAppNavigation> createState() => _TvAppNavigationState();
@@ -42,10 +48,13 @@ class _TvAppNavigationState extends State<TvAppNavigation> {
   final _contentScope = FocusScopeNode(debugLabel: 'tv-content-scope');
   final Map<int, FocusNode> _branchFocus = {};
   bool _contentActive = false;
+  bool _focusContentOnStart = false;
 
   @override
   void initState() {
     super.initState();
+    _focusContentOnStart = widget.focusContentOnStart;
+    _contentActive = widget.focusContentOnStart;
     FocusManager.instance.addListener(_rememberContentFocus);
   }
 
@@ -191,7 +200,10 @@ class _TvAppNavigationState extends State<TvAppNavigation> {
                   child: FocusScope(
                     node: _contentScope,
                     onKeyEvent: _handleContentKey,
-                    child: TvContentFrame(child: widget.content),
+                    child: TvShellEntry(
+                      focusContent: _focusContentOnStart,
+                      child: TvContentFrame(child: widget.content),
+                    ),
                   ),
                 ),
               ),
@@ -214,6 +226,7 @@ class _TvAppNavigationState extends State<TvAppNavigation> {
                     onSelect: _selectBranch,
                     itemNodes: _itemNodes,
                     compact: _contentActive,
+                    autofocusSelected: !_focusContentOnStart,
                   ),
                 ),
               ),
@@ -231,12 +244,16 @@ class _TvNavigationRail extends StatelessWidget {
     required this.onSelect,
     required this.itemNodes,
     required this.compact,
+    required this.autofocusSelected,
   });
 
   final int selectedIndex;
   final ValueChanged<int> onSelect;
   final Map<int, FocusNode> itemNodes;
   final bool compact;
+
+  /// 冷启动进入内容时不自动聚焦导航，避免侧栏把焦点抢回去。
+  final bool autofocusSelected;
 
   @override
   Widget build(BuildContext context) {
@@ -284,7 +301,9 @@ class _TvNavigationRail extends StatelessWidget {
                           selected: destination.index == selectedIndex,
                           compact: compact,
                           focusNode: itemNodes[destination.index]!,
-                          autofocus: destination.index == selectedIndex,
+                          autofocus:
+                              autofocusSelected &&
+                              destination.index == selectedIndex,
                           onSelect: onSelect,
                         ),
                     ],
@@ -332,44 +351,67 @@ class _TvNavigationItem extends StatelessWidget {
         focusBorderWidth: LumaTvLayout.focusStroke,
         borderRadius: BorderRadius.circular(LumaRadii.small),
         onActivate: () => onSelect(destination.index),
-        child: Container(
-          constraints: const BoxConstraints(
-            minHeight: LumaTvLayout.controlMinHeight,
-          ),
-          decoration: BoxDecoration(
-            color: selected ? colors.secondaryContainer : Colors.transparent,
-            borderRadius: BorderRadius.circular(LumaRadii.small),
-          ),
-          child: Row(
-            children: [
-              SizedBox(
-                width: LumaTvLayout.controlMinHeight,
-                height: LumaTvLayout.controlMinHeight,
-                child: Icon(
-                  selected ? destination.selectedIcon : destination.icon,
-                  color: selected
-                      ? colors.onSecondaryContainer
-                      : colors.onSurfaceVariant,
-                ),
+        child: Builder(
+          builder: (context) {
+            final focused = LumaFocusMark.focusedOf(context);
+            final foreground = focused
+                ? colors.onInverseSurface
+                : selected
+                ? colors.onSecondaryContainer
+                : colors.onSurfaceVariant;
+            return Container(
+              constraints: const BoxConstraints(
+                minHeight: LumaTvLayout.controlMinHeight,
               ),
-              if (!compact)
-                Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      vertical: LumaSpacing.sm,
-                    ),
-                    child: Text(
-                      destination.label,
-                      style: theme.textTheme.labelLarge?.copyWith(
-                        color: selected
-                            ? colors.onSecondaryContainer
-                            : colors.onSurfaceVariant,
+              decoration: BoxDecoration(
+                color: focused
+                    ? colors.inverseSurface
+                    : selected
+                    ? colors.secondaryContainer
+                    : Colors.transparent,
+                borderRadius: BorderRadius.circular(LumaRadii.small),
+              ),
+              child: Row(
+                children: [
+                  if (compact)
+                    Expanded(
+                      child: SizedBox(
+                        height: LumaTvLayout.controlMinHeight,
+                        child: Icon(
+                          selected
+                              ? destination.selectedIcon
+                              : destination.icon,
+                          color: foreground,
+                        ),
+                      ),
+                    )
+                  else ...[
+                    SizedBox(
+                      width: LumaTvLayout.controlMinHeight,
+                      height: LumaTvLayout.controlMinHeight,
+                      child: Icon(
+                        selected ? destination.selectedIcon : destination.icon,
+                        color: foreground,
                       ),
                     ),
-                  ),
-                ),
-            ],
-          ),
+                    Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          vertical: LumaSpacing.sm,
+                        ),
+                        child: Text(
+                          destination.label,
+                          style: theme.textTheme.labelLarge?.copyWith(
+                            color: foreground,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            );
+          },
         ),
       ),
     );

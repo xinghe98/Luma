@@ -142,7 +142,11 @@ class _DetailBackScopeState extends State<DetailBackScope> {
       }
     } else if (router != null) {
       _leaving = true;
-      router.go(AppDestination.home.path);
+      router.go(
+        AppDestination.landingPath(
+          television: AppScope.of(context).deviceProfile.isTelevision,
+        ),
+      );
     }
   }
 

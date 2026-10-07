@@ -5,12 +5,10 @@ on:
   push:
     paths:
       - "mobile/**"
-      - "backend/scripts/windows-deploy.ps1"
       - ".github/workflows/mobile.yml"
   pull_request:
     paths:
       - "mobile/**"
-      - "backend/scripts/windows-deploy.ps1"
       - ".github/workflows/mobile.yml"
 
 permissions:
@@ -149,10 +147,10 @@ jobs:
       - run: flutter pub get
       - name: Install NSIS
         run: choco install nsis -y
-      - shell: pwsh
-        run: .\package-windows.ps1
+      - shell: powershell
+        run: ./script/package.ps1 -p win
       - uses: actions/upload-artifact@v4
         with:
           name: luma-windows-x64
-          path: mobile/build/dist/luma-windows-x64-*-setup.exe
+          path: mobile/build/dist/luma-*-windows-x64-setup.exe
           if-no-files-found: error

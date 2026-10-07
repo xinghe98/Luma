@@ -196,7 +196,7 @@ void main() {
         (_Back.escape, _DetailState.loading),
       ]) {
         testWidgets('${viewport.name} ${catalog ? '作品' : '媒体'}深链 ${state.name} '
-            '${back.name} 无来源时回首页', (tester) async {
+            '${back.name} 无来源时回落地页', (tester) async {
           final harness = await _mount(
             tester,
             size: viewport.size,
@@ -207,7 +207,10 @@ void main() {
           );
           expect(harness.router.canPop(), isFalse);
           await _back(tester, back, catalog: catalog);
-          expect(_location(harness.router), '/home');
+          expect(
+            _location(harness.router),
+            viewport.television ? '/videos' : '/home',
+          );
           expect(find.byType(CatalogDetailPage), findsNothing);
           expect(find.byType(MediaDetailPage), findsNothing);
           expect(tester.takeException(), isNull);

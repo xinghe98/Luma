@@ -329,6 +329,7 @@ class CatalogEpisodeTile extends StatelessWidget {
   final double focusBorderWidth;
 
   /// 行高与远程揭示共用，容纳系统缩放后的两行标题和元数据。
+  /// TV 焦点槽从这段余量里留出，不另加行高，避免揭示后底边露出视口。
   static double televisionExtent(BuildContext context) {
     final textHeight = MediaCard.textDetailsHeight(context);
     const artworkHeight = 112 * 9 / 16;

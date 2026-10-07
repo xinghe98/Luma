@@ -475,6 +475,125 @@ void main() {
     expect(harness.player.playing, isTrue);
   });
 
+  test('视频输出恢复后清除原生错误，仅音频位置推进不算恢复', () async {
+    final harness = _SeekHarness.create(
+      router: _LoopbackMediaRequestRouter(
+        url: 'http://127.0.0.1:45678/relay/probe',
+        summary: '上游返回 HTTP 206，已从上游读取 64 MiB',
+      ),
+    );
+    addTearDown(harness.dispose);
+    await harness.start();
+    harness.fake.emitError('MediaCodec 启动失败，正在尝试其他解码器');
+    await pumpEventQueue();
+    expect(harness.player.error, isNotNull);
+
+    harness.fake.emitPosition(const Duration(seconds: 2));
+    await pumpEventQueue();
+    expect(harness.player.error, isNotNull);
+
+    harness.controller.videoPosition = const Duration(seconds: 2);
+    harness.fake.emitPosition(const Duration(seconds: 3));
+    await pumpEventQueue();
+    expect(harness.player.error, isNull);
+    expect(harness.player.playing, isTrue);
+  });
+
+  test('终态打开失败不会被残留视频时间清除', () async {
+    final harness = _SeekHarness.create();
+    addTearDown(harness.dispose);
+    await harness.start();
+    harness.fake.emitError('Failed to open stream');
+    await pumpEventQueue();
+    harness.controller.videoPosition = const Duration(seconds: 5);
+    harness.fake.emitPosition(const Duration(seconds: 5));
+    await pumpEventQueue();
+    expect(harness.player.error, isNotNull);
+    expect(harness.player.playing, isFalse);
+  });
+
+  test('视频恢复不能覆盖随后发生的暂停命令失败', () async {
+    final harness = _SeekHarness.create();
+    addTearDown(harness.dispose);
+    await harness.start();
+    harness.fake.emitError('解码器正在回退');
+    await pumpEventQueue();
+    harness.fake.pauseError = StateError('pause rejected');
+    await harness.player.pause();
+    await pumpEventQueue();
+    harness.controller.videoPosition = const Duration(seconds: 2);
+    harness.fake.emitPosition(const Duration(seconds: 2));
+    await pumpEventQueue();
+    expect(harness.player.error, contains('pause rejected'));
+  });
+
+  test('视频输出链致命失败停止声音且不会被残留进度清除', () async {
+    final harness = _SeekHarness.create();
+    addTearDown(harness.dispose);
+    await harness.start();
+    harness.fake.emitFatalVideoFailure();
+    await pumpEventQueue();
+    expect(harness.player.error, contains('Could not initialize video chain.'));
+    expect(harness.fake.state.playing, isFalse);
+    harness.controller.videoPosition = const Duration(seconds: 5);
+    harness.fake.emitPosition(const Duration(seconds: 5));
+    await pumpEventQueue();
+    expect(harness.player.error, isNotNull);
+    await harness.player.retry();
+    expect(harness.player.error, isNull);
+    expect(harness.player.playing, isTrue);
+  });
+
+  test('定位跳跃不清除错误，定位后连续推进才算恢复', () async {
+    final harness = _SeekHarness.create();
+    addTearDown(harness.dispose);
+    await harness.start();
+    harness.fake.emitError('Could not open codec.');
+    await pumpEventQueue();
+    harness.controller.pushSeeking(true);
+    harness.controller.videoPosition = const Duration(seconds: 10);
+    harness.controller.pushSeeking(false);
+    harness.fake.emitPosition(const Duration(seconds: 10));
+    await pumpEventQueue();
+    expect(harness.player.error, isNotNull);
+    harness.controller.videoPosition = const Duration(seconds: 11);
+    harness.fake.emitPosition(const Duration(seconds: 11));
+    await pumpEventQueue();
+    expect(harness.player.error, isNull);
+  });
+
+  test('旧错误的在途读数不能清除新错误或重试后的会话错误', () async {
+    final harness = _SeekHarness.create();
+    addTearDown(harness.dispose);
+    await harness.start();
+    harness.fake.emitError('第一条解码错误');
+    await pumpEventQueue();
+    final gate = Completer<Duration?>();
+    harness.controller.videoReadGate = gate;
+    harness.fake.emitPosition(const Duration(seconds: 1));
+    await pumpEventQueue();
+    await harness.player.retry();
+    harness.fake.emitError('新会话错误');
+    await pumpEventQueue();
+    gate.complete(const Duration(seconds: 2));
+    await pumpEventQueue();
+    expect(harness.player.error, '新会话错误');
+  });
+
+  test('空原生消息不会产生仅含 HTTP 206 的错误提示', () async {
+    final harness = _SeekHarness.create(
+      router: _LoopbackMediaRequestRouter(
+        url: 'http://127.0.0.1:45678/relay/probe',
+        summary: '上游返回 HTTP 206，已从上游读取 64 MiB',
+      ),
+    );
+    addTearDown(harness.dispose);
+    await harness.start();
+    harness.fake.emitError(' \n');
+    await pumpEventQueue();
+    expect(harness.player.error, isNull);
+    expect(harness.player.playing, isTrue);
+  });
   test('重试后只展示当前链路的诊断，旧会话错误不再写回', () async {
     const routedUrl = 'http://127.0.0.1:45678/relay/route?token=SECRET';
     final router = _LoopbackMediaRequestRouter(
@@ -710,6 +829,15 @@ class _FakePlatformPlayer extends PlatformPlayer {
   /// 推送一次原生错误事件。
   void emitError(String message) => errorController.add(message);
 
+  /// 推送 media_kit 错误流未覆盖的视频链致命日志。
+  void emitFatalVideoFailure() => logController.add(
+    const PlayerLog(
+      prefix: 'cplayer',
+      level: 'fatal',
+      text: 'Could not initialize video chain.',
+    ),
+  );
+
   /// 让接下来的一次定位命令挂起，返回放行用的 completer。
   Completer<void> holdSeek() {
     final gate = Completer<void>();
@@ -795,6 +923,17 @@ class _SeekTestController extends PlayerController {
 
   final List<_FakePlatformPlayer> _fakes;
   ValueChanged<bool>? _seekingCallback;
+  Duration? videoPosition = Duration.zero;
+
+  Completer<Duration?>? videoReadGate;
+
+  /// 模拟有效视频链路的时间读数；音频独走时不推进它。
+  @override
+  Future<Duration?> readNativeVideoPosition(Player player) async {
+    final gate = videoReadGate;
+    videoReadGate = null;
+    return gate != null ? await gate.future : videoPosition;
+  }
 
   /// 是否提供原生定位状态；false 时退化为位置事件判据。
   bool probeAvailable = true;

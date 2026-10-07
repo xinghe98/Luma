@@ -15,26 +15,42 @@ important for changes under `mobile/`, which is the Flutter application.
 
 ## Script inventory contract
 
-- 仓库中受版本控制的 `.sh` 和 `.ps1` 必须始终只保留以下 6 个文件：
+- 仓库中受版本控制的 `.sh` 和 `.ps1` 必须始终只保留以下 7 个文件：
   - `backend/scripts/docker-deploy.sh`：仅用于 Linux Docker 部署，同时承载
     Compose 包装和容器入口逻辑。
   - `backend/scripts/linux-deploy.sh`：仅用于 Linux 实体机的构建、安装、
     更新和卸载。
   - `backend/scripts/linux-dev.sh`：仅用于 Linux 本地开发。
   - `backend/scripts/windows-deploy.ps1`：仅用于 Windows 服务端构建、安装、
-    更新、卸载及 Windows 客户端 NSIS 安装包构建。
+    更新和卸载。
   - `backend/scripts/windows-dev.ps1`：仅用于 Windows 本地开发。
-  - `mobile/package-windows.ps1`：仅作为 mobile 目录下一键转发入口，必须调用
-    `windows-deploy.ps1 -Action PackageClient`，不得复制打包实现。
+  - `mobile/script/package.ps1`：唯一客户端打包入口，负责 TV、Android 手机
+    release APK 与 Windows x64 release NSIS 安装包构建、产物检查和分发归集。
+  - `mobile/tool/sync_libxray.ps1`：独立的 libXray 依赖维护工具，不是打包入口，
+    不应作为打包或 Gradle/CMake 构建时的依赖下载步骤。
 - 新的脚本需求必须优先作为参数、动作或内部函数整合进上述对应入口。禁止重新拆出
   `build`、`install-service`、`uninstall-service`、`docker-entrypoint`、
-  `package_windows` 等独立脚本，也禁止在 `mobile/tool/` 或其他目录新增 `.sh`
-  和 `.ps1`。
-- 未经用户明确授权，不得增加、删除、重命名上述脚本，不得改变其平台边界或重新引入
-  第七个脚本。Dockerfile、CI、文档和其他调用方必须直接复用上述入口。
-- 修改脚本后必须确认仓库脚本清单仍精确为这 6 个文件，检查 Shell/PowerShell
+  客户端平台打包等独立脚本，也禁止在 `mobile/tool/` 或其他目录增加清单外的
+  `.sh` 和 `.ps1`。
+- 未经用户明确授权，不得增加、删除、重命名上述脚本或改变其平台边界。
+  Dockerfile、CI、文档和其他调用方必须直接复用上述对应入口。
+- 修改脚本后必须确认仓库脚本清单仍精确为这 7 个文件，检查 Shell/PowerShell
   语法、旧文件名残留引用以及 `git diff --check`；涉及打包流程时继续执行本文件
   规定的平台构建与产物检查。
+- 客户端打包无参默认全平台，必须在 Windows 主机运行；`-p tv`、`-p android`、
+  `-p win` 单选平台。Linux PowerShell 7 可运行 TV/Android 打包。
+  全平台需要 Flutter、Android SDK、JDK 17、Visual Studio C++ 与 NSIS 3；
+  后两者仅用于 Windows 打包。
+- TV 为一个 `armeabi-v7a` + `arm64-v8a` APK，手机仅 `arm64-v8a`，Windows 仅 x64。
+  Android 构建显式传入 `lumaTvAbis=arm64`，TV 传入 `lumaTvAbis=arm`；
+  Gradle 保留缺省手机 ABI 和 `emulator` debug 验证能力，只管构建，不复制分发产物。
+- 打包先运行 `dart run tool/sync_app_metadata.dart --check`；版本读取
+  `mobile/app_metadata.json`，元数据过期时失败，不自动改写生成文件。
+  APK 沿用 `mobile/android/key.properties` 的 release 签名，不回退 debug 签名。
+- 统一入口将产物归集到 `mobile/build/dist/`，文件名为
+  `luma-tv-arm-<version>-release.apk`、`luma-android-arm64-<version>-release.apk`
+  与 `luma-windows-x64-<version>-setup.exe`；未签名 APK 必须在 `.apk` 前保留
+  `-unsigned` 后缀，不得标记为发布就绪。后端部署脚本不得再承担客户端打包。
 
 ## Code documentation rules
 
@@ -165,11 +181,13 @@ important for changes under `mobile/`, which is the Flutter application.
   调整时必须分别评估低内存 Android 与高 DPI Windows，不得用一个数覆盖两端。
 - 首发分发形式为 Windows 10/11 x64 NSIS 安装包（`*-setup.exe`）。安装内容必须
   包含 exe、Flutter 与 plugin DLL、libmpv、Visual C++ runtime、`data`、使用说明
-  及第三方/字体许可；由 `windows/installer/luma.nsi` 与
-  `windows-deploy.ps1 -Action PackageClient` 生成。
-- CI 必须保留 Ubuntu 上的 analyze/test/Android debug build，并在 `windows-latest`
-  构建 Windows release 和 NSIS 安装包。除非需求扩展，当前不包含 MSIX、签名、
-  自动更新、ARM64、托盘、文件关联或系统媒体键。
+  及第三方/字体许可；由 `mobile/windows/installer/luma.nsi` 与
+  `mobile/script/package.ps1 -p win` 生成。
+- CI 必须保留 Ubuntu 上的 analyze/test/手机 debug、TV 双 ARM debug 与 ABI/Manifest
+  验证，并在 `windows-latest` 调用 `./script/package.ps1 -p win`（工作目录为
+  `mobile`）构建 Windows release 和 NSIS 安装包。客户端工作流不因后端部署脚本
+  变更而触发。除非需求扩展，Windows 当前不包含 MSIX、代码签名、自动更新、
+  ARM64、托盘、文件关联或系统媒体键。
 
 ### Backend boundary
 
@@ -186,8 +204,9 @@ important for changes under `mobile/`, which is the Flutter application.
   和一张深色封面。检查 100%、125%、150% Windows DPI 时不能出现裁切或模糊错位。
 - 修改平台 adapter、窗口生命周期、播放器、plugin 依赖或打包脚本时，除
   `flutter analyze` 和 focused tests 外，还必须执行 `flutter build apk --debug`
-  与 `flutter build windows --release`，并检查 NSIS 安装包/安装目录中的关键
-  DLL、许可和 data。
+  与 `./script/package.ps1 -p win`（工作目录为 `mobile`），并检查 NSIS 安装包/
+  安装目录中的关键 DLL、许可和 data。修改客户端打包流程时，还需通过统一入口
+  构建 TV 和手机 release，核对双 ARM/单 arm64 ABI、签名状态与分发文件名。
 - 普通共享 UI 改动至少运行 `flutter analyze`、相关手机/宽屏 widget tests 和
   `git diff --check`。发布前再运行完整 `flutter test`。
 - 不要用生产客户端做自动启动冒烟测试，因为它可能恢复真实凭据并连接用户服务器。

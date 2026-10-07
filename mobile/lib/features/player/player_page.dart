@@ -267,7 +267,7 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
   }
 
   /// 正常返回会结束播放，避免未明确收起时继续占用解码器；
-  /// 深链播放器没有来源栈时回首页，不停留在无法退出的页面。
+  /// 深链播放器没有来源栈时回到设备着陆页，不停留在无法退出的页面。
   void _closeAndPop() {
     unawaited(_session?.close());
     final navigator = Navigator.of(context);
@@ -275,7 +275,7 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
       navigator.pop();
       return;
     }
-    context.go(AppDestination.home.path);
+    context.go(AppDestination.landingPath(television: _isTelevision));
   }
 
   /// TV 分层返回：速度弹窗打开时由其自身路由响应 Back；否则先隐藏可见

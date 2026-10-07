@@ -36,7 +36,7 @@ void main() {
   Future<void> dismissLaunchOverlay(WidgetTester tester) async {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 1100));
-    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
   }
 
   Future<void> press(WidgetTester tester, LogicalKeyboardKey key) async {
@@ -65,7 +65,18 @@ void main() {
     await dismissLaunchOverlay(tester);
     await tester.pumpAndSettle();
 
-    // 初次进入主页：焦点落在「首页」导航项。
+    // 初次进入影视库：导航收起，焦点在第一张卡片而不是首页导航。
+    expect(FocusManager.instance.primaryFocus?.debugLabel, isNot('tv-nav-home'));
+    expect(find.text('轻影'), findsNothing);
+
+    // Back：内容焦点回到影视库导航。
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(FocusManager.instance.primaryFocus?.debugLabel, 'tv-nav-videos');
+
+    // 再 Back：非首页导航回首页导航，不弹退出确认。
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
     expect(FocusManager.instance.primaryFocus?.debugLabel, 'tv-nav-home');
 
     // 下移到「设置」并 OK：切到设置分支，焦点保持在导航项上。

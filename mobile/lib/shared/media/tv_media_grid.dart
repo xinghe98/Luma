@@ -194,6 +194,8 @@ class TvMediaGrid extends StatelessWidget {
     this.onFavorite,
     this.artworkFit,
     this.reveal,
+    this.entryFocusId,
+    this.onEntryFocused,
   });
 
   final List<MediaItem> items;
@@ -201,6 +203,10 @@ class TvMediaGrid extends StatelessWidget {
   final ValueChanged<MediaItem>? onFavorite;
   final BoxFit? artworkFit;
   final TvGridReveal? reveal;
+
+  /// 与该 id 相同的首张卡片在挂载时取得焦点。
+  final String? entryFocusId;
+  final VoidCallback? onEntryFocused;
 
   @override
   Widget build(BuildContext context) {
@@ -224,15 +230,20 @@ class TvMediaGrid extends StatelessWidget {
           itemCount: items.length,
           itemBuilder: (context, index) {
             final item = items[index];
+            final captureEntry =
+                entryFocusId != null && item.id == entryFocusId;
             return MediaCard(
               key: ValueKey(item.id),
               item: item,
               onTap: () => onTap(item),
               focusId: item.id,
+              autofocus: captureEntry,
               focusBorderWidth: LumaTvLayout.focusStroke,
               artworkFit: artworkFit,
               onFocusChange: (focused) {
-                if (focused) reveal?.track(index, width);
+                if (!focused) return;
+                reveal?.track(index, width);
+                if (captureEntry) onEntryFocused?.call();
               },
             );
           },

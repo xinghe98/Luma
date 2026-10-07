@@ -15,15 +15,18 @@ import '../../app/controllers/media_controller.dart';
 import '../../data/api/api_session.dart';
 import '../../data/proxy/loopback_media_relay.dart';
 import '../../data/models/media_item.dart';
+import 'player_video_decoding.dart';
 
 class PlayerController extends ChangeNotifier {
   /// 创建播放控制器；startFromBeginning 为 true 时不读取既有进度。
+  /// Android TV 确认 8-bit SDR 和硬解能力后直出 Surface，失败时重建兼容输出。
   PlayerController({
     required this.item,
     required MediaController media,
     ApiSession? apiSession,
     MediaRequestRouter? mediaRequestRouter,
     this.startFromBeginning = false,
+    this.preferDirectHardwareDecoding = false,
     this.autoHideDelay = const Duration(seconds: 4),
     this.bufferingTimeout = const Duration(seconds: 45),
     this.initializationTimeout = const Duration(seconds: 20),
@@ -46,6 +49,10 @@ class PlayerController extends ChangeNotifier {
   final ApiSession? _apiSession;
   final MediaRequestRouter _mediaRequestRouter;
   final bool startFromBeginning;
+
+  /// Android TV 起播前确认格式和硬解能力，再使用 MediaCodec Surface 输出。
+  /// HDR、较高位深、未知参数与其他平台保持兼容输出。
+  final bool preferDirectHardwareDecoding;
   final Duration autoHideDelay;
   final Duration bufferingTimeout;
 
@@ -101,6 +108,9 @@ class PlayerController extends ChangeNotifier {
   /// 当前生成的回环路由完整地址；用于把原生错误里的地址替换为占位词。
   String? _mediaRouteUrl;
   String? _error;
+  _NativeErrorRecovery? _nativeErrorRecovery;
+  bool _embeddedVideoOutput = false;
+  bool _compatibleVideoOutputOnly = false;
   bool _disposed = false;
   bool _initialized = false;
   bool _buffering = false;
@@ -192,6 +202,7 @@ class PlayerController extends ChangeNotifier {
       _player = null;
       _videoController = null;
       _initialized = false;
+      _embeddedVideoOutput = false;
       _resetSeekState();
       _bufferingWatchdog?.cancel();
       _bufferingWatchdog = null;
@@ -208,16 +219,31 @@ class PlayerController extends ChangeNotifier {
         platformPlayer: debugPlatformPlayerFactory?.call(configuration),
       );
       _player = player;
-      final videoControllerFactory = debugVideoControllerFactory;
-      _videoController = videoControllerFactory != null
-          ? videoControllerFactory(player)
-          : VideoController(player);
+      final platform = player.platform;
+      final prepareTvOutput =
+          preferDirectHardwareDecoding &&
+          !_compatibleVideoOutputOnly &&
+          !kIsWeb &&
+          defaultTargetPlatform == TargetPlatform.android &&
+          platform is NativePlayer &&
+          debugVideoControllerFactory == null;
+      if (!prepareTvOutput) {
+        final factory = debugVideoControllerFactory;
+        _videoController = factory != null
+            ? factory(player)
+            : VideoController(player);
+      }
       _listenToPlayer(player, generation);
 
-      final platform = player.platform;
       if (platform is NativePlayer) {
         for (final entry in nativeBufferingProperties.entries) {
           await platform.setProperty(entry.key, entry.value);
+        }
+        if (prepareTvOutput) {
+          // 暂停解出首帧以确认格式；此时不创建纹理，也不输出声音。
+          await platform.setProperty('vo', 'null');
+          await platform.setProperty('hwdec', 'auto-safe');
+          await platform.setProperty('vid', 'auto');
         }
       }
       // 原生定位状态是定位结束的主要判据；非原生实现会直接返回并退化为位置事件。
@@ -240,11 +266,15 @@ class PlayerController extends ChangeNotifier {
         ),
         play: false,
       );
+      if (prepareTvOutput) {
+        await _prepareDirectHardwareDecoding(player, generation);
+      }
       if (_disposed || generation != _initializationGeneration) {
         await _disposePlayer(player);
         return;
       }
       await player.setVolume(_volume * 100);
+      if (_speed != 1) await player.setRate(_speed);
       // 初始化期间播放与暂停都可能等待原生命令锁；每次落地后落实最新意图。
       bool requestedPause;
       do {
@@ -262,6 +292,7 @@ class PlayerController extends ChangeNotifier {
       _initialized = true;
       _initializationFailed = false;
       _error = null;
+      _nativeErrorRecovery = null;
       _playing = !_pauseIntent;
       _refreshBuffering(armWatchdog: true);
       // 初始化期间用户仍可快进或拖动，起播后补发他们最后一次选择的位置。
@@ -298,6 +329,7 @@ class PlayerController extends ChangeNotifier {
   /// 初始化失败或超时时收束资源，先撤销旧会话，再异步释放底层播放器。
   void _collapseInitialization(int generation, String error) {
     if (_disposed || generation != _initializationGeneration) return;
+    if (_fallbackToCompatibleVideo()) return;
     // 撤销路由前先合成诊断快照；此时回环请求的进度仍然可见。
     final message = _composeMediaRouteFailure(error);
     _initializationGeneration++;
@@ -399,6 +431,7 @@ class PlayerController extends ChangeNotifier {
           return;
         }
         _handleNativePosition(value);
+        unawaited(_recoverNativeError(player, generation));
       }),
       player.stream.duration.listen((_) {
         if (_disposed || generation != _initializationGeneration) return;
@@ -434,23 +467,133 @@ class PlayerController extends ChangeNotifier {
         unawaited(_saveProgress(forceEnd: true));
         _notifyPlaybackState(immediate: true);
       }),
-      player.stream.error.listen((message) {
-        if (_disposed || generation != _initializationGeneration) return;
-        // 打不开流是初始化的终态失败：直接走收束流程，避免随后
-        // 完成路径把错误静默清空。其余非致命告警照常仅上报。
-        if (!_initialized &&
-            _isInitializing &&
-            _isTerminalOpenFailure(message)) {
-          _collapseInitialization(generation, message);
-          return;
+      player.stream.error.listen(
+        (message) => _handleNativeError(player, generation, message),
+      ),
+      player.stream.log.listen((event) {
+        // media_kit 的错误流不转发 fatal；软件帧无法进入 Surface 时由这里收束。
+        if (event.level == 'fatal' &&
+            event.prefix == 'cplayer' &&
+            event.text.trim() == 'Could not initialize video chain.') {
+          _handleNativeError(
+            player,
+            generation,
+            event.text.trim(),
+            videoOutputFailed: true,
+          );
         }
-        // 解码错误照实上报；等待中的定位一并结束，避免错误后还有续作恢复播放。
-        _endPendingSeek();
-        _error = _composeMediaRouteFailure(message);
-        _playing = false;
-        _notifyPlaybackState(immediate: true);
       }),
     ]);
+  }
+
+  /// 区分可恢复解码告警与输出链终止；只有 Surface 失败才自动重建兼容播放器。
+  void _handleNativeError(
+    Player player,
+    int generation,
+    String message, {
+    bool videoOutputFailed = false,
+  }) {
+    if (_disposed ||
+        generation != _initializationGeneration ||
+        message.trim().isEmpty) {
+      return;
+    }
+    if (_embeddedVideoOutput &&
+        (videoOutputFailed ||
+            message.contains('Could not open codec') ||
+            message.contains('video_out') ||
+            message.contains('video decoder') ||
+            message.contains('VO does not support')) &&
+        _fallbackToCompatibleVideo()) {
+      return;
+    }
+    final terminal = videoOutputFailed || _isTerminalOpenFailure(message);
+    if (!_initialized && _isInitializing && terminal) {
+      _collapseInitialization(generation, message);
+      return;
+    }
+    _endPendingSeek();
+    _error = _composeMediaRouteFailure(message);
+    _nativeErrorRecovery = terminal ? null : _NativeErrorRecovery(_error!);
+    _playing = false;
+    if (videoOutputFailed) unawaited(_runCommand(player.pause));
+    _notifyPlaybackState(immediate: true);
+    unawaited(_recoverNativeError(player, generation));
+  }
+
+  /// 仅原生视频链路有效且非定位中的时间连续推进，才清除同一条可恢复错误。
+  /// 属性读数不是屏幕呈现证明；音频独走、暂停、EOF 和缺失视频输出均不采信。
+  @protected
+  Future<Duration?> readNativeVideoPosition(Player player) async {
+    final platform = player.platform;
+    if (platform is! NativePlayer) return null;
+    for (final entry in const {
+      'seeking': 'no',
+      'core-idle': 'no',
+      'eof-reached': 'no',
+      'playback-abort': 'no',
+      'vo-configured': 'yes',
+    }.entries) {
+      if (await platform.getProperty(entry.key) != entry.value) return null;
+    }
+    final output = await platform.getProperty('current-vo');
+    final track = int.tryParse(await platform.getProperty('vid'));
+    final width = int.tryParse(await platform.getProperty('video-params/w'));
+    if (output.isEmpty ||
+        output == 'null' ||
+        track == null ||
+        track <= 0 ||
+        width == null ||
+        width <= 0) {
+      return null;
+    }
+    return _parseSeconds(await platform.getProperty('time-pos'));
+  }
+
+  Future<void> _recoverNativeError(Player player, int generation) async {
+    final recovery = _nativeErrorRecovery;
+    if (recovery == null ||
+        recovery.reading ||
+        _error != recovery.message ||
+        _scrubbing ||
+        _seekRequest != null) {
+      return;
+    }
+    recovery.reading = true;
+    final revision = recovery.revision;
+    try {
+      final position = await readNativeVideoPosition(player);
+      if (_disposed ||
+          generation != _initializationGeneration ||
+          !identical(_nativeErrorRecovery, recovery) ||
+          _error != recovery.message ||
+          revision != recovery.revision) {
+        return;
+      }
+      final previous = recovery.position;
+      recovery.position = position;
+      if (position == null || previous == null || position <= previous) return;
+      _error = null;
+      _nativeErrorRecovery = null;
+      _playing = player.state.playing && !_pauseIntent;
+      _notifyPlaybackState(immediate: true);
+      scheduleHide();
+    } on Object {
+      // 属性不可用时保留错误与重试入口，不凭音频进度推断视频已恢复。
+      recovery.position = null;
+    } finally {
+      recovery.reading = false;
+    }
+  }
+
+  /// Surface 无法承接软件帧；每个播放会话至多重建一次 GPU 兼容输出。
+  bool _fallbackToCompatibleVideo() {
+    if (_disposed || !_embeddedVideoOutput || _compatibleVideoOutputOnly) {
+      return false;
+    }
+    _compatibleVideoOutputOnly = true;
+    unawaited(retry());
+    return true;
   }
 
   void _notifyPlaybackState({bool immediate = false}) {
@@ -534,7 +677,11 @@ class PlayerController extends ChangeNotifier {
   /// 原生 `seeking` 事件只作为确认触发点：完成与否由命令被接受后的原生状态读取判定，
   /// 因此注册初值、被合并掉的 yes 或旧事件都不会误判定位完成。
   void _handleNativeSeeking(Player player, bool seeking) {
-    if (_disposed || !identical(_player, player) || seeking) return;
+    if (_disposed || !identical(_player, player)) return;
+    if (seeking) {
+      _nativeErrorRecovery?.resetPosition();
+      return;
+    }
     final request = _seekRequest;
     if (request == null) return;
     unawaited(_settleSeek(request, player));
@@ -556,6 +703,43 @@ class PlayerController extends ChangeNotifier {
     syncPosition(value);
   }
 
+  /// 先用空输出确认真实格式和硬解能力，再创建唯一视频纹理。
+  /// Surface 只接受 MediaCodec 帧；无硬解或色彩参数不匹配时沿用 GPU。
+  Future<void> _prepareDirectHardwareDecoding(
+    Player player,
+    int generation,
+  ) async {
+    final platform = player.platform;
+    if (platform is! NativePlayer) return;
+    var params = player.state.videoParams;
+    if (params.pixelformat == null) {
+      params = await player.stream.videoParams
+          .firstWhere((value) => value.pixelformat != null)
+          .timeout(initializationTimeout);
+    }
+    if (_disposed || generation != _initializationGeneration) return;
+    final hardware = await platform.getProperty('hwdec-current');
+    if (_disposed || generation != _initializationGeneration) return;
+    final embedded =
+        supportsDirectTvDecoding(params) && hardware == 'mediacodec-copy';
+    // 清掉预读帧，确保新视频控制器收到参数事件并按正确尺寸创建 Surface。
+    await platform.setProperty('vid', 'no');
+    if (_disposed || generation != _initializationGeneration) return;
+    _embeddedVideoOutput = embedded;
+    final controller = VideoController(
+      player,
+      configuration: embedded
+          ? const VideoControllerConfiguration(
+              vo: 'mediacodec_embed',
+              hwdec: 'mediacodec,auto-safe',
+            )
+          : const VideoControllerConfiguration(),
+    );
+    _videoController = controller;
+    notifyListeners();
+    await controller.platform.future;
+  }
+
   /// 结束等待：清空当前请求后，旧请求的异步续作都会因身份不匹配而失效。
   void _endPendingSeek() {
     _seekRequest = null;
@@ -564,6 +748,7 @@ class PlayerController extends ChangeNotifier {
 
   /// 会话切换时同时丢弃原生缓冲、定位状态与待完成的定位请求。
   void _resetSeekState() {
+    _nativeErrorRecovery = null;
     _nativeBuffering = false;
     _dispatchingSeek = null;
     _nativePosition = null;
@@ -635,6 +820,7 @@ class PlayerController extends ChangeNotifier {
     } on Object catch (error) {
       if (!_isCurrentSeek(request)) return;
       _endPendingSeek();
+      _nativeErrorRecovery = null;
       _error = error.toString();
       _playing = false;
       _notifyPlaybackState(immediate: true);
@@ -649,6 +835,7 @@ class PlayerController extends ChangeNotifier {
   /// 所有定位入口的统一提交点：只保留最新目标，等待期间展示缓冲提示。
   void _requestSeek(Duration target, {required bool resumeAfter}) {
     if (_disposed) return;
+    _nativeErrorRecovery?.resetPosition();
     final clamped = _clampToDuration(target);
     final request = _SeekRequest(target: clamped, resumeAfter: resumeAfter);
     final player = _commandPlayer;
@@ -682,6 +869,7 @@ class PlayerController extends ChangeNotifier {
         return;
       }
       _endPendingSeek();
+      _nativeErrorRecovery = null;
       _error = error.toString();
       _playing = false;
       _notifyPlaybackState(immediate: true);
@@ -706,6 +894,7 @@ class PlayerController extends ChangeNotifier {
     if (_disposed) return;
     // 等待中的定位一并结束，错误提示后不留下会恢复播放的旧请求。
     _endPendingSeek();
+    _nativeErrorRecovery = null;
     _error = _composeMediaRouteFailure('播放缓冲超时，请稍后重试');
     _playing = false;
     final player = _player;
@@ -908,6 +1097,7 @@ class PlayerController extends ChangeNotifier {
   void beginScrub() {
     if (_scrubbing) return;
     _scrubbing = true;
+    _nativeErrorRecovery?.resetPosition();
     _scrubOrigin = _position;
     // 上一次拖动提交的定位可能还在等待恢复播放，按最新意图决定是否续播。
     final pending = _seekRequest;
@@ -1106,6 +1296,21 @@ class PlayerController extends ChangeNotifier {
     _detachPlayerSubscriptions();
     if (player != null) unawaited(_disposePlayer(player));
     super.dispose();
+  }
+}
+
+/// 一条可恢复原生错误的读取状态；新错误、定位和会话切换会使旧读数失效。
+class _NativeErrorRecovery {
+  _NativeErrorRecovery(this.message);
+
+  final String message;
+  Duration? position;
+  bool reading = false;
+  int revision = 0;
+
+  void resetPosition() {
+    position = null;
+    revision++;
   }
 }
 

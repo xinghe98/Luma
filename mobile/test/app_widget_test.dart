@@ -34,10 +34,10 @@ void main() {
   );
 
   Future<void> dismissLaunchOverlay(WidgetTester tester) async {
-    // 推进最短展示时间并应用 setState，确保开屏 AbsorbPointer 卸下。
+    // 推进最短展示时间与整屏淡出，确保开屏 AbsorbPointer 卸下。
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 1100));
-    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
   }
 
   testWidgets('production app disposes the dependencies it creates', (
@@ -90,6 +90,61 @@ void main() {
       expect(tester.takeException(), isNull);
     });
   }
+
+  testWidgets('开屏底色与 Logo 跟随设备亮度而非 App 主题', (tester) async {
+    // TV 场景：App 主题默认深色，但设备上报浅色，原生 splash 是白底。
+    final platform = tester.binding.platformDispatcher;
+    platform.platformBrightnessTestValue = Brightness.light;
+    addTearDown(platform.clearPlatformBrightnessTestValue);
+    final dependencies = createDependencies();
+    dependencies.settings.setThemeMode(ThemeMode.dark);
+    addTearDown(dependencies.dispose);
+
+    await tester.pumpWidget(LumaApp(dependencies: dependencies));
+    await tester.pump();
+
+    expect(
+      find.byWidgetPredicate(
+        (widget) => widget is ColoredBox && widget.color == LumaColors.paper,
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is Image &&
+            widget.image is AssetImage &&
+            (widget.image as AssetImage).assetName ==
+                'assets/luma-logo-horizontal-color-transparent.png',
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('开屏 Logo 淡入呈现，最短展示后整屏淡出移除', (tester) async {
+    final dependencies = createDependencies();
+    addTearDown(dependencies.dispose);
+    await tester.pumpWidget(LumaApp(dependencies: dependencies));
+    await tester.pump();
+
+    final splash = find.bySemanticsLabel('轻影正在启动');
+    final entrance = find.descendant(
+      of: splash,
+      matching: find.byWidgetPredicate(
+        (widget) => widget is FadeTransition && widget.child is ScaleTransition,
+      ),
+    );
+    // 入场动画起步时 Logo 近乎不可见，400ms 后完全呈现。
+    expect(tester.widget<FadeTransition>(entrance).opacity.value, lessThan(0.05));
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(tester.widget<FadeTransition>(entrance).opacity.value, 1);
+
+    // 最短展示结束时遮罩仍在场，整屏淡出完成后才移除。
+    await tester.pump(const Duration(milliseconds: 620));
+    expect(splash, findsOneWidget);
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(splash, findsNothing);
+  });
 
   testWidgets('connection page shows brand and validation feedback', (
     tester,

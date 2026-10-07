@@ -6,12 +6,16 @@ class _CatalogShelfSection extends StatelessWidget {
     required this.controller,
     required this.onOpenCatalog,
     required this.onOpenAll,
+    this.entryFocusId,
+    this.onEntryFocused,
   });
 
   final String title;
   final CatalogController controller;
   final CatalogOpenCallback onOpenCatalog;
   final ValueChanged<List<CatalogItem>> onOpenAll;
+  final String? entryFocusId;
+  final VoidCallback? onEntryFocused;
 
   @override
   Widget build(BuildContext context) {
@@ -40,6 +44,8 @@ class _CatalogShelfSection extends StatelessWidget {
       loading: controller.state == CatalogLoadState.loading,
       hasError: controller.state == CatalogLoadState.error,
       onRetry: controller.load,
+      entryFocusId: entryFocusId,
+      onEntryFocused: onEntryFocused,
     );
   }
 }
@@ -206,6 +212,8 @@ class _CatalogShelf extends StatelessWidget {
     required this.loading,
     required this.hasError,
     required this.onRetry,
+    this.entryFocusId,
+    this.onEntryFocused,
   });
 
   final String title;
@@ -215,6 +223,8 @@ class _CatalogShelf extends StatelessWidget {
   final bool loading;
   final bool hasError;
   final VoidCallback onRetry;
+  final String? entryFocusId;
+  final VoidCallback? onEntryFocused;
 
   @override
   Widget build(BuildContext context) {
@@ -249,7 +259,12 @@ class _CatalogShelf extends StatelessWidget {
           const SizedBox(height: LumaSpacing.md),
           // TV：大海报货架与逐项焦点；触控端保持既有小卡与箭头-free 横滑。
           if (isTelevision)
-            _TvCatalogShelf(items: items, onOpenCatalog: onOpenCatalog)
+            _TvCatalogShelf(
+              items: items,
+              onOpenCatalog: onOpenCatalog,
+              entryFocusId: entryFocusId,
+              onEntryFocused: onEntryFocused,
+            )
           else
             SizedBox(
               height: 262,
@@ -283,10 +298,17 @@ class _CatalogShelf extends StatelessWidget {
 
 /// TV 海报货架：更大卡宽、逐项 D-pad 焦点与离屏滚动交接。
 class _TvCatalogShelf extends StatefulWidget {
-  const _TvCatalogShelf({required this.items, required this.onOpenCatalog});
+  const _TvCatalogShelf({
+    required this.items,
+    required this.onOpenCatalog,
+    this.entryFocusId,
+    this.onEntryFocused,
+  });
 
   final List<CatalogItem> items;
   final CatalogOpenCallback onOpenCatalog;
+  final String? entryFocusId;
+  final VoidCallback? onEntryFocused;
 
   @override
   State<_TvCatalogShelf> createState() => _TvCatalogShelfState();
@@ -350,6 +372,7 @@ class _TvCatalogShelfState extends State<_TvCatalogShelf> {
               const SizedBox(width: LumaTvLayout.cardSpacing),
           itemBuilder: (context, index) {
             final item = widget.items[index];
+            final captureEntry = widget.entryFocusId == item.id;
             return SizedBox(
               key: ValueKey(item.id),
               width: _cardWidth,
@@ -357,10 +380,13 @@ class _TvCatalogShelfState extends State<_TvCatalogShelf> {
                 item: item,
                 // TV 不使用 Hero；路由侧会再次丢弃标签。
                 focusId: item.id,
+                autofocus: captureEntry,
                 focusBorderWidth: LumaTvLayout.focusStroke,
                 onTap: () => widget.onOpenCatalog(item),
                 onFocusChange: (focused) {
-                  if (focused) reveal.track(index);
+                  if (!focused) return;
+                  reveal.track(index);
+                  if (captureEntry) widget.onEntryFocused?.call();
                 },
               ),
             );
@@ -378,11 +404,15 @@ class _TvPersonalPreviewGrid extends StatefulWidget {
     required this.items,
     required this.onOpenPersonalMedia,
     required this.scrollController,
+    this.entryFocusId,
+    this.onEntryFocused,
   });
 
   final List<MediaItem> items;
   final MediaOpenCallback onOpenPersonalMedia;
   final ScrollController scrollController;
+  final String? entryFocusId;
+  final VoidCallback? onEntryFocused;
 
   @override
   State<_TvPersonalPreviewGrid> createState() => _TvPersonalPreviewGridState();
@@ -419,6 +449,8 @@ class _TvPersonalPreviewGridState extends State<_TvPersonalPreviewGrid> {
             items: widget.items,
             onTap: widget.onOpenPersonalMedia,
             reveal: reveal,
+            entryFocusId: widget.entryFocusId,
+            onEntryFocused: widget.onEntryFocused,
           ),
         );
       },

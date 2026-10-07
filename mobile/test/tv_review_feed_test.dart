@@ -21,6 +21,8 @@ import 'package:luma/data/models/media_item.dart';
 import 'package:luma/data/models/media_types.dart';
 import 'package:luma/data/repositories/catalog_repository.dart';
 import 'package:luma/features/catalog/catalog_page.dart';
+import 'package:luma/features/shell/app_destination.dart';
+import 'package:luma/features/shell/widgets/tv_app_navigation.dart';
 import 'package:luma/features/catalog/widgets/catalog_card.dart';
 import 'package:luma/features/home/home_page.dart';
 import 'package:luma/features/home/widgets/horizontal_media_section.dart';
@@ -510,6 +512,41 @@ void main() {
       await tester.pumpWidget(const SizedBox.shrink());
     },
   );
+
+  testWidgets('TV 进入影视库时导航收起且焦点在第一张卡片', (tester) async {
+    _viewport(tester, const Size(1280, 720));
+    final repository = _CatalogRepository()
+      ..items = ['A', 'B'].map(_catalog).toList();
+    final dependencies = _dependencies(catalog: repository, tv: true);
+    await tester.pumpWidget(
+      _app(
+        dependencies,
+        TvAppNavigation(
+          selectedIndex: AppDestination.videos.index,
+          focusContentOnStart: true,
+          onSelect: (_) {},
+          content: CatalogPage(
+            onOpenCatalog: (_, {heroTag}) {},
+            onOpenPersonalMedia: (_, {heroTag}) {},
+            onOpenSearch: () {},
+            onOpenMovies: (_) {},
+            onOpenSeries: (_) {},
+            onOpenPersonalVideos: (_) {},
+          ),
+        ),
+        dark: true,
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pumpAndSettle();
+    expect(
+      tester.getSize(find.byKey(const ValueKey('tv-navigation-drawer'))).width,
+      LumaTvLayout.navigationWidthCompact,
+    );
+    expect(find.text('轻影'), findsNothing);
+    expect(_ink(tester, _catalogCard('A')).focusNode!.hasPrimaryFocus, isTrue);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
 
   testWidgets(
     'TV catalog grid delayed insertion preserves focused B and Right opens C',

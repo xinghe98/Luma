@@ -187,6 +187,58 @@ void main() {
   });
 
   group('TV 播放器按键契约', () {
+    for (final size in [const Size(390, 844), const Size(1280, 720)]) {
+      for (final brightness in Brightness.values) {
+        testWidgets('进度更新后遥控显隐与错误重试仍可用 $size $brightness', (tester) async {
+          final harness = _TvSceneHarness.create();
+          addTearDown(harness.dispose);
+          await harness.pump(tester, size: size, brightness: brightness);
+          harness.player.toggleControls();
+          await tester.pump(const Duration(milliseconds: 300));
+
+          for (var second = 1; second <= 10; second++) {
+            harness.fake.emitPosition(Duration(seconds: second));
+            await tester.pump();
+            await tester.pump(const Duration(milliseconds: 250));
+          }
+          expect(harness.player.controlsVisible, isFalse);
+          await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+          await tester.pumpAndSettle();
+          expect(
+            harness.surfaceNode(tester, 'tv-player-play').hasFocus,
+            isTrue,
+          );
+          expect(find.text('00:10'), findsOneWidget);
+          final timeline = tester.getRect(
+            find.byKey(const ValueKey('tv-player-timeline')),
+          );
+          final play = tester.getRect(
+            find.byKey(const ValueKey('tv-player-play')),
+          );
+          expect(timeline.bottom, lessThanOrEqualTo(play.top));
+          expect(play.right, lessThanOrEqualTo(size.width));
+
+          await tester.tap(find.byKey(const ValueKey('tv-player-play')));
+          await tester.pump();
+          expect(harness.player.playing, isFalse);
+          harness.player.toggleControls();
+          await tester.pumpAndSettle();
+          harness.fake.emitError('视频解码失败');
+          await tester.pumpAndSettle();
+          Focus.of(tester.element(find.text('重试播放'))).requestFocus();
+          await tester.pump();
+          await tester.sendKeyEvent(LogicalKeyboardKey.select);
+          await tester.runAsync(() => pumpEventQueue());
+          await tester.pumpAndSettle();
+          expect(harness.fakes, hasLength(2));
+          expect(harness.player.error, isNull);
+          expect(harness.player.initialized, isTrue);
+          expect(find.text('重试播放'), findsNothing);
+          expect(tester.takeException(), isNull);
+        });
+      }
+    }
+
     testWidgets('挂载后播放按钮获得焦点，且不渲染锁定/旋转/音量/小窗控件', (tester) async {
       final harness = _TvSceneHarness.create();
       addTearDown(harness.dispose);
@@ -289,7 +341,7 @@ void main() {
       expect(harness.backCalls, 0);
     });
 
-    testWidgets('控制层隐藏时左右快进快退并显示短暂时间反馈，焦点不移动', (tester) async {
+    testWidgets('控制层隐藏时左右快进快退显示进度条，焦点不移动', (tester) async {
       final harness = _TvSceneHarness.create();
       addTearDown(harness.dispose);
       await harness.pump(tester);
@@ -303,16 +355,21 @@ void main() {
       await tester.pump();
       expect(harness.player.position, const Duration(seconds: 15));
       expect(harness.player.controlsVisible, isFalse);
+      expect(find.byKey(const ValueKey('tv-seek-timeline')), findsOneWidget);
       expect(harness.interaction.hudKind, PlayerHudKind.forward);
       expect(harness.interaction.hudVisible, isTrue);
+      expect(harness.surfaceNode(tester, 'tv-player-play').hasFocus, isFalse);
 
       await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
       await tester.pump();
       expect(harness.player.position, const Duration(seconds: 5));
       expect(harness.interaction.hudKind, PlayerHudKind.backward);
+      expect(find.byKey(const ValueKey('tv-seek-timeline')), findsOneWidget);
+      expect(harness.player.controlsVisible, isFalse);
 
       await tester.pump(const Duration(milliseconds: 800));
       expect(harness.interaction.hudVisible, isFalse);
+      expect(find.byKey(const ValueKey('tv-seek-timeline')), findsNothing);
       expect(harness.escapeCalls, 0);
     });
 
@@ -633,7 +690,11 @@ class _TvSceneHarness {
     return _TvSceneHarness._(repository, media, player, fakes);
   }
 
-  Future<void> pump(WidgetTester tester) => pumpScene(
+  Future<void> pump(
+    WidgetTester tester, {
+    Size size = const Size(1280, 720),
+    Brightness brightness = Brightness.dark,
+  }) => pumpScene(
     tester,
     PlayerScene(
       controller: player,
@@ -644,18 +705,27 @@ class _TvSceneHarness {
       isTelevision: true,
       onEscape: () => escapeCalls++,
     ),
+    size: size,
+    brightness: brightness,
   );
 
-  Future<void> pumpScene(WidgetTester tester, Widget scene) async {
+  Future<void> pumpScene(
+    WidgetTester tester,
+    Widget scene, {
+    Size size = const Size(1280, 720),
+    Brightness brightness = Brightness.dark,
+  }) async {
     tester.view.devicePixelRatio = 1;
-    tester.view.physicalSize = const Size(1280, 720);
+    tester.view.physicalSize = size;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
     player.start();
     await tester.pumpWidget(
       MaterialApp(
-        theme: LumaTheme.dark(),
+        theme: brightness == Brightness.dark
+            ? LumaTheme.dark()
+            : LumaTheme.light(),
         home: _TvHarnessLifetime(
           onDispose: dispose,
           child: Scaffold(body: scene),
@@ -880,4 +950,7 @@ class _FakePlatformPlayer extends PlatformPlayer {
     state = state.copyWith(position: value);
     positionController.add(value);
   }
+
+  /// 发出原生错误事件，由控制器异步转换为可重试状态。
+  void emitError(String message) => errorController.add(message);
 }

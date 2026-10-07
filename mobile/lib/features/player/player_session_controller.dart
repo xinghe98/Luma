@@ -12,13 +12,16 @@ import 'player_controller.dart';
 class PlayerSessionController extends ChangeNotifier {
   /// 创建播放会话；媒体控制器和会话信息用于创建底层播放器。
   /// 播放器关闭并完成进度同步后，会通过回调标记关联作品需要刷新。
+  /// 可为电视优先尝试直接硬解；实际平台支持与兼容回退由播放器判断。
   PlayerSessionController({
     required MediaController media,
     required ApiSession apiSession,
     ValueChanged<String?>? onCatalogInvalidated,
     MediaRequestRouter? mediaRequestRouter,
+    bool preferDirectHardwareDecoding = false,
   }) : _media = media,
        _apiSession = apiSession,
+       _preferDirectHardwareDecoding = preferDirectHardwareDecoding,
        _mediaRequestRouter =
            mediaRequestRouter ?? const DirectMediaRequestRouter(),
        _onCatalogInvalidated = onCatalogInvalidated;
@@ -26,6 +29,7 @@ class PlayerSessionController extends ChangeNotifier {
   final MediaController _media;
   final ApiSession _apiSession;
   final MediaRequestRouter _mediaRequestRouter;
+  final bool _preferDirectHardwareDecoding;
   final ValueChanged<String?>? _onCatalogInvalidated;
   PlayerController? _player;
   bool _minimized = false;
@@ -62,6 +66,7 @@ class PlayerSessionController extends ChangeNotifier {
       apiSession: _apiSession,
       mediaRequestRouter: _mediaRequestRouter,
       startFromBeginning: startFromBeginning,
+      preferDirectHardwareDecoding: _preferDirectHardwareDecoding,
     );
     _player = player;
     _minimized = false;

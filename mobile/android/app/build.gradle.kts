@@ -20,15 +20,15 @@ val appMetadataApplicationId = requireNotNull(
     appMetadataProperties.getProperty("androidApplicationId"),
 ) { "app_metadata.properties 缺少 androidApplicationId。" }
 
-// TV ABI 选择：缺省保持 arm64-v8a（手机包行为不变）；
-// lumaTvAbis=arm 打 32+64 位双 ARM 电视包；emulator 仅 x86_64 供隔离模拟器验证。
+// ABI 选择：缺省或 lumaTvAbis=arm64 仅打 arm64-v8a 手机包；
+// arm 打 32+64 位双 ARM 电视包；emulator 仅 x86_64 供隔离模拟器验证。
 val allNativeAbis = setOf("armeabi-v7a", "arm64-v8a", "x86", "x86_64")
 val lumaTvAbisProperty = providers.gradleProperty("lumaTvAbis")
 val nativeAbiFilters: Set<String> = when (val lumaTvAbis = lumaTvAbisProperty.orNull) {
-    null -> setOf("arm64-v8a")
+    null, "arm64" -> setOf("arm64-v8a")
     "arm" -> setOf("armeabi-v7a", "arm64-v8a")
     "emulator" -> setOf("x86_64")
-    else -> throw GradleException("lumaTvAbis 仅支持 arm 或 emulator")
+    else -> throw GradleException("lumaTvAbis 仅支持 arm64、arm 或 emulator")
 }
 
 android {
@@ -88,22 +88,4 @@ flutter {
 
 dependencies {
     implementation(files("libs/libXray.aar"))
-}
-
-val distDir = File(rootProject.projectDir.parentFile, "build/dist")
-
-tasks.matching { it.name == "assembleRelease" }.configureEach {
-    doLast {
-        copy {
-            from(layout.buildDirectory.dir("outputs/apk/release"))
-            into(distDir)
-            include("*.apk")
-            // TV 双 ARM 包独立命名，避免覆盖普通手机产物；普通路径命名不变。
-            if (lumaTvAbisProperty.orNull == "arm") {
-                rename { fileName ->
-                    fileName.replace("app-release", "luma-tv-arm-${flutter.versionName}-release")
-                }
-            }
-        }
-    }
 }

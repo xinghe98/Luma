@@ -262,6 +262,69 @@ void main() {
   );
 
   test(
+    'redirect via proxy that drops reused connections still streams media',
+    () async {
+      // 模拟 Xray http 入站：响应头声称 keep-alive，回完一个响应后却不再处理
+      // 同一连接上的请求，稍后直接断开。
+      final targets = <String>[];
+      final proxy = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
+      addTearDown(proxy.close);
+      proxy.listen((socket) {
+        socket.done.ignore();
+        final head = <int>[];
+        var answered = false;
+        socket.listen((chunk) {
+          if (answered) return;
+          head.addAll(chunk);
+          final text = latin1.decode(head, allowInvalid: true);
+          if (!text.contains('\r\n\r\n')) return;
+          answered = true;
+          final target = Uri.parse(text.split(' ')[1]);
+          targets.add(target.path);
+          if (target.path == '/luma/entry') {
+            socket.add(
+              latin1.encode(
+                'HTTP/1.1 302 Found\r\nLocation: final\r\n'
+                'Content-Length: 0\r\nConnection: keep-alive\r\n\r\n',
+              ),
+            );
+          } else {
+            socket
+              ..add(
+                latin1.encode(
+                  'HTTP/1.1 200 OK\r\n'
+                  'Content-Type: application/octet-stream\r\n'
+                  'Content-Length: ${media.length}\r\n'
+                  'Connection: keep-alive\r\n\r\n',
+                ),
+              )
+              ..add(media);
+          }
+          Timer(const Duration(milliseconds: 100), socket.destroy);
+        }, onError: (Object _) {});
+      });
+      await relay.close();
+      relay = LoopbackMediaRelay(
+        createHttpClient: () =>
+            HttpClient()..findProxy = (_) => 'PROXY 127.0.0.1:${proxy.port}',
+        authorizationHeadersFor: (_) => const {},
+      );
+      await relay.start();
+      final route = relay.route('http://192.0.2.10:8081/luma/entry', const {});
+      final client = HttpClient()..findProxy = (_) => 'DIRECT';
+      addTearDown(() => client.close(force: true));
+
+      final response = await (await client.getUrl(
+        Uri.parse(route.url),
+      )).close();
+
+      expect(response.statusCode, HttpStatus.ok);
+      expect(utf8.decode(await _body(response)), '0123456789');
+      expect(targets, ['/luma/entry', '/luma/final']);
+    },
+  );
+
+  test(
     'one playback pins its representation across concurrent ranges',
     () async {
       final selected = Completer<void>();

@@ -18,7 +18,9 @@ final _rootNavigatorKey = GlobalKey<NavigatorState>(debugLabel: 'root');
 /// 创建应用路由，并在登录跳转期间保留原始受保护地址。
 GoRouter createAppRouter(AppDependencies dependencies) => GoRouter(
   navigatorKey: _rootNavigatorKey,
-  initialLocation: AppDestination.home.path,
+  initialLocation: AppDestination.landingPath(
+    television: dependencies.deviceProfile.isTelevision,
+  ),
   refreshListenable: dependencies.session,
   redirect: (context, state) {
     final path = state.uri.path;
@@ -41,7 +43,9 @@ GoRouter createAppRouter(AppDependencies dependencies) => GoRouter(
           destinationUri.path != '/connect') {
         return destination;
       }
-      return AppDestination.home.path;
+      return AppDestination.landingPath(
+        television: dependencies.deviceProfile.isTelevision,
+      );
     }
     return null;
   },

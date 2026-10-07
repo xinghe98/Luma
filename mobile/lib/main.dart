@@ -150,10 +150,29 @@ class _LaunchBrandOverlay extends StatefulWidget {
   State<_LaunchBrandOverlay> createState() => _LaunchBrandOverlayState();
 }
 
-class _LaunchBrandOverlayState extends State<_LaunchBrandOverlay> {
+class _LaunchBrandOverlayState extends State<_LaunchBrandOverlay>
+    with TickerProviderStateMixin {
   static const _minimumPresentation = Duration(seconds: 1);
+  static const _entranceDuration = Duration(milliseconds: 400);
+  static const _exitDuration = Duration(milliseconds: 280);
   static const _compactBrandHeight = 72.0;
   static const _wideBrandHeight = 180.0;
+
+  late final AnimationController _entrance = AnimationController(
+    vsync: this,
+    duration: _entranceDuration,
+  );
+  late final AnimationController _exit = AnimationController(
+    vsync: this,
+    duration: _exitDuration,
+  );
+  late final CurvedAnimation _entranceCurve = CurvedAnimation(
+    parent: _entrance,
+    curve: Curves.easeOutQuart,
+  );
+  late final Animation<double> _exitFade = _exit.drive(
+    Tween<double>(begin: 1, end: 0),
+  );
 
   Timer? _dismissTimer;
   bool _isVisible = true;
@@ -162,12 +181,18 @@ class _LaunchBrandOverlayState extends State<_LaunchBrandOverlay> {
   void didChangeDependencies() {
     super.didChangeDependencies();
     if (_dismissTimer != null) return;
-    // 最短展示时间与资源预缓存并行；不因解码阻塞计时，避免遮罩长期吞掉点击。
+    // 系统减少动画时入场/退场都退化为瞬时行为，与无动画的硬切一致。
+    if (MediaQuery.disableAnimationsOf(context)) {
+      _entrance.duration = Duration.zero;
+      _exit.duration = Duration.zero;
+    }
+    // 最短展示时间与资源预缓存、入场动画并行；不因解码阻塞计时，避免遮罩长期吞掉点击。
+    unawaited(_entrance.forward());
     _startDismissTimer();
     final lockup = AssetImage(
       BrandMark.assetFor(
         variant: BrandMarkVariant.horizontal,
-        brightness: Theme.of(context).brightness,
+        brightness: MediaQuery.platformBrightnessOf(context),
       ),
     );
     unawaited(precacheImage(lockup, context).catchError((_) {}));
@@ -177,8 +202,14 @@ class _LaunchBrandOverlayState extends State<_LaunchBrandOverlay> {
     if (!mounted || _dismissTimer != null) return;
     _dismissTimer = Timer(_minimumPresentation, () {
       if (!mounted) return;
-      setState(() => _isVisible = false);
-      _grantContentInitialFocus();
+      // 最短展示结束后整屏淡出，动画完成才移除遮罩并交还焦点。
+      unawaited(
+        _exit.forward().then((_) {
+          if (!mounted) return;
+          setState(() => _isVisible = false);
+          _grantContentInitialFocus();
+        }),
+      );
     });
   }
 
@@ -198,44 +229,71 @@ class _LaunchBrandOverlayState extends State<_LaunchBrandOverlay> {
   @override
   void dispose() {
     _dismissTimer?.cancel();
+    _entranceCurve.dispose();
+    _entrance.dispose();
+    _exit.dispose();
     super.dispose();
   }
 
   /// 按开屏可用宽度选择品牌比例，手机保持克制，Windows 宽屏沿用既有尺寸。
   @override
-  Widget build(BuildContext context) => Stack(
-    fit: StackFit.expand,
-    children: [
-      // 可见期间同时阻断指针、语义和键盘焦点/快捷键，遥控器不会操作被遮住的页面。
-      if (_isVisible)
-        ExcludeFocus(child: ExcludeSemantics(child: widget.child))
-      else
-        widget.child,
-      if (_isVisible)
-        Semantics(
-          container: true,
-          label: '轻影正在启动',
-          child: AbsorbPointer(
-            child: ColoredBox(
-              color: Theme.of(context).scaffoldBackgroundColor,
-              child: LayoutBuilder(
-                builder: (context, constraints) {
-                  final brandHeight =
-                      constraints.maxWidth >=
-                          LumaLayout.navigationRailBreakpoint
-                      ? _wideBrandHeight
-                      : _compactBrandHeight;
-                  return Center(
-                    child: BrandMark(
-                      variant: BrandMarkVariant.horizontal,
-                      height: brandHeight,
-                    ),
-                  );
-                },
+  Widget build(BuildContext context) {
+    // 开屏与原生启动画面共用设备亮度这一决策源，不随 App 内主题变化；
+    // TV 默认深色主题但多数设备上报浅色，避免启动出现白底到蓝底的硬切。
+    final platformBrightness = MediaQuery.platformBrightnessOf(context);
+    final background = platformBrightness == Brightness.dark
+        ? LumaColors.deepBlue
+        : LumaColors.paper;
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        // 可见期间同时阻断指针、语义和键盘焦点/快捷键，遥控器不会操作被遮住的页面。
+        if (_isVisible)
+          ExcludeFocus(child: ExcludeSemantics(child: widget.child))
+        else
+          widget.child,
+        if (_isVisible)
+          Semantics(
+            container: true,
+            label: '轻影正在启动',
+            child: AbsorbPointer(
+              child: FadeTransition(
+                opacity: _exitFade,
+                child: ColoredBox(
+                  color: background,
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      final brandHeight =
+                          constraints.maxWidth >=
+                              LumaLayout.navigationRailBreakpoint
+                          ? _wideBrandHeight
+                          : _compactBrandHeight;
+                      return Center(
+                        child: FadeTransition(
+                          opacity: _entranceCurve,
+                          child: ScaleTransition(
+                            scale: _entranceCurve.drive(
+                              Tween<double>(begin: 0.94, end: 1),
+                            ),
+                            child: Theme(
+                              data: Theme.of(
+                                context,
+                              ).copyWith(brightness: platformBrightness),
+                              child: BrandMark(
+                                variant: BrandMarkVariant.horizontal,
+                                height: brandHeight,
+                              ),
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
               ),
             ),
           ),
-        ),
-    ],
-  );
+      ],
+    );
+  }
 }

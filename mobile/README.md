@@ -23,13 +23,39 @@ flutter test
 
 Android 调试包可通过 `flutter build apk --debug` 构建。
 
-Windows 使用标准标题栏，默认窗口为 1280×800，最小尺寸为 960×640。Release NSIS 安装包一键构建：
+Windows 使用标准标题栏，默认窗口为 1280×800，最小尺寸为 960×640。
+
+## Release 打包
+
+`script/package.ps1` 是唯一客户端打包入口。在 `mobile` 目录运行，无参默认构建全部平台，`-p` 只选择一个平台；所有构建均为 release：
 
 ```powershell
-.\package-windows.ps1
+./script/package.ps1
+./script/package.ps1 -p tv
+./script/package.ps1 -p android
+./script/package.ps1 -p win
 ```
 
-脚本会调用 `backend/scripts/windows-deploy.ps1 -Action PackageClient`，构建 Windows Release 并输出 `build/dist/luma-windows-x64-<version>-setup.exe`。需本机已安装 Flutter、Visual Studio C++ 工具链与 NSIS 3（`makensis`）。当前不提供 MSIX、自动更新、ARM64 或代码签名。
+默认全平台打包需要 Windows 主机、Windows PowerShell 5.1 或 PowerShell 7、Flutter、Android SDK、JDK 17、Visual Studio C++ 工具链与 NSIS 3（`makensis`）。系统自带 PowerShell 可以直接执行上述命令；`-p` 必须放在脚本路径之后，例如 `powershell.exe -NoProfile -File .\script\package.ps1 -p win`。Visual Studio C++ 和 NSIS 仅用于 `win`；只构建 TV 或 Android 时不需要。Linux 安装 PowerShell 7 后可运行：
+
+```bash
+pwsh -File ./script/package.ps1 -p tv
+pwsh -File ./script/package.ps1 -p android
+```
+
+版本统一读取 `app_metadata.json`，打包前执行 `dart run tool/sync_app_metadata.dart --check`，不自动改写元数据。若生成结果过期，先手动执行 `dart run tool/sync_app_metadata.dart` 同步，再重新打包。
+
+产物固定归集到项目的 `mobile/build/dist/`，与执行命令时所在目录无关；文件名采用「应用名-版本-平台-架构」格式：
+
+| 参数 | 架构与形态 | 产物 |
+| --- | --- | --- |
+| `-p tv` | 一个强制 TV APK，包含 `armeabi-v7a` + `arm64-v8a` | `luma-<version>-android-tv-armv7-arm64.apk` |
+| `-p android` | 手机 APK，仅 `arm64-v8a` | `luma-<version>-android-arm64-v8a.apk` |
+| `-p win` | Windows 10/11 x64 NSIS 安装包 | `luma-<version>-windows-x64-setup.exe` |
+
+APK 沿用 `android/key.properties` 的 release 签名配置；没有签名配置时不回退 debug 签名，文件名增加 `-unsigned.apk` 后缀，保持未签名、不可发布状态。Gradle 只负责构建，`build/dist/` 的归集由统一入口完成。Windows 当前不提供 MSIX、自动更新、ARM64 或代码签名。
+
+全平台按 TV、Android、Windows 顺序构建，任一平台失败即停止。APK 归集前会检查准确 ABI 集合和各架构的 Flutter/AOT、libmpv、libXray 库；Windows 安装包组装前会检查关键 DLL、资源和许可。输出目录保留其他平台与历史版本的产物，成功生成后才替换本次同名发行文件。
 
 ## Android TV
 
@@ -64,6 +90,14 @@ Windows 使用标准标题栏，默认窗口为 1280×800，最小尺寸为 960�
 
 ### 构建与分发
 
+TV release 使用统一入口，输出一个双 ARM APK：
+
+```powershell
+./script/package.ps1 -p tv
+```
+
+手机、TV 与模拟器的 debug 验证命令保持独立：
+
 ```bash
 # 手机默认包：仅 arm64-v8a，行为与 TV 适配前一致
 flutter build apk --debug
@@ -72,17 +106,13 @@ flutter build apk --debug
 flutter build apk --debug --target-platform android-arm,android-arm64 \
   --dart-define=LUMA_TV=true --android-project-arg=lumaTvAbis=arm
 
-# TV 发布包：同参数加 --release；沿用原 release 签名契约
-flutter build apk --release --target-platform android-arm,android-arm64 \
-  --dart-define=LUMA_TV=true --android-project-arg=lumaTvAbis=arm
-
 # 模拟器隔离验证：仅 x86_64，不作为分发包
 flutter build apk --debug --target-platform android-x64 \
   --dart-define=LUMA_TV=true --android-project-arg=lumaTvAbis=emulator
 ```
 
-- `lumaTvAbis` 取值：缺省仅 `arm64-v8a`；`arm` 为 `armeabi-v7a` + `arm64-v8a`；`emulator` 仅 `x86_64`；其他值构建直接失败。ABI 过滤与 jniLibs 剔除由同一取值派生，不会互相矛盾。
-- TV 双 ARM 的 release 产物重命名为 `build/dist/luma-tv-arm-<version>-release.apk`，不覆盖手机产物；未提供 `key.properties` 时不回退 debug 签名，release 产物保持未签名、不可发布状态。
+- `lumaTvAbis` 取值：缺省或 `arm64` 仅 `arm64-v8a`；`arm` 为 `armeabi-v7a` + `arm64-v8a`；`emulator` 仅 `x86_64`；其他值构建直接失败。统一入口对 `android` 显式传入 `arm64`，对 `tv` 传入 `arm`。ABI 过滤与 jniLibs 剔除由同一取值派生，不会互相矛盾。
+- TV 与手机 release 产物分别归集到 `build/dist/`，文件名与签名规则见上方「Release 打包」；直接运行 Gradle/Flutter 构建不负责复制分发产物。
 - 包内容预期：双 ARM 包的 `lib/armeabi-v7a/` 与 `lib/arm64-v8a/` 都应含 `libflutter.so`、`libgojni.so`、`libmpv.so`（release 另需 AOT 的 `libapp.so`），且不含 x86/x86_64；手机包应仅含 `lib/arm64-v8a/`。Manifest 可用 `apkanalyzer manifest print` 复核 LEANBACK_LAUNCHER 入口、非必需 leanback/touchscreen 特征、TV banner 与 `luma://` 深链。编译后的 banner 可能显示为 `@ref/0x...`，CI 从同一 APK 的资源表确认其对应 `drawable/tv_banner`。
 - CI（`.github/workflows/mobile.yml`）：verify job 先构建手机 debug 包并断言仅含 arm64，tv-arm-debug job 在独立工作区构建双 ARM debug 包、断言双 ARM ABI 与 Manifest 声明后上传 `luma-tv-arm-debug` artifact；各 job 产物互不覆盖。
 - 格式兼容范围由随客户端分发的 libmpv 与设备硬件解码能力决定，不做后端实时转码。
@@ -115,6 +145,20 @@ try {
 
 `integration_test/player_failure_smoke_test.dart` 专门覆盖真实 libmpv 的错误与恢复：隔离服务先返回 HTTP 401，现有播放器错误区域显示上游状态并隐去本机路由 token；更新内存测试会话后，通过「重试播放」重新取得 Range 视频并推进播放位置。运行方式同上，将测试文件名替换即可；Windows 可运行 `flutter test integration_test/player_failure_smoke_test.dart -d windows`。此用例不读取真实凭据，也不证明特定电视或生产 VMess 节点可用。
 
+2026-10-07 修复 TV 播放期间的场景重建：播放位置和缓冲通知继续更新局部控件，只有控制层显隐或错误引起遥控按键模式变化时才重建 TV 场景。临时重建计数验证中，控制层隐藏后的 10 次进度更新，视频区域重建从 10 次降为 0 次；该计数不等于真机掉帧率。回归覆盖窄屏/宽屏、浅色/深色下的进度显示、触控暂停、遥控显隐与错误重试；Windows 隔离 libmpv 错误恢复冒烟通过。硬解策略、缓存参数和显示刷新率未调整，实际电视的解码丢帧与显示节奏仍需真机确认。
+
+此次验证：`flutter analyze` 与全量 622 项测试通过；Android debug、双 ARM TV release、Windows release 和 NSIS 构建通过。TV release 的 v2 签名与两种 ARM 的 Flutter/AOT/libmpv/libXray 库均已校验；Windows 安装包包含运行库、data、使用说明与许可。TV 包位于 `build/dist/luma-tv-arm-1.2.1-release.apk`，本次未连接真实电视做流畅度验收。
+
+同日真实 TCL Android TV（32 位系统）复查确认：GPU 直接 MediaCodec 初始化报 `Could not open codec.`，随后退回 `mediacodec-copy`。同一段 3840×1920、25fps、8-bit BT.709 SDR 的 HEVC 视频在本地隔离服务播放，兼容回拷 + GPU 路径约 20 秒后音画偏差达 4.02 秒、丢 203 帧；MediaCodec Surface 直出路径偏差接近 0、丢帧为 0，排除了此次复现中的后端和网络供给影响。
+
+TV 现改为暂停预读真实视频格式与硬解结果，只有已确认的 8-bit BT.709 SDR 且 `hwdec-current=mediacodec-copy` 时才创建 `mediacodec_embed` Surface 输出。HDR、10-bit、旋转、未知格式或无硬解仍使用 GPU 兼容输出；Surface 解码或视频输出链失败时，每个播放会话最多重建一次兼容播放器，并保留进度、暂停意图、音量和倍速。继续共用 media_kit/libmpv、鉴权、Range 和进度协议，不改变片源或增加后端转码。
+
+可恢复的原生错误只在视频链路有效、非定位且位置持续推进后清除；音频独走、快进跳跃、旧会话回调和后续命令失败不能清除当前错误。HTTP 206 仅作为传输上下文；空错误消息不会生成只有传输诊断的提示。视频链致命日志也会被捕获，避免 Surface 无法接收软件帧时只剩声音。真实打开失败与缓冲超时继续保留重试入口。
+
+真机隔离验收已覆盖从 3 秒续播、暂停定位再播放、强制硬解失败后自动重建 GPU、软件帧显示、旧 GPU 路径成功回退后清除错误。三种路径截图为 `build/integration_screenshots/tcl-production.png`、`tcl-forced-fallback.png`、`tcl-legacy-recovery.png`，原生读数保存在 `build/tv_playback_verification.json`。软件回退只验证兼容性，不承诺该电视的软件解码能流畅处理 4K HEVC。`flutter analyze`、全量 640 项测试和 Windows 隔离原生 HTTP 401 / 重试冒烟通过；临时诊断包、素材与测试入口已移除。其他电视型号与 HDR 片源仍需独立真机验收。
+
+本轮同时通过 Android debug、TV 双 ARM release、手机 ARM64 release、Windows release 与 NSIS 构建。TV APK 的 v2 签名、两种 ARM 的 Flutter/AOT/libmpv/libXray 库和正式应用 ID 已核对；Windows 安装包内的 plugin、libmpv、libXray、VC++ DLL、data、说明与许可齐全。三份发行包均已排除临时诊断素材，统一保存在 `build/dist/`。
+
 ### 验证边界
 
 CI 的 ABI 与 Manifest 检查是 APK 静态结构检查，不等同于真机验收。发布前至少需要：一台 32 位 Android 系统盒子与一台 64 位 Android TV/Google TV，用真实遥控器覆盖 D-pad、OK、Back、Home、音量与媒体键，以及 H.264/AAC、HEVC、MKV、图片浏览、网络中断重试等场景；`adb shell input keyevent` 的方向/确认/返回/Home/媒体键码可辅助验证。签名密钥未配置时 release 包只能标记为未签名，不得当作发布就绪。
@@ -130,7 +174,7 @@ CI 的 ABI 与 Manifest 检查是 APK 静态结构检查，不等同于真机验
 - 仅支持 Android 与 Windows x64，只接受单条 VMess 分享链接，不接受订阅、多节点文本、VLESS、Trojan 或 Shadowsocks。
 - 分享链接保存在系统安全存储。每次 App 进程启动后都保持“未启动”，必须由用户手动开启。
 - 启动后，Dio API、Flutter 图片和 `media_kit` 视频请求都经过应用内代理。视频始终由仅监听 `127.0.0.1` 的 Range relay 转发，代理只改变 relay 的上游传输：关闭时直连服务端，开启时经 VMess 内嵌核心。
-- 每次播放只解析一次入口地址：relay 首次跟随服务端的 302 入口后即固定最终地址（原始文件或 faststart 缓存副本），此后本次播放的所有 Range/If-Range 请求都直接访问该地址，不会在两种表示之间来回切换。只有重新开始播放（含用户显式重试）才会重新解析入口并可能改选缓存副本。
+- 每次播放只解析一次入口地址：relay 首次跟随服务端的 302 入口后即固定最终地址（原始文件或 faststart 缓存副本），此后本次播放的所有 Range/If-Range 请求都直接访问该地址，不会在两种表示之间来回切换。只有重新开始播放（含用户显式重试）才会重新解析入口并可能改选缓存副本。relay 的每一跳上游请求都新建连接：内嵌 Xray 的 HTTP 入站回完一个响应就会断开，却仍声明 keep-alive，复用连接会让跟随 302 的请求发不出去。
 - 播放失败与准备/缓冲超时时，错误提示附带本次路由最近发起请求的进度：尚未收到播放器请求、正在等待上游响应头、上游 HTTP 状态、已从上游读取的字节量，以及连接、TLS、响应头超时或重定向错误类别。字节量表示中继已读取的数据，不等于播放器已解码；并发旧请求的结果不会覆盖新请求，播放器主动取消与上游断流分别记录。
 - 诊断只保存在当前播放的内存中，失败时附在既有错误区域；不会记录服务器地址、认证头、路由 token 或响应内容，重试创建新路由并清空旧诊断。初始化期间明确的 `Failed to open` 会结束该代初始化，避免后续完成回调清掉错误。遇到无法复现的电视故障，可记录屏幕上的完整错误与上游状态，不需要开放提示中的本机端口。
 - 本次固定流表示修复需要同时更新服务端与客户端。旧服务端仍可能让同一地址切换文件布局，旧客户端则可能在 seek 时重新选择入口；只更新其中一侧无法保证整次播放的字节一致。
@@ -138,7 +182,7 @@ CI 的 ABI 与 Manifest 检查是 APK 静态结构检查，不等同于真机验
 - 断开服务器会话不会关闭代理。代理保持运行，直到用户在连接页手动关闭或 App 进程退出。
 - 内嵌核心固定为 [libXray v26.7.28](https://github.com/XTLS/libXray/tree/v26.7.28)，其包含 [Xray-core v26.7.28](https://github.com/XTLS/Xray-core/tree/v26.7.28)。libXray 使用 MIT 许可，Xray-core 使用 MPL-2.0，完整文本随应用分发并可从“关于轻影 → 开源许可”查看。
 
-已入库的 AAR、DLL 和许可文本可重复同步，不在 Gradle 或 CMake 构建期间联网：
+`tool/sync_libxray.ps1` 是独立依赖维护工具，不是打包入口。已入库的 AAR、DLL 和许可文本可重复同步，不在 Gradle 或 CMake 构建期间联网：
 
 ```powershell
 .\tool\sync_libxray.ps1

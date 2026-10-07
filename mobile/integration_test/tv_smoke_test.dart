@@ -72,9 +72,9 @@ void main() {
       expect(await dependencies.restoreSession(), isFalse);
 
       await tester.pumpWidget(LumaApp(dependencies: dependencies));
-      // 开屏品牌遮罩最短展示 1 秒，收起后才授予内容初始焦点。
+      // 开屏品牌遮罩最短展示 1 秒，随后整屏淡出结束才授予内容初始焦点。
       await tester.pump(const Duration(milliseconds: 1100));
-      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
 
       // ── 连接 ──────────────────────────────────────────────────────────
       // 未连接时路由重定向到 /connect；TV 字段外层闸门持浏览焦点。

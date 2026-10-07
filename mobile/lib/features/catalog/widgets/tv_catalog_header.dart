@@ -12,6 +12,8 @@ class TvCatalogHeader extends StatelessWidget {
     required this.onMovies,
     required this.onSeries,
     required this.onPersonalVideos,
+    this.autofocusFirst = false,
+    this.onEntryFocused,
   });
 
   final VoidCallback onSearch;
@@ -20,6 +22,10 @@ class TvCatalogHeader extends StatelessWidget {
   final VoidCallback onSeries;
   final VoidCallback onPersonalVideos;
 
+  /// 库完全为空时，把进入焦点交给第一个分类按钮。
+  final bool autofocusFirst;
+  final VoidCallback? onEntryFocused;
+
   @override
   Widget build(BuildContext context) {
     final categories = Row(
@@ -27,7 +33,13 @@ class TvCatalogHeader extends StatelessWidget {
       children: [
         OutlinedButton(
           key: const ValueKey('tv-category-movies'),
+          autofocus: autofocusFirst,
           onPressed: onMovies,
+          onFocusChange: autofocusFirst
+              ? (focused) {
+                  if (focused) onEntryFocused?.call();
+                }
+              : null,
           child: const Text('电影'),
         ),
         const SizedBox(width: 12),

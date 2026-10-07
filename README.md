@@ -404,6 +404,33 @@ IP：10.0.2.2
 
 Android TV 与电视盒子由同一客户端提供观看界面，安装包选择与遥控器使用说明见 [mobile/README.md](mobile/README.md) 的「Android TV」一节。
 
+## 客户端打包
+
+唯一打包入口为 `mobile/script/package.ps1`。在 `mobile` 目录执行，无参默认构建 TV、Android 手机与 Windows 的全部 release 产物：
+
+```powershell
+./script/package.ps1
+
+# 单选一个平台
+./script/package.ps1 -p tv
+./script/package.ps1 -p android
+./script/package.ps1 -p win
+```
+
+默认全平台打包需要 Windows 主机、Windows PowerShell 5.1 或 PowerShell 7、Flutter、Android SDK、JDK 17、Visual Studio C++ 工具链与 NSIS 3（`makensis`）。Visual Studio C++ 和 NSIS 仅在选择 `win` 或无参全平台时需要；Linux 安装 PowerShell 7 后，可用 `pwsh -File ./script/package.ps1 -p tv` 或 `-p android` 构建 APK。
+
+所有产物归集到 `mobile/build/dist/`：
+
+| 平台 | 架构 | 产物 |
+| --- | --- | --- |
+| `tv` | 一个 APK 内含 `armeabi-v7a` 与 `arm64-v8a` | `luma-<version>-android-tv-armv7-arm64.apk` |
+| `android` | 仅 `arm64-v8a` | `luma-<version>-android-arm64-v8a.apk` |
+| `win` | Windows x64 | `luma-<version>-windows-x64-setup.exe` |
+
+版本来自 `mobile/app_metadata.json`，文件名采用「应用名-版本-平台-架构」格式。打包前先执行 `dart run tool/sync_app_metadata.dart --check`，只校验元数据生成结果，不自动写入；不一致时先按下方「客户端应用信息」手动同步。APK 沿用 `mobile/android/key.properties` 的 release 签名配置；缺少签名配置时不回退 debug 签名，文件名增加 `-unsigned.apk` 后缀，不可作为发布就绪产物。
+
+`mobile/tool/sync_libxray.ps1` 仅维护已入库的 libXray 依赖，与打包入口独立。更多调试与 TV 验收说明见 [mobile/README.md](mobile/README.md)。
+
 ## 安全与备份
 
 - 不要把管理员初始密码或成员密码提交到 Git、日志或截图中。
@@ -430,6 +457,6 @@ Windows 与 Android 客户端的名称、Android application ID、Windows 可执
 dart run tool/sync_app_metadata.dart
 ```
 
-该命令会生成 Android、Windows 和应用内使用的元数据；`backend/scripts/windows-deploy.ps1 -Action PackageClient` 会先校验生成结果，避免将过期信息打入发行包。
+该命令会生成 Android、Windows 和应用内使用的元数据；`mobile/script/package.ps1` 会先以 `--check` 校验生成结果，避免将过期信息打入发行包，打包过程不会自动同步元数据。
 
 仓库文本默认使用 LF；`.bat`、`.cmd` 和 `.ps1` 使用 CRLF。提交前分别运行 `gofmt`、`dart format`，不要依赖编辑器自动改写整仓行尾。

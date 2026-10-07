@@ -46,6 +46,7 @@ class LumaFocusableSurface extends StatefulWidget {
   final String? focusId;
 
   /// 聚焦描边宽度；TV 使用 3dp 保证观看距离可见，普通端保持 2dp。
+  /// TV 宽度会在内容外侧留出同等槽位，描边不压文字。
   final double focusBorderWidth;
 
   /// 为 false 时不在整张卡片上描边，子组件用 [LumaFocusMark] 只标出封面。
@@ -124,6 +125,12 @@ class _LumaFocusableSurfaceState extends State<LumaFocusableSurface> {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
+    // 槽位放在焦点节点内部。放在外面时，揭示只会对准内层，3dp 白边会探出视口。
+    final strokeGutter =
+        widget.paintFocusBorder &&
+            widget.focusBorderWidth >= LumaTvLayout.focusStroke
+        ? EdgeInsets.all(widget.focusBorderWidth)
+        : EdgeInsets.zero;
     final interactive = Material(
       type: MaterialType.transparency,
       child: InkWell(
@@ -139,7 +146,10 @@ class _LumaFocusableSurfaceState extends State<LumaFocusableSurface> {
         borderRadius: widget.borderRadius,
         child: LumaFocusMark(
           focused: _focused,
-          child: Padding(padding: widget.contentPadding, child: widget.child),
+          child: Padding(
+            padding: widget.contentPadding.add(strokeGutter),
+            child: widget.child,
+          ),
         ),
       ),
     );
@@ -203,9 +213,11 @@ class TvArtworkFocus extends StatelessWidget {
   Widget build(BuildContext context) {
     final focused = LumaFocusMark.focusedOf(context);
     final color = Theme.of(context).colorScheme.onSurface;
+    const stroke = LumaTvLayout.focusStroke;
     return AnimatedContainer(
       duration: LumaMotion.forContext(context, LumaMotion.fast),
       curve: Curves.easeOutQuart,
+      padding: const EdgeInsets.all(stroke),
       decoration: BoxDecoration(
         borderRadius: borderRadius,
         boxShadow: focused
@@ -222,10 +234,27 @@ class TvArtworkFocus extends StatelessWidget {
         borderRadius: borderRadius,
         border: Border.all(
           color: focused ? color : const Color(0x00000000),
-          width: LumaTvLayout.focusStroke,
+          width: stroke,
         ),
       ),
-      child: ClipRRect(borderRadius: borderRadius, child: child),
+      child: ClipRRect(
+        borderRadius: _insetRadius(borderRadius, stroke),
+        child: child,
+      ),
     );
   }
+}
+
+/// 封面圆角随描边槽内收，避免圆角处露出一条未裁切的图片边。
+BorderRadius _insetRadius(BorderRadius radius, double inset) {
+  Radius deflate(Radius corner) => Radius.elliptical(
+    (corner.x - inset).clamp(0, double.infinity),
+    (corner.y - inset).clamp(0, double.infinity),
+  );
+  return BorderRadius.only(
+    topLeft: deflate(radius.topLeft),
+    topRight: deflate(radius.topRight),
+    bottomLeft: deflate(radius.bottomLeft),
+    bottomRight: deflate(radius.bottomRight),
+  );
 }

@@ -1,4 +1,4 @@
-// TV 主题以远距离阅读层级和明确焦点区分标题、内容与操作。
+// TV 主题放大阅读层级，并用明度差标出焦点，而不是在主题色上叠一条近色描边。
 // 仅由 television 分支应用，沿用普通主题的配色与用户主题选择。
 import 'package:flutter/material.dart';
 
@@ -32,27 +32,73 @@ ThemeData applyTvTheme(ThemeData base) {
   TextStyle? componentText(TextStyle? original, TextStyle? role) =>
       original?.copyWith(fontSize: role?.fontSize) ?? role;
 
-  ButtonStyle buttonStyle(ButtonStyle? original) =>
-      (original ?? const ButtonStyle()).copyWith(
-        minimumSize: const WidgetStatePropertyAll(
-          Size(0, LumaTvLayout.controlMinHeight),
+  bool focused(Set<WidgetState> states) =>
+      states.contains(WidgetState.focused) &&
+      !states.contains(WidgetState.disabled);
+
+  // 深色主题的主色本身就很亮，白描边几乎看不见。静止时收成容器色，
+  // 获焦再亮回主色，文字跟着翻色。未处理的状态返回 null，继续用组件默认色。
+  ButtonStyle buttonStyle(ButtonStyle? original, {required bool filled}) {
+    final scheme = base.colorScheme;
+    return (original ?? const ButtonStyle()).copyWith(
+      minimumSize: const WidgetStatePropertyAll(
+        Size(0, LumaTvLayout.controlMinHeight),
+      ),
+      textStyle: WidgetStateProperty.resolveWith(
+        (states) => componentText(
+          original?.textStyle?.resolve(states),
+          tvText.labelLarge,
         ),
-        textStyle: WidgetStateProperty.resolveWith(
-          (states) => componentText(
-            original?.textStyle?.resolve(states),
-            tvText.labelLarge,
-          ),
-        ),
-        side: WidgetStateProperty.resolveWith((states) {
-          if (states.contains(WidgetState.focused)) {
-            return BorderSide(
-              color: base.colorScheme.onSurface,
-              width: LumaTvLayout.focusStroke,
-            );
-          }
-          return original?.side?.resolve(states);
-        }),
-      );
+      ),
+      overlayColor: WidgetStateProperty.resolveWith((states) {
+        if (focused(states)) return Colors.transparent;
+        return null;
+      }),
+      backgroundColor: WidgetStateProperty.resolveWith((states) {
+        if (states.contains(WidgetState.disabled)) return null;
+        if (!filled && !focused(states)) return null;
+        return focused(states) ? scheme.primary : scheme.primaryContainer;
+      }),
+      foregroundColor: WidgetStateProperty.resolveWith((states) {
+        if (states.contains(WidgetState.disabled)) return null;
+        if (focused(states)) return scheme.onPrimary;
+        return filled ? scheme.onPrimaryContainer : null;
+      }),
+      side: WidgetStateProperty.resolveWith((states) {
+        if (!focused(states)) return original?.side?.resolve(states);
+        final ring = scheme.primary.computeLuminance() > 0.45
+            ? scheme.surface
+            : scheme.onSurface;
+        return BorderSide(color: ring, width: LumaTvLayout.focusStroke);
+      }),
+    );
+  }
+
+  // 图标按钮没有稳定的主题色底，获焦直接翻成反色底板。
+  ButtonStyle iconStyle(ButtonStyle? original) {
+    final scheme = base.colorScheme;
+    return (original ?? const ButtonStyle()).copyWith(
+      overlayColor: WidgetStateProperty.resolveWith((states) {
+        if (focused(states)) return Colors.transparent;
+        return null;
+      }),
+      backgroundColor: WidgetStateProperty.resolveWith((states) {
+        if (!focused(states)) return null;
+        return scheme.inverseSurface;
+      }),
+      foregroundColor: WidgetStateProperty.resolveWith((states) {
+        if (!focused(states)) return null;
+        return scheme.onInverseSurface;
+      }),
+      side: WidgetStateProperty.resolveWith((states) {
+        if (!focused(states)) return original?.side?.resolve(states);
+        return BorderSide(
+          color: scheme.onSurface,
+          width: LumaTvLayout.focusStroke,
+        );
+      }),
+    );
+  }
 
   return base.copyWith(
     textTheme: tvText,
@@ -62,13 +108,16 @@ ThemeData applyTvTheme(ThemeData base) {
       scrolledUnderElevation: 0,
     ),
     filledButtonTheme: FilledButtonThemeData(
-      style: buttonStyle(base.filledButtonTheme.style),
+      style: buttonStyle(base.filledButtonTheme.style, filled: true),
     ),
     outlinedButtonTheme: OutlinedButtonThemeData(
-      style: buttonStyle(base.outlinedButtonTheme.style),
+      style: buttonStyle(base.outlinedButtonTheme.style, filled: false),
     ),
     textButtonTheme: TextButtonThemeData(
-      style: buttonStyle(base.textButtonTheme.style),
+      style: buttonStyle(base.textButtonTheme.style, filled: false),
+    ),
+    iconButtonTheme: IconButtonThemeData(
+      style: iconStyle(base.iconButtonTheme.style),
     ),
     listTileTheme: base.listTileTheme.copyWith(
       titleTextStyle: componentText(

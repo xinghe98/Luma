@@ -1,6 +1,6 @@
 // TV 播放控制层：只提供遥控可操作的核心动作——播放/暂停、后退/前进 10 秒、
 // 播放速度与关闭；不包含锁定、旋转、亮度、软件音量与小窗。
-// 所有控件走 LumaFocusableSurface，焦点描边与最小高度使用 TV 布局常量；
+// 控件走 LumaFocusableSurface。获焦时底板和图标对调，不靠一条近色描边辨认；
 // 控制层从隐藏变为可见时，把焦点交给播放按钮，速度弹窗关闭后焦点自动
 // 由路由焦点作用域还给速度按钮。
 import 'package:flutter/material.dart';
@@ -272,7 +272,7 @@ class _TvPlayerControlsState extends State<TvPlayerControls> {
   }
 }
 
-/// TV 控制层的单个动作：固定最小高度的图标按钮，聚焦时显示 3dp 描边。
+/// TV 控制层的单个动作：固定最小高度，获焦时底板和图标对调。
 class _TvControl extends StatelessWidget {
   const _TvControl({
     super.key,
@@ -298,10 +298,6 @@ class _TvControl extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final extras = context.luma;
-    final textStyle = Theme.of(context).textTheme.labelLarge?.copyWith(
-      color: extras.onPlayerInk,
-      fontFeatures: const [FontFeature.tabularFigures()],
-    );
     return LumaFocusableSurface(
       label: label,
       onActivate: onActivate,
@@ -309,26 +305,38 @@ class _TvControl extends StatelessWidget {
       autofocus: autofocus,
       focusBorderWidth: LumaTvLayout.focusStroke,
       borderRadius: BorderRadius.circular(LumaRadii.small),
-      child: Container(
-        height: LumaTvLayout.controlMinHeight,
-        padding: const EdgeInsets.symmetric(horizontal: LumaSpacing.md),
-        decoration: primary
-            ? BoxDecoration(
-                color: extras.onPlayerInk.withValues(alpha: 0.18),
-                borderRadius: BorderRadius.circular(LumaRadii.small),
-              )
-            : null,
-        alignment: Alignment.center,
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, color: extras.onPlayerInk, size: LumaIconSize.prominent),
-            if (trailing != null) ...[
-              const SizedBox(width: LumaSpacing.xs),
-              Text(trailing!, style: textStyle),
-            ],
-          ],
-        ),
+      child: Builder(
+        builder: (context) {
+          final focused = LumaFocusMark.focusedOf(context);
+          final foreground = focused ? extras.playerInk : extras.onPlayerInk;
+          final textStyle = Theme.of(context).textTheme.labelLarge?.copyWith(
+            color: foreground,
+            fontFeatures: const [FontFeature.tabularFigures()],
+          );
+          return Container(
+            height: LumaTvLayout.controlMinHeight,
+            padding: const EdgeInsets.symmetric(horizontal: LumaSpacing.md),
+            decoration: BoxDecoration(
+              color: focused
+                  ? extras.onPlayerInk
+                  : primary
+                  ? extras.onPlayerInk.withValues(alpha: 0.18)
+                  : null,
+              borderRadius: BorderRadius.circular(LumaRadii.small),
+            ),
+            alignment: Alignment.center,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon, color: foreground, size: LumaIconSize.prominent),
+                if (trailing != null) ...[
+                  const SizedBox(width: LumaSpacing.xs),
+                  Text(trailing!, style: textStyle),
+                ],
+              ],
+            ),
+          );
+        },
       ),
     );
   }

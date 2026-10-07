@@ -9,6 +9,7 @@ import '../player_interaction_controller.dart';
 import 'player_controls.dart';
 import 'player_feedback_hud.dart';
 import 'player_gesture_layer.dart';
+import 'player_timeline.dart';
 import 'player_video_surface.dart';
 import 'tv_player_controls.dart';
 
@@ -450,6 +451,7 @@ class _TvPlayerScene extends StatefulWidget {
 class _TvPlayerSceneState extends State<_TvPlayerScene> {
   late FocusNode _inputRoot;
   bool _controlsShown = true;
+  late bool _useVisibleBindings;
   bool _wasPlaying = false;
   bool _speedDialogOpen = false;
 
@@ -461,6 +463,8 @@ class _TvPlayerSceneState extends State<_TvPlayerScene> {
       debugLabel: 'tvPlayerInputRoot',
     );
     _controlsShown = widget.controller.controlsVisible;
+    _useVisibleBindings =
+        widget.controller.controlsVisible || widget.controller.error != null;
     _wasPlaying = widget.controller.playing;
     widget.controller.addListener(_handleControllerChange);
   }
@@ -471,6 +475,8 @@ class _TvPlayerSceneState extends State<_TvPlayerScene> {
     if (oldWidget.controller == widget.controller) return;
     oldWidget.controller.removeListener(_handleControllerChange);
     _controlsShown = widget.controller.controlsVisible;
+    _useVisibleBindings =
+        widget.controller.controlsVisible || widget.controller.error != null;
     _wasPlaying = widget.controller.playing;
     widget.controller.addListener(_handleControllerChange);
   }
@@ -485,9 +491,14 @@ class _TvPlayerSceneState extends State<_TvPlayerScene> {
   /// 暂停与错误期间保持控制层可见：其他操作在帧内重启的自动隐藏计时
   /// 统一在帧末取消；速度弹窗打开期间保持暂停计时。控制层隐藏时把焦点
   /// 交还播放器输入根，显示侧的播放按钮聚焦由 TvPlayerControls 完成。
+  /// 只有按键模式变化才重建场景；位置和缓冲通知由局部控件消费。
   void _handleControllerChange() {
     final shown = widget.controller.controlsVisible;
     final playing = widget.controller.playing;
+    final useVisibleBindings = shown || widget.controller.error != null;
+    if (useVisibleBindings != _useVisibleBindings) {
+      setState(() => _useVisibleBindings = useVisibleBindings);
+    }
     if (playing != _wasPlaying) {
       _wasPlaying = playing;
       if (playing && !_speedDialogOpen) widget.controller.scheduleHide();
@@ -522,13 +533,16 @@ class _TvPlayerSceneState extends State<_TvPlayerScene> {
     widget.controller.pause(revealControls: widget.controller.controlsVisible),
   );
 
-  /// 媒体快进快退：与方向键同样走 ±10 秒定位，不改变控制层显隐。
-  void _seekByMediaKey(int seconds) => widget.controller.seekBy(
-    seconds,
-    revealControls: widget.controller.controlsVisible,
-  );
+  /// 媒体快进快退：控制层可见时保持原样；隐藏时只露出进度条，不打开按钮层。
+  void _seekByMediaKey(int seconds) {
+    final visible = widget.controller.controlsVisible;
+    widget.controller.seekBy(seconds, revealControls: visible);
+    if (!visible) {
+      widget.interaction.showSeekFeedback(forward: seconds > 0);
+    }
+  }
 
-  /// 控制层隐藏时的快进快退：不显示控制层，只给短暂时间反馈，焦点不移动。
+  /// 控制层隐藏时的快进快退：不打开按钮层、不移动焦点，只露出进度条。
   void _seekWithFeedback(int seconds) {
     widget.controller.seekBy(seconds, revealControls: false);
     widget.interaction.showSeekFeedback(forward: seconds > 0);
@@ -639,49 +653,94 @@ class _TvPlayerSceneState extends State<_TvPlayerScene> {
 
   @override
   Widget build(BuildContext context) {
+    return Shortcuts(
+      shortcuts: _useVisibleBindings ? _visibleBindings : _hiddenBindings,
+      child: Focus(
+        focusNode: _inputRoot,
+        skipTraversal: true,
+        onKeyEvent: _handleInputKey,
+        child: ColoredBox(
+          color: Colors.black,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              RepaintBoundary(
+                child: PlayerVideoSurface(
+                  controller: widget.controller,
+                  attachVideo: widget.attachVideo,
+                  keepAwake: true,
+                ),
+              ),
+              // 带鼠标的盒子：点击视频区域切换控制层；不挂手机手势层。
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: widget.interaction.handleTap,
+              ),
+              PlayerFeedbackHud(interaction: widget.interaction),
+              _TvSeekTimelinePeek(
+                controller: widget.controller,
+                interaction: widget.interaction,
+              ),
+              _PlayerDynamicOverlay(
+                controller: widget.controller,
+                onBack: widget.onBack,
+                onMinimize: null,
+                onRotate: null,
+                isTelevision: true,
+                onSpeedDialogChanged: (open) => _speedDialogOpen = open,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 快进快退时只在底部露出进度，位置刷新不重建视频纹理，焦点留在输入根上。
+class _TvSeekTimelinePeek extends StatelessWidget {
+  const _TvSeekTimelinePeek({
+    required this.controller,
+    required this.interaction,
+  });
+
+  final PlayerController controller;
+  final PlayerInteractionController interaction;
+
+  @override
+  Widget build(BuildContext context) {
     return ListenableBuilder(
-      listenable: widget.controller,
+      listenable: Listenable.merge([controller, interaction]),
       builder: (context, _) {
-        final error = widget.controller.error;
-        final controlsShown =
-            widget.controller.controlsVisible && error == null;
-        // 错误/初始化失败状态按可见处理：重试按钮可聚焦激活，Back 直接退出。
-        final bindings = error != null || controlsShown
-            ? _visibleBindings
-            : _hiddenBindings;
-        return Shortcuts(
-          shortcuts: bindings,
-          child: Focus(
-            focusNode: _inputRoot,
-            skipTraversal: true,
-            onKeyEvent: _handleInputKey,
-            child: ColoredBox(
-              color: Colors.black,
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  RepaintBoundary(
-                    child: PlayerVideoSurface(
-                      controller: widget.controller,
-                      attachVideo: widget.attachVideo,
-                      keepAwake: true,
+        final kind = interaction.hudKind;
+        final show =
+            !controller.controlsVisible &&
+            controller.error == null &&
+            interaction.hudVisible &&
+            (kind == PlayerHudKind.forward ||
+                kind == PlayerHudKind.backward ||
+                kind == PlayerHudKind.seek);
+        if (!show) return const SizedBox.shrink();
+        return IgnorePointer(
+          child: ExcludeFocus(
+            child: Align(
+              alignment: Alignment.bottomCenter,
+              child: SafeArea(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                    LumaSpacing.xl,
+                    0,
+                    LumaSpacing.xl,
+                    LumaSpacing.lg,
+                  ),
+                  child: Material(
+                    type: MaterialType.transparency,
+                    child: PlayerTimeline(
+                      key: const ValueKey('tv-seek-timeline'),
+                      controller: controller,
                     ),
                   ),
-                  // 带鼠标的盒子：点击视频区域切换控制层；不挂手机手势层。
-                  GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: widget.interaction.handleTap,
-                  ),
-                  PlayerFeedbackHud(interaction: widget.interaction),
-                  _PlayerDynamicOverlay(
-                    controller: widget.controller,
-                    onBack: widget.onBack,
-                    onMinimize: null,
-                    onRotate: null,
-                    isTelevision: true,
-                    onSpeedDialogChanged: (open) => _speedDialogOpen = open,
-                  ),
-                ],
+                ),
               ),
             ),
           ),

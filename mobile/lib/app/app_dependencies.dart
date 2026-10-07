@@ -94,6 +94,7 @@ class AppDependencies {
       apiSession: this.apiSession,
       onCatalogInvalidated: catalog.invalidate,
       mediaRequestRouter: _mediaRequestRouter,
+      preferDirectHardwareDecoding: deviceProfile.isTelevision,
     );
     connection = ConnectionController(
       connectionService: connectionService,

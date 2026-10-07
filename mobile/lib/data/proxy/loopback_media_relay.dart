@@ -232,6 +232,9 @@ final class LoopbackMediaRelay implements MediaRequestRouter {
 
   /// 首批并发请求共用一次地址选择，只等响应头，不阻塞已选资源的并行读取。
   ///
+  /// 每一跳都新建上游连接：Xray http 入站在回完响应后会关闭连接，却仍在响应头
+  /// 里写 keep-alive；跟随 302 时复用旧连接会在发出前失败，请求到不了服务端。
+  ///
   /// [progress] 只用于安全诊断：记录响应头等待超时标记与非法重定向标记，
   /// 便于把强关客户端后抛出的连接异常准确归类，而不改变任何超时时长。
   Future<HttpClientResponse> _openUpstream({
@@ -259,7 +262,9 @@ final class LoopbackMediaRelay implements MediaRequestRouter {
       var redirectCount = 0;
       while (true) {
         final upstreamRequest = await client.openUrl(method, uri);
-        upstreamRequest.followRedirects = false;
+        upstreamRequest
+          ..followRedirects = false
+          ..persistentConnection = false;
         for (final entry in authorizationHeaders.entries) {
           upstreamRequest.headers.set(entry.key, entry.value);
         }

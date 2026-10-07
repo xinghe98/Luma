@@ -249,16 +249,18 @@ class _TvSettingsContentState extends State<TvSettingsContent> {
         child: Builder(
           builder: (context) {
             final focused = LumaFocusMark.focusedOf(context);
-            final rowColor = destructive
+            final scheme = theme.colorScheme;
+            final titleColor = destructive
                 ? color
                 : focused
-                ? theme.colorScheme.onSecondaryContainer
-                : theme.colorScheme.onSurface;
+                ? scheme.onInverseSurface
+                : scheme.onSurface;
+            final subtitleColor = focused
+                ? scheme.onInverseSurface.withValues(alpha: 0.72)
+                : scheme.onSurfaceVariant;
             return DecoratedBox(
               decoration: BoxDecoration(
-                color: focused
-                    ? theme.colorScheme.secondaryContainer
-                    : Colors.transparent,
+                color: focused ? scheme.inverseSurface : Colors.transparent,
                 borderRadius: BorderRadius.circular(LumaRadii.small),
               ),
               child: ConstrainedBox(
@@ -267,7 +269,11 @@ class _TvSettingsContentState extends State<TvSettingsContent> {
                 ),
                 child: Row(
                   children: [
-                    Icon(icon, color: destructive ? color : rowColor, size: 28),
+                    Icon(
+                      icon,
+                      color: destructive ? color : titleColor,
+                      size: 28,
+                    ),
                     const SizedBox(width: LumaSpacing.md),
                     Expanded(
                       child: Column(
@@ -276,21 +282,21 @@ class _TvSettingsContentState extends State<TvSettingsContent> {
                           Text(
                             title,
                             style: theme.textTheme.titleMedium?.copyWith(
-                              color: destructive ? color : rowColor,
+                              color: destructive ? color : titleColor,
                             ),
                           ),
                           const SizedBox(height: LumaSpacing.xxs),
                           Text(
                             subtitle,
                             style: theme.textTheme.bodyMedium?.copyWith(
-                              color: theme.colorScheme.onSurfaceVariant,
+                              color: subtitleColor,
                             ),
                           ),
                         ],
                       ),
                     ),
                     const SizedBox(width: LumaSpacing.sm),
-                    const Icon(Icons.chevron_right_rounded),
+                    Icon(Icons.chevron_right_rounded, color: titleColor),
                   ],
                 ),
               ),
