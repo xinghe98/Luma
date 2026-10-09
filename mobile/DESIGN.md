@@ -70,9 +70,12 @@ layout:
   navigation-bar-height: "68px"
   min-tap-target: "48px"
 brand:
-  connection: "horizontal wordmark (color light / white dark)"
-  navigation-home: "symbol (color light / white dark)"
+  concept: "方案 F 窗光：圆角画框 + 初升太阳，日心负形播放三角"
+  palette: "石墨 #18181B / 画框白 #FAFAFA / 晨光 #FFD60A / 白底晨光 #F5B700"
+  connection: "horizontal wordmark (color light / dark dark)"
+  navigation-home: "symbol (color light / dark dark)"
   about: "horizontal wordmark"
+  app-icon: "石墨底板；Android 自适应含 monochrome，Windows .ico 带 1px #52525B 浅边"
 ---
 
 # Design System: 轻影 Luma

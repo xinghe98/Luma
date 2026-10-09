@@ -5,7 +5,9 @@ import '../../app/app_metadata.g.dart';
 
 enum BrandMarkVariant { symbol, horizontal }
 
-/// 根据主题选择品牌资源，并按可见图形尺寸统一 symbol 与横版 Logo 的布局。
+/// 根据主题选择品牌资源，并按统一占位尺寸布局 symbol 与横版 Logo。
+///
+/// 浅色主题用石墨画框 + 加深晨光的 color 版，深色主题用画框白 + 晨光的 dark 版。
 class BrandMark extends StatelessWidget {
   const BrandMark({
     super.key,
@@ -18,6 +20,7 @@ class BrandMark extends StatelessWidget {
   final BrandMarkVariant variant;
   final double? height;
 
+  /// 返回指定变体在给定亮度下的资源路径；开屏预缓存与渲染共用这一结果。
   static String assetFor({
     required BrandMarkVariant variant,
     required Brightness brightness,
@@ -26,16 +29,21 @@ class BrandMark extends StatelessWidget {
     return switch (variant) {
       BrandMarkVariant.symbol =>
         isDark
-            ? 'assets/luma-symbol-white-transparent.png'
+            ? 'assets/luma-symbol-dark-transparent.png'
             : 'assets/luma-symbol-color-transparent.png',
       BrandMarkVariant.horizontal =>
         isDark
-            ? 'assets/luma-logo-horizontal-white-transparent.png'
+            ? 'assets/luma-logo-horizontal-dark-transparent.png'
             : 'assets/luma-logo-horizontal-color-transparent.png',
     };
   }
 
-  /// 构建去除资源透明留白后的品牌标志，不改变原始图片内容。
+  /// 横版资源画布为 1448×1086，lockup 居中放在此裁切框内；
+  /// 裁切框沿用旧版占位尺寸，保证各页面横版 Logo 的布局宽高不变。
+  static const _horizontalSourceSize = Size(1448, 1086);
+  static const _horizontalCropRect = Rect.fromLTWH(129, 302, 1205, 407);
+
+  /// 构建裁去资源外围透明留白后的品牌标志，不改变原始图片内容。
   @override
   Widget build(BuildContext context) {
     final brightness = Theme.of(context).brightness;
@@ -48,13 +56,10 @@ class BrandMark extends StatelessWidget {
         };
 
     if (variant == BrandMarkVariant.horizontal) {
-      final cropRect = brightness == Brightness.dark
-          ? const Rect.fromLTWH(122, 314, 1208, 409)
-          : const Rect.fromLTWH(129, 302, 1205, 407);
       return _CroppedBrandAsset(
         asset: asset,
-        sourceSize: const Size(1448, 1086),
-        cropRect: cropRect,
+        sourceSize: _horizontalSourceSize,
+        cropRect: _horizontalCropRect,
         height: resolvedHeight,
       );
     }
@@ -64,10 +69,14 @@ class BrandMark extends StatelessWidget {
       width: resolvedHeight,
       height: resolvedHeight,
       fit: BoxFit.contain,
-      filterQuality: FilterQuality.high,
+      filterQuality: _filterQuality,
     );
   }
 }
+
+/// 品牌资源源图远大于显示尺寸（symbol 约缩到 0.03–0.08 倍）。`high` 走三次插值、
+/// 不用 mipmap，大幅缩小时边缘会出锯齿；`medium` 走 mipmap 线性采样，边缘平滑。
+const _filterQuality = FilterQuality.medium;
 
 class _CroppedBrandAsset extends StatelessWidget {
   const _CroppedBrandAsset({
@@ -100,7 +109,7 @@ class _CroppedBrandAsset extends StatelessWidget {
               child: Image.asset(
                 asset,
                 fit: BoxFit.fill,
-                filterQuality: FilterQuality.high,
+                filterQuality: _filterQuality,
               ),
             ),
           ],
