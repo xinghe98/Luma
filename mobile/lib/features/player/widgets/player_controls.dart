@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/theme.dart';
 import '../player_controller.dart';
+import '../player_selection_controller.dart';
 import 'player_bottom_toolbar.dart';
 import 'player_center_controls.dart';
 import 'player_timeline.dart';
@@ -18,6 +19,7 @@ class PlayerControls extends StatelessWidget {
     required this.onBack,
     this.onMinimize,
     required this.onRotate,
+    this.selection,
     this.isDesktop = false,
     this.isFullScreen = false,
     this.onToggleFullScreen,
@@ -30,6 +32,9 @@ class PlayerControls extends StatelessWidget {
   final bool isDesktop;
   final bool isFullScreen;
   final VoidCallback? onToggleFullScreen;
+
+  /// 剧集/清晰度选择控制器，透传给底部工具栏。
+  final PlayerSelectionController? selection;
 
   @override
   Widget build(BuildContext context) {
@@ -76,6 +81,7 @@ class PlayerControls extends StatelessWidget {
               PlayerBottomToolbar(
                 controller: controller,
                 onRotate: onRotate,
+                selection: selection,
                 isDesktop: isDesktop,
                 isFullScreen: isFullScreen,
                 onToggleFullScreen: onToggleFullScreen,

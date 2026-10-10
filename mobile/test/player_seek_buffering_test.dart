@@ -22,6 +22,82 @@ import 'package:luma/features/player/widgets/player_timeline.dart';
 import 'package:media_kit/media_kit.dart';
 
 void main() {
+  test('切换清晰度保留时间、暂停、音量和倍速，旧事件不污染新文件', () async {
+    final harness = _SeekHarness.create();
+    addTearDown(harness.dispose);
+    await harness.start();
+    final old = harness.fake;
+    final oldId = harness.player.item.id;
+    old.emitPosition(const Duration(seconds: 42));
+    await pumpEventQueue();
+    await harness.player.pause();
+    harness.player.setLocalVolume(0.35);
+    harness.player.setSpeed(1.5);
+    await pumpEventQueue();
+    final next = buildMediaFixtures()
+        .firstWhere((item) => item.type == MediaType.video && item.id != oldId)
+        .copyWith(streamUrl: 'http://127.0.0.1:19874/quality', progress: 0.75);
+
+    final replacement = harness.player.replaceMedia(
+      next,
+      resumePosition: harness.player.position,
+      preservePause: true,
+    );
+    old.emitPosition(const Duration(seconds: 99));
+    old.emitError('旧文件错误');
+    await replacement;
+    await pumpEventQueue();
+    expect(harness.player.item.id, next.id);
+    expect(harness.fake.openedMedia?.start, const Duration(seconds: 42));
+    expect(harness.player.position, const Duration(seconds: 42));
+    expect(harness.player.playing, isFalse);
+    expect(harness.fake.state.volume, 35);
+    expect(harness.fake.state.rate, 1.5);
+    expect(harness.repository.savedProgress[oldId], 42000);
+    await pumpEventQueue();
+    expect(harness.player.position, const Duration(seconds: 42));
+    expect(harness.player.error, isNull);
+    await harness.player.persistProgress();
+    expect(harness.repository.savedProgress[next.id], 42000);
+  });
+
+  test('选集读取目标续播位置并清除旧集的暂停与结束状态', () async {
+    final harness = _SeekHarness.create();
+    addTearDown(harness.dispose);
+    await harness.start();
+    await harness.player.pause();
+    harness.fake.emitCompleted(true);
+    await pumpEventQueue();
+    final oldId = harness.player.item.id;
+    final next = buildMediaFixtures()
+        .firstWhere((item) => item.type == MediaType.video && item.id != oldId)
+        .copyWith(
+          duration: const Duration(minutes: 10),
+          progress: 0.2,
+          streamUrl: 'http://127.0.0.1:19874/episode',
+        );
+
+    await harness.player.replaceMedia(next);
+    expect(harness.fake.openedMedia?.start, const Duration(minutes: 2));
+    expect(harness.player.completed, isFalse);
+    expect(harness.player.playing, isTrue);
+    expect(harness.player.error, isNull);
+  });
+
+  test('不可播放的选项不会中断旧文件', () async {
+    final harness = _SeekHarness.create();
+    addTearDown(harness.dispose);
+    await harness.start();
+    final old = harness.player.item;
+    final next = buildMediaFixtures()
+        .firstWhere((item) => item.type == MediaType.video && item.id != old.id)
+        .copyWith(status: 'missing');
+
+    await expectLater(harness.player.replaceMedia(next), throwsStateError);
+    expect(harness.player.item, same(old));
+    expect(harness.player.playing, isTrue);
+  });
+
   test('播放结束后控制层常亮，重播回到零点并恢复播放', () async {
     final harness = _SeekHarness.create(
       autoHideDelay: const Duration(milliseconds: 20),
@@ -872,6 +948,7 @@ class _FakePlatformPlayer extends PlatformPlayer {
   Object? pauseError;
   Completer<void>? pauseGate;
   int playCount = 0;
+  Media? openedMedia;
 
   /// 原生 `seeking` 与 `time-pos` 的当前值，供定位确认读取。
   bool nativeSeeking = false;
@@ -902,6 +979,7 @@ class _FakePlatformPlayer extends PlatformPlayer {
   @override
   Future<void> open(Playable playable, {bool play = true}) async {
     commands.add('open');
+    openedMedia = playable as Media;
     state = state.copyWith(duration: const Duration(minutes: 10));
     if (play) await this.play();
   }
@@ -1130,11 +1208,13 @@ class _SeekHarness {
 class _CountingMediaRepository extends MockMediaRepository {
   var progressUpdates = 0;
   var lastPositionMs = 0;
+  final Map<String, int> savedProgress = {};
 
   @override
   Future<MediaItem> updateProgress(String id, int positionMs) {
     progressUpdates++;
     lastPositionMs = positionMs;
+    savedProgress[id] = positionMs;
     return super.updateProgress(id, positionMs);
   }
 }

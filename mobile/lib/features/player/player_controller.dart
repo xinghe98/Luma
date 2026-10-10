@@ -1,5 +1,6 @@
 // 播放控制器封装视频解码、播放状态、交互状态与进度持久化。
 // 初始化和重试使用 generation 丢弃旧回包，销毁后不再更新任何可见状态。
+// 选集和版本切换复用控制器，先保存旧文件进度，再创建目标文件的解码器。
 // 所有定位入口（快进、拖动提交、取消回起点、回到开头）共用一条等待链路：
 // 命令被原生接受后读取 mpv `seeking` 与当前 time-pos 判定定位是否结束，
 // 原生缓冲事件独立叠加展示，等待期间屏蔽过时位置，
@@ -21,7 +22,7 @@ class PlayerController extends ChangeNotifier {
   /// 创建播放控制器；startFromBeginning 为 true 时不读取既有进度。
   /// Android TV 确认 8-bit SDR 和硬解能力后直出 Surface，失败时重建兼容输出。
   PlayerController({
-    required this.item,
+    required MediaItem item,
     required MediaController media,
     ApiSession? apiSession,
     MediaRequestRouter? mediaRequestRouter,
@@ -32,7 +33,8 @@ class PlayerController extends ChangeNotifier {
     this.initializationTimeout = const Duration(seconds: 20),
     @visibleForTesting this.debugPlatformPlayerFactory,
     @visibleForTesting this.debugVideoControllerFactory,
-  }) : _media = media,
+  }) : _item = item,
+       _media = media,
        _apiSession = apiSession,
        _mediaRequestRouter =
            mediaRequestRouter ?? const DirectMediaRequestRouter(),
@@ -44,7 +46,10 @@ class PlayerController extends ChangeNotifier {
            ? Duration.zero
            : item.duration * item.progress;
 
-  final MediaItem item;
+  MediaItem _item;
+
+  /// 当前播放文件；选集或切换清晰度后同步更新，控制器与宿主保持不变。
+  MediaItem get item => _item;
   final MediaController _media;
   final ApiSession? _apiSession;
   final MediaRequestRouter _mediaRequestRouter;
@@ -114,6 +119,7 @@ class PlayerController extends ChangeNotifier {
   bool _disposed = false;
   bool _initialized = false;
   bool _buffering = false;
+
   /// 播放到结尾的结束态；结束时控制层保持常亮，任何定位或起播操作会清除它。
   bool _completed = false;
   bool _playing = false;
@@ -1005,6 +1011,44 @@ class PlayerController extends ChangeNotifier {
     _notifyPlaybackState();
   }
 
+  /// 保存旧文件进度并切换媒体；清晰度切换可指定当前时间和保留暂停意图。
+  /// 目标必须就绪且有播放地址；打开失败留在新媒体上，复用原地重试入口。
+  Future<void> replaceMedia(
+    MediaItem next, {
+    Duration? resumePosition,
+    bool preservePause = false,
+  }) async {
+    if (_disposed || next.id == item.id) return;
+    if (next.status != 'ready' || (next.streamUrl?.isEmpty ?? true)) {
+      throw StateError('所选媒体尚不可播放');
+    }
+    // 保存动作在首个 await 前捕获旧文件 ID 与位置，不阻塞新文件起播。
+    unawaited(_saveProgress());
+    _invalidateInitializationGeneration();
+    _syncThrottle?.cancel();
+    _syncThrottle = null;
+    _item = next;
+    _media.remember(next, notify: false);
+    final requested = resumePosition ?? next.duration * next.progress;
+    _position = requested < Duration.zero
+        ? Duration.zero
+        : next.duration > Duration.zero && requested > next.duration
+        ? next.duration
+        : requested;
+    _pendingResumePosition = _position > Duration.zero ? _position : null;
+    _startAtZero = false;
+    _completed = false;
+    _scrubbing = false;
+    _scrubOrigin = null;
+    _scrubNativeMoved = false;
+    _nativeErrorRecovery = null;
+    _compatibleVideoOutputOnly = false;
+    _controlsVisible = true;
+    if (!preservePause) _pauseIntent = false;
+    await retry();
+    if (!_disposed && identical(_item, next)) scheduleHide();
+  }
+
   /// 重新创建失败的视频解码器；地址仍不可用时更新错误但不离开播放器。
   Future<void> retry() async {
     if (_disposed) return;
@@ -1296,7 +1340,7 @@ class PlayerController extends ChangeNotifier {
   /// 延迟隐藏控制层；锁定或播放结束时保持常亮，不启动计时。
   void scheduleHide() {
     _hideTimer?.cancel();
-    if (_locked || _completed) return;
+    if (_disposed || _locked || _completed) return;
     _hideTimer = Timer(autoHideDelay, () {
       _hideTimer = null;
       _controlsVisible = false;

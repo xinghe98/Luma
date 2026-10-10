@@ -1,5 +1,5 @@
 // TV 播放控制层：只提供遥控可操作的核心动作——播放/暂停、后退/前进 10 秒、
-// 播放速度与关闭；不包含锁定、旋转、亮度、软件音量与小窗。
+// 选集、清晰度、字幕、音轨、速度与关闭；不包含锁定、旋转、亮度、软件音量与小窗。
 // 控件走 LumaFocusableSurface。获焦时底板和图标对调，不靠一条近色描边辨认；
 // 控制层从隐藏变为可见时，把焦点交给播放按钮，速度弹窗关闭后焦点自动
 // 由路由焦点作用域还给速度按钮。
@@ -13,15 +13,14 @@ import '../../../core/theme.dart';
 import '../../../shared/interaction/luma_focusable_surface.dart';
 import '../../../shared/widgets/single_choice_sheet.dart';
 import '../player_controller.dart';
+import '../player_selection_controller.dart';
 import '../player_track_labels.dart';
 import 'player_ended_overlay.dart';
+import 'player_selection_sheet.dart';
 import 'player_timeline.dart';
 
 /// TV 播放速度档位，与普通端底部工具栏保持一致。
 const List<double> kTvPlaybackSpeeds = [0.5, 1.0, 1.25, 1.5, 2.0];
-
-/// 次要操作与主运输区需要另起一行的断点宽度。
-const double _stackedControlsWidth = 520;
 
 /// TV 全屏播放器的控制层；由 [PlayerScene] 在 television 分支挂载。
 class TvPlayerControls extends StatefulWidget {
@@ -30,13 +29,17 @@ class TvPlayerControls extends StatefulWidget {
     super.key,
     required this.controller,
     required this.onClose,
+    this.selection,
     this.onSpeedDialogChanged,
   });
 
   final PlayerController controller;
   final VoidCallback onClose;
 
-  /// 通知所属场景速度弹窗是否打开；打开时场景不得因起播重启隐藏计时。
+  /// 剧集/清晰度选择控制器；为 null 时隐藏相关入口。
+  final PlayerSelectionController? selection;
+
+  /// 通知所属场景选择/速度弹窗是否打开；打开时场景不得因起播重启隐藏计时。
   /// 关闭通知仅在控制层仍挂载时发出，焦点由弹窗路由恢复。
   final ValueChanged<bool>? onSpeedDialogChanged;
 
@@ -123,6 +126,7 @@ class _TvPlayerControlsState extends State<TvPlayerControls> {
       controller.pauseAutoHide();
     }
   }
+
   /// 弹出字幕轨选择；关闭后恢复自动隐藏计时。轨目变化时列表实时刷新。
   Future<void> _chooseSubtitle() async {
     final controller = widget.controller;
@@ -192,6 +196,24 @@ class _TvPlayerControlsState extends State<TvPlayerControls> {
     if (!mounted) return;
     widget.onSpeedDialogChanged?.call(false);
     if (selected != null) controller.selectAudioTrack(selected);
+    if (controller.playing && controller.error == null) {
+      controller.scheduleHide();
+    } else {
+      controller.pauseAutoHide();
+    }
+  }
+
+  /// 弹出选集/清晰度面板；模态生命周期与速度弹窗一致，
+  /// 关闭后焦点由路由还给入口按钮，播放状态决定恢复或继续暂停计时。
+  Future<void> _chooseSelection(PlayerSelectionKind kind) async {
+    final controller = widget.controller;
+    final selection = widget.selection;
+    if (selection == null) return;
+    widget.onSpeedDialogChanged?.call(true);
+    controller.pauseAutoHide();
+    await showPlayerSelectionSheet(context, controller: selection, kind: kind);
+    if (!mounted) return;
+    widget.onSpeedDialogChanged?.call(false);
     if (controller.playing && controller.error == null) {
       controller.scheduleHide();
     } else {
@@ -298,44 +320,72 @@ class _TvPlayerControlsState extends State<TvPlayerControls> {
                           ),
                         ],
                       );
-                      final secondary = Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          if (controller.subtitleTracks.isNotEmpty) ...[
+                      final selection = widget.selection;
+                      final secondary = ListenableBuilder(
+                        listenable: selection ?? controller,
+                        builder: (context, _) => Wrap(
+                          spacing: LumaSpacing.sm,
+                          runSpacing: LumaSpacing.sm,
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          children: [
+                            if (selection != null) ...[
+                              // 电影与独立视频不显示选集入口。
+                              if (selection.showEpisodes) ...[
+                                _TvControl(
+                                  key: const ValueKey('player-episodes-button'),
+                                  label: '选集',
+                                  icon: Icons.video_library_rounded,
+                                  onActivate: () => unawaited(
+                                    _chooseSelection(
+                                      PlayerSelectionKind.episodes,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                              _TvControl(
+                                key: const ValueKey('player-quality-button'),
+                                label: '清晰度',
+                                icon: Icons.high_quality_rounded,
+                                onActivate: () => unawaited(
+                                  _chooseSelection(
+                                    PlayerSelectionKind.qualities,
+                                  ),
+                                ),
+                              ),
+                            ],
+                            if (controller.subtitleTracks.isNotEmpty) ...[
+                              _TvControl(
+                                key: const ValueKey('tv-player-subtitle'),
+                                label: '字幕',
+                                icon: Icons.subtitles_rounded,
+                                onActivate: _chooseSubtitle,
+                              ),
+                            ],
+                            if (controller.audioTracks.length > 1) ...[
+                              _TvControl(
+                                key: const ValueKey('tv-player-audio'),
+                                label: '音轨',
+                                icon: Icons.audiotrack_rounded,
+                                onActivate: _chooseAudio,
+                              ),
+                            ],
                             _TvControl(
-                              key: const ValueKey('tv-player-subtitle'),
-                              label: '字幕',
-                              icon: Icons.subtitles_rounded,
-                              onActivate: _chooseSubtitle,
+                              key: const ValueKey('tv-player-speed'),
+                              label: '播放速度',
+                              icon: Icons.speed_rounded,
+                              trailing: '${controller.speed}x',
+                              onActivate: _chooseSpeed,
+                              focusNode: _speedNode,
                             ),
-                            const SizedBox(width: LumaSpacing.sm),
-                          ],
-                          if (controller.audioTracks.length > 1) ...[
                             _TvControl(
-                              key: const ValueKey('tv-player-audio'),
-                              label: '音轨',
-                              icon: Icons.audiotrack_rounded,
-                              onActivate: _chooseAudio,
+                              key: const ValueKey('tv-player-close'),
+                              label: '关闭播放器',
+                              icon: Icons.close_rounded,
+                              onActivate: widget.onClose,
+                              focusNode: _closeNode,
                             ),
-                            const SizedBox(width: LumaSpacing.sm),
                           ],
-                          _TvControl(
-                            key: const ValueKey('tv-player-speed'),
-                            label: '播放速度',
-                            icon: Icons.speed_rounded,
-                            trailing: '${controller.speed}x',
-                            onActivate: _chooseSpeed,
-                            focusNode: _speedNode,
-                          ),
-                          const SizedBox(width: LumaSpacing.sm),
-                          _TvControl(
-                            key: const ValueKey('tv-player-close'),
-                            label: '关闭播放器',
-                            icon: Icons.close_rounded,
-                            onActivate: widget.onClose,
-                            focusNode: _closeNode,
-                          ),
-                        ],
+                        ),
                       );
                       // 播完时用结束态替换运输行，返回交给页面路由处理。
                       if (controller.completed) {
@@ -348,7 +398,8 @@ class _TvPlayerControlsState extends State<TvPlayerControls> {
                         );
                       }
                       // 窄电视窗口为次要操作另起一行，主运输区仍保持左右顺序。
-                      if (constraints.maxWidth < _stackedControlsWidth) {
+                      if (constraints.maxWidth <
+                          LumaLayout.navigationRailBreakpoint) {
                         return Column(
                           key: const ValueKey('tv-player-transport'),
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -361,7 +412,16 @@ class _TvPlayerControlsState extends State<TvPlayerControls> {
                       }
                       return Row(
                         key: const ValueKey('tv-player-transport'),
-                        children: [transport, const Spacer(), secondary],
+                        children: [
+                          transport,
+                          const SizedBox(width: LumaSpacing.lg),
+                          Expanded(
+                            child: Align(
+                              alignment: Alignment.centerRight,
+                              child: secondary,
+                            ),
+                          ),
+                        ],
                       );
                     },
                   ),
@@ -427,7 +487,6 @@ class _TvControl extends StatelessWidget {
                   : null,
               borderRadius: BorderRadius.circular(LumaRadii.small),
             ),
-            alignment: Alignment.center,
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [

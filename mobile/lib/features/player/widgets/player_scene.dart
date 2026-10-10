@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import '../../../core/theme.dart';
 import '../player_controller.dart';
 import '../player_interaction_controller.dart';
+import '../player_selection_controller.dart';
 import 'player_controls.dart';
 import 'player_feedback_hud.dart';
 import 'player_gesture_layer.dart';
@@ -23,6 +24,7 @@ class PlayerScene extends StatelessWidget {
     required this.onBack,
     this.onMinimize,
     required this.onRotate,
+    this.selection,
     this.attachVideo = true,
     this.isDesktop = false,
     this.isFullScreen = false,
@@ -46,8 +48,10 @@ class PlayerScene extends StatelessWidget {
   /// 当前是否为 TV 形态；TV 复用同一个视频 surface，仅替换输入层与控制层。
   final bool isTelevision;
 
-  /// 为 false 时释放纹理给小窗，避免与 [MiniPlayerOverlay] 双挂载。
   final bool attachVideo;
+
+  /// 剧集/清晰度选择控制器；为 null 时各层隐藏相关入口。
+  final PlayerSelectionController? selection;
 
   @override
   Widget build(BuildContext context) {
@@ -58,6 +62,7 @@ class PlayerScene extends StatelessWidget {
         onBack: onBack,
         onEscape: onEscape ?? onBack,
         attachVideo: attachVideo,
+        selection: selection,
       );
     }
     final shortcuts = <ShortcutActivator, VoidCallback>{
@@ -118,6 +123,7 @@ class PlayerScene extends StatelessWidget {
                   isDesktop: isDesktop,
                   isFullScreen: isFullScreen,
                   onToggleFullScreen: onToggleFullScreen,
+                  selection: selection,
                 ),
               ],
             ),
@@ -135,6 +141,7 @@ class _PlayerDynamicOverlay extends StatelessWidget {
     required this.onMinimize,
     required this.onRotate,
     required this.isTelevision,
+    this.selection,
     this.isDesktop = false,
     this.isFullScreen = false,
     this.onToggleFullScreen,
@@ -152,6 +159,9 @@ class _PlayerDynamicOverlay extends StatelessWidget {
   final bool isFullScreen;
   final VoidCallback? onToggleFullScreen;
   final ValueChanged<bool>? onSpeedDialogChanged;
+
+  /// 剧集/清晰度选择控制器，透传给 TV/常规控制层。
+  final PlayerSelectionController? selection;
 
   @override
   Widget build(BuildContext context) {
@@ -183,6 +193,7 @@ class _PlayerDynamicOverlay extends StatelessWidget {
                               ? TvPlayerControls(
                                   controller: controller,
                                   onClose: onBack,
+                                  selection: selection,
                                   onSpeedDialogChanged: onSpeedDialogChanged,
                                 )
                               : PlayerControls(
@@ -190,6 +201,7 @@ class _PlayerDynamicOverlay extends StatelessWidget {
                                   onBack: onBack,
                                   onMinimize: onMinimize,
                                   onRotate: onRotate,
+                                  selection: selection,
                                   isDesktop: isDesktop,
                                   isFullScreen: isFullScreen,
                                   onToggleFullScreen: onToggleFullScreen,
@@ -391,31 +403,32 @@ class _PlayerShade extends StatelessWidget {
       duration: LumaMotion.forContext(context, LumaMotion.normal),
       curve: LumaMotion.standard,
       child: Stack(
-      fit: StackFit.expand,
-      children: [
-        // 控制层用统一底部遮罩；顶部再叠一条局部渐变保护返回与标题。
-        DecoratedBox(
-          decoration: BoxDecoration(
-            gradient: LumaGradients.bottomScrim(ink),
+        fit: StackFit.expand,
+        children: [
+          // 控制层用统一底部遮罩；顶部再叠一条局部渐变保护返回与标题。
+          DecoratedBox(
+            decoration: BoxDecoration(gradient: LumaGradients.bottomScrim(ink)),
           ),
-        ),
-        Align(
-          alignment: Alignment.topCenter,
-          child: FractionallySizedBox(
-            heightFactor: 0.25,
-            widthFactor: 1,
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [ink.withValues(alpha: 0.55), ink.withValues(alpha: 0)],
+          Align(
+            alignment: Alignment.topCenter,
+            child: FractionallySizedBox(
+              heightFactor: 0.25,
+              widthFactor: 1,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      ink.withValues(alpha: 0.55),
+                      ink.withValues(alpha: 0),
+                    ],
+                  ),
                 ),
               ),
             ),
           ),
-        ),
-      ],
+        ],
       ),
     );
   }
@@ -432,6 +445,7 @@ class _TvPlayerScene extends StatefulWidget {
     required this.onBack,
     required this.onEscape,
     required this.attachVideo,
+    required this.selection,
   });
 
   final PlayerController controller;
@@ -441,6 +455,9 @@ class _TvPlayerScene extends StatefulWidget {
 
   /// 为 false 时释放纹理给小窗；TV 无小窗，恒为 true。
   final bool attachVideo;
+
+  /// 剧集/清晰度选择控制器，透传给 TV 控制层。
+  final PlayerSelectionController? selection;
 
   @override
   State<_TvPlayerScene> createState() => _TvPlayerSceneState();
@@ -685,6 +702,7 @@ class _TvPlayerSceneState extends State<_TvPlayerScene> {
                 onMinimize: null,
                 onRotate: null,
                 isTelevision: true,
+                selection: widget.selection,
                 onSpeedDialogChanged: (open) => _speedDialogOpen = open,
               ),
             ],

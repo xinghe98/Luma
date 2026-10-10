@@ -10,6 +10,7 @@ import '../shell/app_destination.dart';
 import 'player_controller.dart';
 import 'player_device_controls.dart';
 import 'player_interaction_controller.dart';
+import 'player_selection_controller.dart';
 import 'player_session_controller.dart';
 import 'player_system_ui.dart';
 import 'widgets/player_scene.dart';
@@ -36,6 +37,7 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
   PlayerController? _controller;
   PlayerSessionController? _session;
   PlayerInteractionController? _interaction;
+  PlayerSelectionController? _selection;
   PlayerSystemUiSession? _systemUi;
   bool _resolved = false;
   bool _isTelevision = false;
@@ -105,6 +107,14 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
     _controller = controller;
     _session = session;
     _interaction = interaction;
+    final dependencies = AppScope.of(context);
+    final selection = PlayerSelectionController(
+      player: controller,
+      media: dependencies.media,
+      catalog: dependencies.catalog,
+    );
+    _selection = selection;
+    unawaited(selection.refresh());
     // TV 不读取系统亮度与软件音量，跳过设备状态初始化与恢复。
     if (!_isTelevision) unawaited(interaction.initialize());
     final mediaQuery = MediaQuery.of(context);
@@ -166,6 +176,8 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _loadGeneration++;
+    _selection?.dispose();
+    _selection = null;
     // 收起过程中若页面被提前卸下（系统返回等），仍要进入小窗，避免无 UI 续播。
     if (_minimizing) {
       _session?.minimize();
@@ -229,6 +241,7 @@ class _PlayerPageState extends State<PlayerPage> with WidgetsBindingObserver {
         child: PlayerScene(
           controller: controller,
           interaction: interaction,
+          selection: _selection,
           // 收起过程中先卸下全屏纹理，再交给小窗挂载，避免双绑定。
           attachVideo: !_minimizing,
           onBack: _closeAndPop,
