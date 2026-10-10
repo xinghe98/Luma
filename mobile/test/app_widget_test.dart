@@ -6,6 +6,7 @@ import 'package:luma/app/app_dependencies.dart';
 import 'package:luma/app/app_router.dart';
 import 'package:luma/data/models/api_tag.dart';
 import 'package:luma/features/shell/app_destination.dart';
+import 'package:luma/features/shell/widgets/app_navigation_rail.dart';
 import 'package:luma/app/app_scope.dart';
 import 'package:luma/app/controllers/media_controller.dart';
 import 'package:luma/core/theme.dart';
@@ -759,7 +760,7 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 1500));
     await tester.pump(const Duration(milliseconds: 700));
-    expect(find.byType(NavigationRail), findsOneWidget);
+    expect(find.byType(AppNavigationRail), findsOneWidget);
   });
 
   testWidgets('连接表单字段级校验，粘贴完整地址自动拆分', (tester) async {
@@ -880,14 +881,9 @@ class _TaggedMediaRepository extends MockMediaRepository {
   ];
 }
 
-double _indicatorPaintLeft(WidgetTester tester) {
-  final finder = find.byKey(const ValueKey('bottom-navigation-indicator'));
-  final translation = tester
-      .widget<Transform>(finder)
-      .transform
-      .getTranslation();
-  return tester.getRect(finder).left + translation.x;
-}
+double _indicatorPaintLeft(WidgetTester tester) => tester
+    .getRect(find.byKey(const ValueKey('bottom-navigation-indicator')))
+    .left;
 
 class _RecordingConnectionService implements ConnectionService {
   @override

@@ -1,5 +1,5 @@
-// 底部导航与搜索返回测试：四个主目的地槽位、指示器对齐、隐藏搜索分支的返回路径。
-// 组件级用例驱动 AdaptiveAppNavigation，壳层用例走真实路由，验证 Back 与返回按钮。
+// 普通端导航与搜索返回测试：底栏四槽位与滑动胶囊、宽屏侧栏布局与键盘激活、
+// 隐藏搜索分支的返回路径。组件级用例驱动 AdaptiveAppNavigation，壳层用例走真实路由。
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -139,28 +139,111 @@ void main() {
       }
     });
 
-    testWidgets('1280×800 Rail 只有四个主目的地，不重复放搜索入口', (tester) async {
-      _setSurface(tester, const Size(1280, 800));
+    testWidgets('960×640 收起侧栏：四个目的地、设置固定底部、无搜索入口', (tester) async {
+      _setSurface(tester, const Size(960, 640));
       final calls = _recordPlatformCalls(tester);
       await tester.pumpWidget(const _NavigationHarness());
       await tester.pumpAndSettle();
 
-      final rail = tester.widget<NavigationRail>(find.byType(NavigationRail));
-      expect(rail.destinations, hasLength(4));
+      expect(
+        find.byKey(const ValueKey('bottom-navigation-surface')),
+        findsNothing,
+      );
+      final surface = tester.getRect(
+        find.byKey(const ValueKey('rail-navigation-surface')),
+      );
+      expect(surface.width, LumaLayout.navigationRailWidth);
       expect(
         find.descendant(
-          of: find.byType(NavigationRail),
+          of: find.byKey(const ValueKey('rail-navigation-surface')),
           matching: find.byIcon(Icons.search_rounded),
         ),
         findsNothing,
       );
-      await tester.tap(find.text('照片'));
+      final slots = _railSlotRects(tester);
+      expect(slots, hasLength(4));
+      for (final slot in slots) {
+        expect(slot.height, greaterThanOrEqualTo(LumaLayout.minTapTarget));
+      }
+      // 设置贴底，与内容目的地之间留出空白。
+      expect(slots.last.bottom, closeTo(640 - LumaSpacing.md, 0.01));
+      expect(slots.last.top, greaterThan(slots[2].bottom));
+
+      await tester.tap(find.byKey(const ValueKey('rail-nav-photos')));
       await tester.pumpAndSettle();
       expect(
         find.text('content-${AppDestination.photos.index}'),
         findsOneWidget,
       );
+      final indicator = tester.getRect(
+        find.byKey(const ValueKey('rail-navigation-indicator')),
+      );
+      expect((indicator.center.dy - slots[2].center.dy).abs(), lessThan(12));
       expect(_hapticCalls(calls), isEmpty);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('1280×800 展开侧栏：文字同行、胶囊落在选中项、Tab+Enter 可切换', (tester) async {
+      _setSurface(tester, const Size(1280, 800));
+      await tester.pumpWidget(const _NavigationHarness());
+      await tester.pumpAndSettle();
+
+      final surface = tester.getRect(
+        find.byKey(const ValueKey('rail-navigation-surface')),
+      );
+      expect(surface.width, LumaLayout.navigationRailExtendedWidth);
+      final homeSlot = tester.getRect(
+        find.byKey(const ValueKey('rail-nav-slot-home')),
+      );
+      final homeIcon = tester.getRect(
+        find.descendant(
+          of: find.byKey(const ValueKey('rail-nav-slot-home')),
+          matching: find.byType(Icon),
+        ),
+      );
+      final homeLabel = tester.getRect(
+        find.descendant(
+          of: find.byKey(const ValueKey('rail-nav-slot-home')),
+          matching: find.text('首页'),
+        ),
+      );
+      expect((homeIcon.center.dy - homeLabel.center.dy).abs(), lessThan(1));
+      expect(homeLabel.left, greaterThan(homeIcon.right));
+      final indicator = tester.getRect(
+        find.byKey(const ValueKey('rail-navigation-indicator')),
+      );
+      expect((indicator.center.dy - homeSlot.center.dy).abs(), lessThan(1));
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+      await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+      await tester.pump();
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await tester.pumpAndSettle();
+      expect(
+        find.text('content-${AppDestination.videos.index}'),
+        findsOneWidget,
+      );
+      expect(_railSlotSelected(tester, AppDestination.videos), isTrue);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('侧栏在搜索分支上不画胶囊，深色主题无溢出', (tester) async {
+      _setSurface(tester, const Size(1280, 800));
+      await tester.pumpWidget(
+        _NavigationHarness(
+          initialIndex: AppDestination.search.index,
+          dark: true,
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('rail-navigation-indicator')),
+        findsNothing,
+      );
+      for (final destination in AppDestination.primaryDestinations) {
+        expect(_railSlotSelected(tester, destination), isFalse);
+      }
+      expect(tester.takeException(), isNull);
     });
   });
 
@@ -244,16 +327,25 @@ List<Rect> _slotRects(WidgetTester tester) => AppDestination.primaryDestinations
     )
     .toList(growable: false);
 
-/// 指示器通过 Transform 平移，需要把平移量加回布局矩形才是实际绘制位置。
-Rect _indicatorRect(WidgetTester tester) {
-  final finder = find.byKey(const ValueKey('bottom-navigation-indicator'));
-  final rect = tester.getRect(finder);
-  final translation = tester
-      .widget<Transform>(finder)
-      .transform
-      .getTranslation();
-  return rect.shift(Offset(translation.x, translation.y));
-}
+Rect _indicatorRect(WidgetTester tester) =>
+    tester.getRect(find.byKey(const ValueKey('bottom-navigation-indicator')));
+
+List<Rect> _railSlotRects(WidgetTester tester) => AppDestination
+    .primaryDestinations
+    .map(
+      (destination) => tester.getRect(
+        find.byKey(ValueKey('rail-nav-slot-${destination.routeName}')),
+      ),
+    )
+    .toList(growable: false);
+
+bool _railSlotSelected(WidgetTester tester, AppDestination destination) =>
+    tester
+        .widget<Semantics>(
+          find.byKey(ValueKey('rail-nav-${destination.routeName}')),
+        )
+        .properties
+        .selected!;
 
 bool _slotSelected(WidgetTester tester, AppDestination destination) => tester
     .widget<Semantics>(
@@ -301,10 +393,12 @@ class _NavigationHarness extends StatefulWidget {
   const _NavigationHarness({
     this.disableAnimations = false,
     this.initialIndex = 0,
+    this.dark = false,
   });
 
   final bool disableAnimations;
   final int initialIndex;
+  final bool dark;
 
   @override
   State<_NavigationHarness> createState() => _NavigationHarnessState();
@@ -316,7 +410,7 @@ class _NavigationHarnessState extends State<_NavigationHarness> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      theme: LumaTheme.light(),
+      theme: widget.dark ? LumaTheme.dark() : LumaTheme.light(),
       home: MediaQuery(
         data: MediaQueryData(disableAnimations: widget.disableAnimations),
         child: AdaptiveAppNavigation(

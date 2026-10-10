@@ -17,6 +17,7 @@ import 'package:luma/features/connection/connection_page.dart';
 import 'package:luma/features/details/media_detail_page.dart';
 import 'package:luma/features/library/library_page.dart';
 import 'package:luma/features/shell/widgets/adaptive_app_navigation.dart';
+import 'package:luma/features/shell/widgets/app_navigation_rail.dart';
 import 'package:luma/main.dart';
 import 'package:luma/shared/media/masonry_media_tile.dart';
 import 'package:luma/shared/media/media_artwork.dart';
@@ -66,7 +67,10 @@ void main() {
     await tester.pumpAndSettle();
 
     // 初次进入影视库：导航收起，焦点在第一张卡片而不是首页导航。
-    expect(FocusManager.instance.primaryFocus?.debugLabel, isNot('tv-nav-home'));
+    expect(
+      FocusManager.instance.primaryFocus?.debugLabel,
+      isNot('tv-nav-home'),
+    );
     expect(find.text('轻影'), findsNothing);
 
     // Back：内容焦点回到影视库导航。
@@ -275,7 +279,7 @@ void main() {
 
       final navigation = find.byType(AdaptiveAppNavigation);
       expect(navigation, findsOneWidget, reason: '宽度 ${size.width}');
-      final railOnScreen = find.byType(NavigationRail).evaluate().isNotEmpty;
+      final railOnScreen = find.byType(AppNavigationRail).evaluate().isNotEmpty;
       expect(railOnScreen, expectRail, reason: '宽度 ${size.width}');
       await tester.pumpWidget(const SizedBox.shrink());
     }

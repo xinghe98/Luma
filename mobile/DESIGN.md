@@ -67,7 +67,7 @@ layout:
   page-padding-h: "20px"
   page-padding-bottom: "40px"
   button-height: "40px"
-  navigation-bar-height: "68px"
+  navigation-bar-height: "64px"
   min-tap-target: "48px"
 brand:
   concept: "方案 F 窗光：圆角画框 + 初升太阳，日心负形播放三角"
@@ -169,7 +169,7 @@ MiSans 以官方原始可变字体随应用发布，许可协议保存在 `asset
 
 ### Navigation
 
-手机保留现有 76px 自定义底部导航，宽屏切换为 NavigationRail；当前项只使用主题主色，原有圆形触控反馈、图标切换和淡入动效不变。
+手机使用贴底整栏（64px + 系统安全区），四个主目的地平分宽度且标签常显；选中项背后是主色 12% 透明度的胶囊，点击时随目标分支首帧之后横向滑动。宽度 ≥840px 切换为自绘侧栏（88px），同一胶囊纵向滑动，品牌 symbol 在顶、设置固定在底部；≥1100px 展开为 232px，胶囊内图标与文字同行，品牌改用横版 Logo。悬停/按压只在胶囊范围内着色，不使用水波纹；键盘焦点使用 2px 主色胶囊描边。搜索不占导航槽位，处于搜索分支时不画胶囊。TV 左侧焦点导航独立实现，不受此规则影响。
 
 ### Brand Headers
 

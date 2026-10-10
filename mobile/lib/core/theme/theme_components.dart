@@ -200,20 +200,6 @@ ThemeData applyLumaComponentThemes({
       showDragHandle: true,
       dragHandleColor: scheme.outlineVariant,
     ),
-    navigationRailTheme: NavigationRailThemeData(
-      backgroundColor: scheme.surface,
-      elevation: 0,
-      indicatorColor: scheme.primaryContainer,
-      selectedIconTheme: IconThemeData(color: scheme.onPrimaryContainer),
-      unselectedIconTheme: IconThemeData(color: scheme.onSurfaceVariant),
-      selectedLabelTextStyle: textTheme.labelLarge?.copyWith(
-        color: scheme.onSurface,
-      ),
-      unselectedLabelTextStyle: textTheme.labelLarge?.copyWith(
-        color: scheme.onSurfaceVariant,
-        fontWeight: FontWeight.w500,
-      ),
-    ),
     listTileTheme: ListTileThemeData(
       shape: RoundedRectangleBorder(borderRadius: radiusMd),
       contentPadding: const EdgeInsets.symmetric(

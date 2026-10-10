@@ -91,6 +91,9 @@ abstract final class LumaOpacity {
   static const hover = 0.06;
   static const focus = 0.10;
   static const pressed = 0.10;
+
+  /// 导航选中胶囊等低强调选中底色。
+  static const selected = 0.12;
   static const disabled = 0.38;
   static const divider = 1.0;
   static const scrim = 0.72;
@@ -257,6 +260,10 @@ abstract final class LumaLayout {
   static const formMaxWidth = 520.0;
   static const navigationRailBreakpoint = 840.0;
   static const extendedRailBreakpoint = 1100.0;
+
+  /// 宽屏侧栏收起/展开宽度；展开态在 [extendedRailBreakpoint] 以上启用。
+  static const navigationRailWidth = 88.0;
+  static const navigationRailExtendedWidth = 232.0;
   static const detailTwoColumnBreakpoint = 760.0;
   static const horizontalCardWidth = 232.0;
   static const pagePaddingH = 20.0;
