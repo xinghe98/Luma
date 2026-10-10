@@ -12,11 +12,6 @@ class LumaExtras extends ThemeExtension<LumaExtras> {
     required this.onPlayerInk,
     required this.onPlayerInkMuted,
     required this.badgeScrim,
-    required this.coverRadius,
-    required this.brandSurface,
-    required this.brandSurfaceVariant,
-    required this.onBrandSurface,
-    required this.onBrandSurfaceMuted,
   });
 
   final Color success;
@@ -25,38 +20,23 @@ class LumaExtras extends ThemeExtension<LumaExtras> {
   final Color onPlayerInk;
   final Color onPlayerInkMuted;
   final Color badgeScrim;
-  final double coverRadius;
-  final Color brandSurface;
-  final Color brandSurfaceVariant;
-  final Color onBrandSurface;
-  final Color onBrandSurfaceMuted;
 
   static const light = LumaExtras(
     success: LumaColors.lightSuccess,
     warning: LumaColors.lightWarning,
-    playerInk: LumaColors.ink,
-    onPlayerInk: LumaColors.onInk,
-    onPlayerInkMuted: LumaColors.onInkMuted,
-    badgeScrim: LumaColors.lightBadgeScrim,
-    coverRadius: LumaRadii.large,
-    brandSurface: LumaColors.lightBrandSurface,
-    brandSurfaceVariant: LumaColors.lightBrandSurfaceVariant,
-    onBrandSurface: LumaColors.ink,
-    onBrandSurfaceMuted: LumaColors.lightOutline,
+    playerInk: LumaColors.playerInk,
+    onPlayerInk: LumaColors.onPlayerInk,
+    onPlayerInkMuted: LumaColors.onPlayerInkMuted,
+    badgeScrim: LumaColors.badgeScrim,
   );
 
   static const dark = LumaExtras(
-    success: LumaColors.success,
-    warning: LumaColors.warning,
-    playerInk: LumaColors.ink,
-    onPlayerInk: LumaColors.onInk,
-    onPlayerInkMuted: LumaColors.onInkMuted,
-    badgeScrim: LumaColors.darkBadgeScrim,
-    coverRadius: LumaRadii.large,
-    brandSurface: LumaColors.darkBrandSurface,
-    brandSurfaceVariant: LumaColors.darkBrandSurfaceVariant,
-    onBrandSurface: LumaColors.onInk,
-    onBrandSurfaceMuted: LumaColors.onInkMuted,
+    success: LumaColors.darkSuccess,
+    warning: LumaColors.darkWarning,
+    playerInk: LumaColors.playerInk,
+    onPlayerInk: LumaColors.onPlayerInk,
+    onPlayerInkMuted: LumaColors.onPlayerInkMuted,
+    badgeScrim: LumaColors.badgeScrim,
   );
 
   @override
@@ -67,11 +47,6 @@ class LumaExtras extends ThemeExtension<LumaExtras> {
     Color? onPlayerInk,
     Color? onPlayerInkMuted,
     Color? badgeScrim,
-    double? coverRadius,
-    Color? brandSurface,
-    Color? brandSurfaceVariant,
-    Color? onBrandSurface,
-    Color? onBrandSurfaceMuted,
   }) {
     return LumaExtras(
       success: success ?? this.success,
@@ -80,11 +55,6 @@ class LumaExtras extends ThemeExtension<LumaExtras> {
       onPlayerInk: onPlayerInk ?? this.onPlayerInk,
       onPlayerInkMuted: onPlayerInkMuted ?? this.onPlayerInkMuted,
       badgeScrim: badgeScrim ?? this.badgeScrim,
-      coverRadius: coverRadius ?? this.coverRadius,
-      brandSurface: brandSurface ?? this.brandSurface,
-      brandSurfaceVariant: brandSurfaceVariant ?? this.brandSurfaceVariant,
-      onBrandSurface: onBrandSurface ?? this.onBrandSurface,
-      onBrandSurfaceMuted: onBrandSurfaceMuted ?? this.onBrandSurfaceMuted,
     );
   }
 
@@ -100,17 +70,6 @@ class LumaExtras extends ThemeExtension<LumaExtras> {
           Color.lerp(onPlayerInkMuted, other.onPlayerInkMuted, t) ??
           onPlayerInkMuted,
       badgeScrim: Color.lerp(badgeScrim, other.badgeScrim, t) ?? badgeScrim,
-      coverRadius: t < 0.5 ? coverRadius : other.coverRadius,
-      brandSurface:
-          Color.lerp(brandSurface, other.brandSurface, t) ?? brandSurface,
-      brandSurfaceVariant:
-          Color.lerp(brandSurfaceVariant, other.brandSurfaceVariant, t) ??
-          brandSurfaceVariant,
-      onBrandSurface:
-          Color.lerp(onBrandSurface, other.onBrandSurface, t) ?? onBrandSurface,
-      onBrandSurfaceMuted:
-          Color.lerp(onBrandSurfaceMuted, other.onBrandSurfaceMuted, t) ??
-          onBrandSurfaceMuted,
     );
   }
 }

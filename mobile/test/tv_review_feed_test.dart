@@ -28,6 +28,7 @@ import 'package:luma/features/home/home_page.dart';
 import 'package:luma/features/home/widgets/horizontal_media_section.dart';
 import 'package:luma/shared/interaction/luma_focusable_surface.dart';
 import 'package:luma/shared/interaction/tv_key_bindings.dart';
+import 'package:luma/shared/media/cover_progress_bar.dart';
 import 'package:luma/shared/media/media_card.dart';
 import 'package:luma/shared/media/responsive_media_grid.dart';
 import 'package:luma/shared/states/skeleton.dart';
@@ -169,7 +170,7 @@ void _expectCardContentFits(WidgetTester tester) {
     final contents = find.descendant(
       of: card,
       matching: find.byWidgetPredicate(
-        (widget) => widget is Text || widget is LinearProgressIndicator,
+        (widget) => widget is Text || widget is CoverProgressBar,
       ),
     );
     for (final content in contents.evaluate()) {
@@ -297,12 +298,12 @@ void main() {
       await tester.pumpAndSettle();
       Finder progress() => find.descendant(
         of: _mediaCard('playing').first,
-        matching: find.byType(LinearProgressIndicator),
+        matching: find.byType(CoverProgressBar),
       );
-      expect(tester.widget<LinearProgressIndicator>(progress()).value, 0.25);
+      expect(tester.widget<CoverProgressBar>(progress()).progress, 0.25);
       await dependencies.media.updateProgress('playing', 50000);
       await tester.pumpAndSettle();
-      expect(tester.widget<LinearProgressIndicator>(progress()).value, 0.5);
+      expect(tester.widget<CoverProgressBar>(progress()).progress, 0.5);
       _expectCardContentFits(tester);
       await tester.pumpWidget(const SizedBox.shrink());
     });
@@ -414,9 +415,9 @@ void main() {
           expect(find.text(item.title), findsOneWidget);
           final progress = find.descendant(
             of: _mediaCard(item.id),
-            matching: find.byType(LinearProgressIndicator),
+            matching: find.byType(CoverProgressBar),
           );
-          expect(tester.widget<LinearProgressIndicator>(progress).value, 0.5);
+          expect(tester.widget<CoverProgressBar>(progress).progress, 0.5);
           _expectCardContentFits(tester);
           await tester.tap(find.text(item.title));
           expect(opened, item.id);

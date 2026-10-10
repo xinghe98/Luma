@@ -70,7 +70,7 @@ void main() {
         fixture.railNode(tester, AppDestination.photos).hasPrimaryFocus,
         isTrue,
       );
-      await _press(tester, LogicalKeyboardKey.arrowDown);
+      await _press(tester, LogicalKeyboardKey.arrowUp);
       await _press(tester, LogicalKeyboardKey.select);
       await _press(tester, LogicalKeyboardKey.arrowRight);
       expect(
@@ -185,7 +185,7 @@ void main() {
       expect(fixture.nodes[1][0].hasPrimaryFocus, isTrue);
       expect(fixture.nodes[0].any((node) => node.hasFocus), isFalse);
       await _press(tester, LogicalKeyboardKey.select);
-      expect(fixture.activated, 'photos-0');
+      expect(fixture.activated, 'videos-0');
       await tester.pumpWidget(const SizedBox.shrink());
     },
   );
@@ -323,7 +323,7 @@ void main() {
       );
       addTearDown(dependencies.dispose);
       await tester.pumpWidget(LumaApp(dependencies: dependencies));
-      await tester.pump(const Duration(milliseconds: 1100));
+      await tester.pump(const Duration(milliseconds: 2700));
       await tester.pumpAndSettle();
       expect(tester.testTextInput.isVisible, isFalse);
       await _press(tester, LogicalKeyboardKey.select);
@@ -350,7 +350,7 @@ void main() {
       final dependencies = await _launchDependencies(AppDeviceProfile.standard);
       addTearDown(dependencies.dispose);
       await tester.pumpWidget(LumaApp(dependencies: dependencies));
-      await tester.pump(const Duration(milliseconds: 1100));
+      await tester.pump(const Duration(milliseconds: 2700));
       await tester.pumpAndSettle();
       final address = find.byWidgetPredicate(
         (widget) =>

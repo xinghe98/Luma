@@ -8,19 +8,19 @@ enum AppDestination {
     icon: Icons.home_outlined,
     selectedIcon: Icons.home_rounded,
   ),
-  photos(
-    label: '图片库',
-    routeName: 'photos',
-    path: '/photos',
-    icon: Icons.photo_library_outlined,
-    selectedIcon: Icons.photo_library_rounded,
-  ),
   videos(
-    label: '影视库',
+    label: '影视',
     routeName: 'videos',
     path: '/videos',
     icon: Icons.movie_outlined,
     selectedIcon: Icons.movie_rounded,
+  ),
+  photos(
+    label: '照片',
+    routeName: 'photos',
+    path: '/photos',
+    icon: Icons.photo_library_outlined,
+    selectedIcon: Icons.photo_library_rounded,
   ),
   search(
     label: '搜索',
@@ -28,6 +28,7 @@ enum AppDestination {
     path: '/search',
     icon: Icons.search_rounded,
     selectedIcon: Icons.search_rounded,
+    primary: false,
   ),
   settings(
     label: '设置',
@@ -43,6 +44,7 @@ enum AppDestination {
     required this.path,
     required this.icon,
     required this.selectedIcon,
+    this.primary = true,
   });
 
   final String label;
@@ -51,7 +53,23 @@ enum AppDestination {
   final IconData icon;
   final IconData selectedIcon;
 
-  /// 电视冷启动进入影视库，手机和桌面仍进入首页。
+  /// 是否计入底部导航与 Rail 的主目的地；搜索是隐藏分支，不占槽位。
+  final bool primary;
+
+  /// 主目的地列表，顺序即底栏/Rail 槽位顺序。
+  static final List<AppDestination> primaryDestinations = values
+      .where((d) => d.primary)
+      .toList(growable: false);
+
+  /// 把分支序号换算成主目的地槽位；隐藏分支（搜索）返回 null。
+  static int? primaryIndexOf(int branchIndex) {
+    if (branchIndex < 0 || branchIndex >= values.length) return null;
+    final destination = values[branchIndex];
+    if (!destination.primary) return null;
+    return primaryDestinations.indexOf(destination);
+  }
+
+  /// 电视冷启动进入影视，手机和桌面仍进入首页。
   static String landingPath({required bool television}) =>
       television ? videos.path : home.path;
 

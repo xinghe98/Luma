@@ -22,6 +22,7 @@ class LumaFocusableSurface extends StatefulWidget {
     this.focusId,
     this.focusBorderWidth = 2,
     this.paintFocusBorder = true,
+    this.paintHoverFill = true,
   });
 
   final String label;
@@ -52,6 +53,9 @@ class LumaFocusableSurface extends StatefulWidget {
   /// 为 false 时不在整张卡片上描边，子组件用 [LumaFocusMark] 只标出封面。
   final bool paintFocusBorder;
 
+  /// 为 false 时悬停与按下不给整块表面铺底色，交给封面用 [LumaCoverLift] 自行表达。
+  final bool paintHoverFill;
+
   @override
   State<LumaFocusableSurface> createState() => _LumaFocusableSurfaceState();
 }
@@ -64,9 +68,9 @@ class _LumaFocusableSurfaceState extends State<LumaFocusableSurface> {
 
   FocusNode get _effectiveNode =>
       widget.focusNode ?? (_ownedNode ??= FocusNode());
-
   bool _focused = false;
   bool _hovered = false;
+  bool _pressed = false;
 
   @override
   void didChangeDependencies() {
@@ -141,11 +145,13 @@ class _LumaFocusableSurfaceState extends State<LumaFocusableSurface> {
         onLongPress: widget.onLongPress,
         onFocusChange: _handleFocusChange,
         onHover: (value) => setState(() => _hovered = value),
+        onHighlightChanged: (value) => setState(() => _pressed = value),
         splashFactory: NoSplash.splashFactory,
         overlayColor: const WidgetStatePropertyAll(Colors.transparent),
         borderRadius: widget.borderRadius,
         child: LumaFocusMark(
           focused: _focused,
+          hovered: _hovered || _pressed,
           child: Padding(
             padding: widget.contentPadding.add(strokeGutter),
             child: widget.child,
@@ -156,6 +162,7 @@ class _LumaFocusableSurfaceState extends State<LumaFocusableSurface> {
     if (!widget.paintFocusBorder) {
       return Semantics(button: true, label: widget.label, child: interactive);
     }
+    // 悬停不画描边，只保留键盘焦点轮廓；整卡描边会把标题也框进去，显得生硬。
     final border = _focused
         ? Border.all(
             color: widget.focusBorderWidth >= LumaTvLayout.focusStroke
@@ -163,8 +170,14 @@ class _LumaFocusableSurfaceState extends State<LumaFocusableSurface> {
                 : colors.primary,
             width: widget.focusBorderWidth,
           )
+        : null;
+    // 背景画在内容后面，封面不会被染色，只有内距框和文字区域变色。
+    final fill = !widget.paintHoverFill
+        ? null
+        : _pressed
+        ? colors.onSurface.withValues(alpha: LumaOpacity.pressed)
         : _hovered
-        ? Border.all(color: colors.outlineVariant)
+        ? colors.onSurface.withValues(alpha: LumaOpacity.hover)
         : null;
     return Semantics(
       button: true,
@@ -172,6 +185,10 @@ class _LumaFocusableSurfaceState extends State<LumaFocusableSurface> {
       child: AnimatedContainer(
         duration: LumaMotion.forContext(context, LumaMotion.fast),
         curve: Curves.easeOutQuart,
+        decoration: BoxDecoration(
+          borderRadius: widget.borderRadius,
+          color: fill,
+        ),
         foregroundDecoration: BoxDecoration(
           borderRadius: widget.borderRadius,
           border: border,
@@ -182,21 +199,76 @@ class _LumaFocusableSurfaceState extends State<LumaFocusableSurface> {
   }
 }
 
-/// 把当前表面的焦点传给封面等局部装饰，不额外占用布局。
+/// 把当前表面的焦点与悬停状态传给封面等局部装饰，不额外占用布局。
 class LumaFocusMark extends InheritedWidget {
-  const LumaFocusMark({super.key, required this.focused, required super.child});
+  const LumaFocusMark({
+    super.key,
+    required this.focused,
+    this.hovered = false,
+    required super.child,
+  });
 
   final bool focused;
+
+  /// 指针悬停或按下中；封面据此浮起，触摸端只在按下瞬间生效。
+  final bool hovered;
 
   /// 最近一层可聚焦表面是否持有焦点；没有表面时视为未聚焦。
   static bool focusedOf(BuildContext context) =>
       context.dependOnInheritedWidgetOfExactType<LumaFocusMark>()?.focused ??
       false;
 
+  /// 最近一层可聚焦表面是否处于悬停或按下；没有表面时为 false。
+  static bool hoveredOf(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<LumaFocusMark>()?.hovered ??
+      false;
+
   @override
   bool updateShouldNotify(LumaFocusMark oldWidget) =>
-      focused != oldWidget.focused;
+      focused != oldWidget.focused || hovered != oldWidget.hovered;
 }
+
+/// 普通端封面的悬停反馈：整张封面轻微上浮并加柔和投影，标题不动、不加描边。
+/// 只改位移和阴影，不染色封面，浅色与深色图片上都同样克制。
+class LumaCoverLift extends StatelessWidget {
+  const LumaCoverLift({
+    super.key,
+    required this.borderRadius,
+    required this.child,
+  });
+
+  final BorderRadius borderRadius;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final lifted = LumaFocusMark.hoveredOf(context);
+    return AnimatedContainer(
+      duration: LumaMotion.forContext(context, LumaMotion.fast),
+      curve: Curves.easeOutQuart,
+      transform: Matrix4.translationValues(
+        0,
+        lifted ? -_coverLiftOffset : 0,
+        0,
+      ),
+      decoration: BoxDecoration(
+        borderRadius: borderRadius,
+        boxShadow: lifted
+            ? [
+                BoxShadow(
+                  color: LumaColors.shadow.withValues(alpha: 0.28),
+                  blurRadius: 18,
+                  offset: const Offset(0, 6),
+                ),
+              ]
+            : const [],
+      ),
+      child: child,
+    );
+  }
+}
+
+const _coverLiftOffset = 3.0;
 
 /// 只沿封面绘制电视焦点，标题留在描边外面，避免笔画切进文字。
 class TvArtworkFocus extends StatelessWidget {

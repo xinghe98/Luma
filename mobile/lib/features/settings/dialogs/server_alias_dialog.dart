@@ -76,7 +76,10 @@ class _ServerAliasDialogState extends State<_ServerAliasDialog> {
           ? (_) => Navigator.pop(context, _controller.text)
           : null,
       maxLength: 80,
-      decoration: const InputDecoration(labelText: '仅保存在此设备'),
+      decoration: const InputDecoration(
+        labelText: '服务器名称',
+        helperText: '仅保存在此设备',
+      ),
     );
     if (!isTelevision) return field;
     return TvTextFieldGate(
@@ -122,13 +125,6 @@ class _ServerAliasDialogState extends State<_ServerAliasDialog> {
       actionsAlignment: MainAxisAlignment.end,
       actionsOverflowAlignment: OverflowBarAlignment.end,
       actionsOverflowButtonSpacing: LumaSpacing.xs,
-      actionsPadding: const EdgeInsets.fromLTRB(
-        LumaSpacing.xs,
-        0,
-        LumaSpacing.xs,
-        LumaSpacing.xs,
-      ),
-      buttonPadding: EdgeInsets.zero,
       actions: actions,
     );
   }
@@ -139,7 +135,6 @@ class _ServerAliasDialogState extends State<_ServerAliasDialog> {
         minimumSize: Size(0, _buttonHeight),
         padding: const EdgeInsets.symmetric(horizontal: LumaSpacing.sm),
         visualDensity: VisualDensity.standard,
-        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
       ),
       onPressed: () => Navigator.pop(context, ''),
       child: const Text('恢复默认'),
@@ -149,7 +144,6 @@ class _ServerAliasDialogState extends State<_ServerAliasDialog> {
         minimumSize: Size(0, _buttonHeight),
         padding: const EdgeInsets.symmetric(horizontal: LumaSpacing.sm),
         visualDensity: VisualDensity.standard,
-        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
       ),
       onPressed: () => Navigator.pop(context),
       child: const Text('取消'),
@@ -159,7 +153,6 @@ class _ServerAliasDialogState extends State<_ServerAliasDialog> {
         minimumSize: Size(0, _buttonHeight),
         padding: const EdgeInsets.symmetric(horizontal: LumaSpacing.md),
         visualDensity: VisualDensity.standard,
-        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
       ),
       onPressed: () => Navigator.pop(context, _controller.text),
       child: const Text('保存'),

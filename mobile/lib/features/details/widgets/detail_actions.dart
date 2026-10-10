@@ -55,7 +55,7 @@ class DetailActions extends StatelessWidget {
           )
         : SizedBox.square(
             key: const ValueKey('detail-favorite-action'),
-            dimension: LumaLayout.buttonHeight,
+            dimension: LumaLayout.minTapTarget,
             child: IconButton.outlined(
               tooltip: item.isFavorite ? '取消收藏' : '收藏',
               onPressed: () => _toggleFavorite(context, item),

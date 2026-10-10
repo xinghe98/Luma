@@ -8,7 +8,13 @@ import '../../../shared/formatters/duration_formatter.dart';
 import '../../../shared/layout/adaptive_action_width.dart';
 import '../../../shared/media/authenticated_media_image.dart';
 import 'catalog_card.dart';
-import 'catalog_detail_theme.dart';
+
+// 断点与海报尺寸集中在文件顶部，避免在布局分支里散落魔法数。
+const _posterWide = 208.0;
+const _posterCompact = 128.0;
+const _posterTiny = 104.0;
+const _identityStackBreakpoint = 260.0;
+const _posterShrinkBreakpoint = 360.0;
 
 /// 以自然高度布局横幅、海报、标题信息和播放操作，适配窄屏与大字体。
 class CatalogDetailHero extends StatelessWidget {
@@ -59,14 +65,16 @@ class CatalogDetailHero extends StatelessWidget {
                 constraints.maxWidth >= LumaLayout.detailTwoColumnBreakpoint;
             // 资料区始终与海报并列，常规手机宽度仅缩小海报而不改成上下结构。
             // 这样评分、时长和标签会持续处于海报右侧的同一视觉组。
-            final stackIdentity = constraints.maxWidth < 260;
+            final stackIdentity =
+                constraints.maxWidth < _identityStackBreakpoint;
             final posterWidth = isWide
-                ? 208.0
-                : constraints.maxWidth < 360
-                ? 104.0
-                : 128.0;
-            const backdropFallback = ColoredBox(
-              color: CatalogDetailPalette.surface,
+                ? _posterWide
+                : constraints.maxWidth < _posterShrinkBreakpoint
+                ? _posterTiny
+                : _posterCompact;
+            final scheme = Theme.of(context).colorScheme;
+            final backdropFallback = ColoredBox(
+              color: scheme.surfaceContainerLow,
             );
             final posterContent = _HeroPoster(item: item);
             final poster = SizedBox(
@@ -99,19 +107,10 @@ class CatalogDetailHero extends StatelessWidget {
                         )
                       : backdropFallback,
                 ),
-                const Positioned.fill(
+                Positioned.fill(
                   child: DecoratedBox(
                     decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [
-                          Color(0x26000000),
-                          Color(0xAA121310),
-                          CatalogDetailPalette.background,
-                        ],
-                        stops: [0, .57, 1],
-                      ),
+                      gradient: LumaGradients.heroFade(scheme.surface),
                     ),
                   ),
                 ),
@@ -237,16 +236,7 @@ class _TvCatalogHero extends StatelessWidget {
             Positioned.fill(
               child: DecoratedBox(
                 decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [
-                      colors.surface,
-                      colors.surface,
-                      colors.surface.withValues(alpha: 0.45),
-                      colors.surface.withValues(alpha: 0),
-                      colors.surface.withValues(alpha: 0.35),
-                    ],
-                    stops: const [0, 0.22, 0.42, 0.68, 1],
-                  ),
+                  gradient: LumaGradients.sideFade(colors.surface),
                 ),
               ),
             ),
@@ -254,11 +244,13 @@ class _TvCatalogHero extends StatelessWidget {
               builder: (context, constraints) => Padding(
                 padding: const EdgeInsets.all(LumaSpacing.xl),
                 child: ConstrainedBox(
-                  constraints: const BoxConstraints(minHeight: 288),
+                  constraints: const BoxConstraints(
+                    minHeight: LumaTvLayout.heroMinHeight,
+                  ),
                   child: Align(
                     alignment: Alignment.centerLeft,
                     child: SizedBox(
-                      width: constraints.maxWidth >= 900
+                      width: constraints.maxWidth >= LumaTvLayout.detailSplitWidth
                           ? constraints.maxWidth * 0.65
                           : constraints.maxWidth,
                       child: Column(
@@ -401,7 +393,7 @@ class _SecondaryActions extends StatelessWidget {
             : null,
         icon: const Icon(Icons.replay_rounded),
         label: const Text('从头播放'),
-        style: _secondaryActionStyle(),
+        style: _secondaryActionStyle(context),
       ),
       OutlinedButton.icon(
         onPressed: savingFavorite ? null : onToggleFavorite,
@@ -409,7 +401,7 @@ class _SecondaryActions extends StatelessWidget {
           favorite ? Icons.favorite_rounded : Icons.favorite_border_rounded,
         ),
         label: Text(favorite ? '已收藏' : '加入喜欢'),
-        style: _secondaryActionStyle(),
+        style: _secondaryActionStyle(context),
       ),
     ];
     if (vertical) {
@@ -431,14 +423,17 @@ class _SecondaryActions extends StatelessWidget {
     );
   }
 
-  ButtonStyle _secondaryActionStyle() => OutlinedButton.styleFrom(
-    foregroundColor: CatalogDetailPalette.text,
-    side: const BorderSide(color: CatalogDetailPalette.outline),
-    minimumSize: const Size(0, LumaLayout.buttonHeight),
-    shape: RoundedRectangleBorder(
-      borderRadius: BorderRadius.circular(LumaRadii.medium),
-    ),
-  );
+  ButtonStyle _secondaryActionStyle(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return OutlinedButton.styleFrom(
+      foregroundColor: scheme.onSurface,
+      side: BorderSide(color: scheme.outline),
+      minimumSize: const Size(0, LumaLayout.buttonHeight),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(LumaRadii.medium),
+      ),
+    );
+  }
 }
 
 class _HeroPoster extends StatelessWidget {
@@ -454,15 +449,20 @@ class _HeroPoster extends StatelessWidget {
       child: AuthenticatedMediaImage(
         path: item.posterUrl,
         cacheWidth: 480,
-        fallback: ColoredBox(
-          color: CatalogDetailPalette.surface,
-          child: Icon(
-            item.kind == CatalogKind.movie
-                ? Icons.movie_outlined
-                : Icons.tv_outlined,
-            color: CatalogDetailPalette.muted,
-            size: 52,
-          ),
+        fallback: Builder(
+          builder: (context) {
+            final scheme = Theme.of(context).colorScheme;
+            return ColoredBox(
+              color: scheme.surfaceContainerLow,
+              child: Icon(
+                item.kind == CatalogKind.movie
+                    ? Icons.movie_outlined
+                    : Icons.tv_outlined,
+                color: scheme.onSurfaceVariant,
+                size: 52,
+              ),
+            );
+          },
         ),
       ),
     ),
@@ -484,14 +484,14 @@ class _HeroInformation extends StatelessWidget {
       if (item.resolution.isNotEmpty) item.resolution,
       if (item.certification.isNotEmpty) item.certification,
     ];
+    final scheme = Theme.of(context).colorScheme;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           item.title,
-          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-            color: CatalogDetailPalette.text,
-            fontWeight: FontWeight.w700,
+          style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+            color: scheme.onSurface,
           ),
         ),
         if (item.originalTitle.isNotEmpty && item.originalTitle != item.title)
@@ -500,7 +500,7 @@ class _HeroInformation extends StatelessWidget {
             child: Text(
               item.originalTitle,
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: CatalogDetailPalette.muted,
+                color: scheme.onSurfaceVariant,
               ),
             ),
           ),
@@ -509,7 +509,7 @@ class _HeroInformation extends StatelessWidget {
           details.join(' · '),
           style: Theme.of(
             context,
-          ).textTheme.bodyMedium?.copyWith(color: CatalogDetailPalette.muted),
+          ).textTheme.bodyMedium?.copyWith(color: scheme.onSurfaceVariant),
         ),
         if (item.communityRating != null || item.genres.isNotEmpty) ...[
           const SizedBox(height: LumaSpacing.sm),
@@ -520,8 +520,8 @@ class _HeroInformation extends StatelessWidget {
               if (item.communityRating != null)
                 Text(
                   '★ ${item.communityRating!.toStringAsFixed(1)}',
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    color: CatalogDetailPalette.accent,
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    color: scheme.primary,
                   ),
                 ),
               ...item.genres
@@ -533,13 +533,13 @@ class _HeroInformation extends StatelessWidget {
                         vertical: LumaSpacing.xs,
                       ),
                       decoration: BoxDecoration(
-                        color: CatalogDetailPalette.surfaceHigh,
+                        color: scheme.surfaceContainerHigh,
                         borderRadius: BorderRadius.circular(LumaRadii.small),
                       ),
                       child: Text(
                         genre.name,
                         style: Theme.of(context).textTheme.labelMedium
-                            ?.copyWith(color: CatalogDetailPalette.text),
+                            ?.copyWith(color: scheme.onSurface),
                       ),
                     ),
                   ),
@@ -564,11 +564,8 @@ class _PrimaryPlayButton extends StatelessWidget {
         onPressed: item.playableMediaId.isEmpty
             ? null
             : () => onPlay(item.playableMediaId),
-        icon: const Icon(Icons.play_arrow_rounded),
-        label: const Text('继续观看'),
+        label: Text(item.progressMs > 0 ? '继续观看' : '播放'),
         style: FilledButton.styleFrom(
-          backgroundColor: CatalogDetailPalette.accent,
-          foregroundColor: CatalogDetailPalette.onAccent,
           minimumSize: const Size(0, LumaLayout.buttonHeight),
           textStyle: Theme.of(
             context,

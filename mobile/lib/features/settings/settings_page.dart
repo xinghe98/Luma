@@ -3,19 +3,21 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../app/app_metadata.g.dart';
 import '../../app/app_router.dart';
 import '../../app/app_scope.dart';
 import '../../core/extensions.dart';
 import '../../core/theme.dart';
+import '../../shared/layout/adaptive_action_width.dart';
 import '../../shared/layout/constrained_page_list.dart';
-import '../../shared/layout/section_header.dart';
 import '../../shared/layout/scroll_to_top_app_bar_title.dart';
 import '../../shared/states/skeleton.dart';
 import 'dialogs/about_luma_dialog.dart';
 import 'dialogs/confirmation_dialog.dart';
 import 'dialogs/server_alias_dialog.dart';
-import 'widgets/application_settings_card.dart';
 import 'widgets/server_settings_card.dart';
+import 'widgets/settings_group.dart';
+import 'widgets/theme_mode_button.dart';
 import 'widgets/tv_settings_content.dart';
 import '../../data/repositories/source_repository.dart';
 
@@ -73,32 +75,14 @@ class _SettingsPageState extends State<SettingsPage> {
             server.userRole == 'admin' &&
             server.capabilities.contains('users.manage') &&
             dependencies.sources != null;
+        final canScan = server.can('scans.manage');
         return Scaffold(
           appBar: AppBar(
             title: ScrollToTopAppBarTitle(title: '设置', controller: _scroll),
             actions: [
-              IconButton(
-                tooltip: settings.themeMode == ThemeMode.dark
-                    ? '切换到浅色模式'
-                    : '切换到深色模式',
-                onPressed: () => settings.setThemeMode(
-                  settings.themeMode == ThemeMode.dark
-                      ? ThemeMode.light
-                      : ThemeMode.dark,
-                ),
-                icon: AnimatedSwitcher(
-                  duration: LumaMotion.forContext(context, LumaMotion.fast),
-                  switchInCurve: LumaMotion.standard,
-                  switchOutCurve: LumaMotion.standard,
-                  transitionBuilder: (child, animation) =>
-                      FadeTransition(opacity: animation, child: child),
-                  child: Icon(
-                    key: ValueKey(settings.themeMode),
-                    settings.themeMode == ThemeMode.dark
-                        ? Icons.light_mode_outlined
-                        : Icons.dark_mode_outlined,
-                  ),
-                ),
+              ThemeModeButton(
+                value: settings.themeMode,
+                onChanged: settings.setThemeMode,
               ),
             ],
           ),
@@ -107,80 +91,137 @@ class _SettingsPageState extends State<SettingsPage> {
             controller: _scroll,
             padding: LumaLayout.pagePadding(top: LumaSpacing.xs),
             children: [
-              const SectionHeader(title: '当前服务器'),
-              const SizedBox(height: LumaSpacing.sm),
-              ServerSettingsCard(
-                server: server,
-                settings: settings,
-                mediaCount: dependencies.media.catalogCount > 0
-                    ? dependencies.media.catalogCount
-                    : dependencies.media.items.length,
-                onScanComplete: () async {
-                  await dependencies.media.refresh();
-                  if (!context.mounted) return;
-                  context.showLumaSnack(
-                    '扫描与影视资料匹配完成，发现 ${settings.scanDiscoveredCount} 个媒体文件',
-                  );
-                },
-                onEditAlias: () => _editAlias(context),
-                canScan: server.can('scans.manage'),
+              SettingsGroup(
+                title: '服务器',
+                children: [
+                  ServerSettingsCard(
+                    server: server,
+                    settings: settings,
+                    mediaCount: dependencies.media.catalogCount > 0
+                        ? dependencies.media.catalogCount
+                        : dependencies.media.items.length,
+                    networkLabel: dependencies.proxy?.isActive == true
+                        ? '网络：VMess · '
+                              '${dependencies.proxy!.profile?.displayName ?? '已启动'}'
+                        : '网络：直连',
+                    onEditAlias: () => _editAlias(context),
+                  ),
+                ],
               ),
-              ListTile(
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: LumaSpacing.xxs,
+              SettingsGroup(
+                title: '媒体库',
+                children: [
+                  ListTile(
+                    leading: const Icon(Icons.sync_rounded),
+                    title: Text(settings.scanStatusLabel),
+                    subtitle: Text(
+                      settings.scanStatusDetails,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    trailing: settings.isScanning
+                        ? Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const SizedBox.square(
+                                dimension: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              ),
+                              const SizedBox(width: LumaSpacing.xs),
+                              Text(
+                                '${((settings.scanProgress ?? 0) * 100).round()}%',
+                                style: Theme.of(context).textTheme.bodySmall,
+                              ),
+                            ],
+                          )
+                        : FilledButton.tonal(
+                            onPressed: canScan
+                                ? () => settings.startScan(
+                                    onComplete: () async {
+                                      await dependencies.media.refresh();
+                                      if (!context.mounted) return;
+                                      context.showLumaSnack(
+                                        '扫描与影视资料匹配完成，发现 '
+                                        '${settings.scanDiscoveredCount} 个媒体文件',
+                                      );
+                                    },
+                                  )
+                                : null,
+                            child: Text(
+                              settings.scanError?.contains('中断') == true
+                                  ? '重新扫描'
+                                  : '手动扫描',
+                            ),
+                          ),
+                  ),
+                  if (server.can('sources.manage') &&
+                      dependencies.sources is MutableSourceRepository)
+                    ListTile(
+                      leading: const Icon(Icons.folder_copy_outlined),
+                      title: const Text('媒体源'),
+                      subtitle: const Text('指定个人视频、图片、电影或电视剧目录'),
+                      trailing: const Icon(Icons.chevron_right_rounded),
+                      onTap: () =>
+                          context.pushNamed<void>(AppRoute.librarySources),
+                    ),
+                ],
+              ),
+              if (canManageAccess)
+                SettingsGroup(
+                  title: '成员与访问',
+                  children: [
+                    ListTile(
+                      leading: const Icon(Icons.manage_accounts_outlined),
+                      title: const Text('成员与访问管理'),
+                      subtitle: const Text('管理成员、媒体源授权和设备令牌'),
+                      trailing: const Icon(Icons.chevron_right_rounded),
+                      onTap: () =>
+                          context.pushNamed<void>(AppRoute.accessManagement),
+                    ),
+                  ],
                 ),
-                leading: Icon(
-                  dependencies.proxy?.isActive == true
-                      ? Icons.shield_rounded
-                      : Icons.lan_outlined,
-                ),
-                title: Text(
-                  dependencies.proxy?.isActive == true
-                      ? '网络：VMess · '
-                            '${dependencies.proxy!.profile?.displayName ?? '已启动'}'
-                      : '网络：直连',
-                ),
-                subtitle: const Text('当前服务器会话的网络通道'),
+              SettingsGroup(
+                title: '存储与关于',
+                children: [
+                  ListTile(
+                    leading: const Icon(Icons.cached_rounded),
+                    title: const Text('缓存管理'),
+                    subtitle: Text(
+                      '${settings.cacheSizeMb.toStringAsFixed(0)} MB 缩略图缓存',
+                    ),
+                    trailing: TextButton(
+                      onPressed: settings.cacheSizeMb == 0
+                          ? null
+                          : () => _clearCache(context),
+                      child: const Text('清理'),
+                    ),
+                  ),
+                  ListTile(
+                    leading: const Icon(Icons.info_outline_rounded),
+                    title: Text('关于${AppMetadata.displayName}'),
+                    subtitle: Text('客户端版本 ${AppMetadata.version}'),
+                    trailing: const Icon(Icons.chevron_right_rounded),
+                    onTap: () => showAboutLumaDialog(context),
+                  ),
+                ],
               ),
               const SizedBox(height: LumaSpacing.xl),
-              const SectionHeader(title: '媒体库整理'),
-              const SizedBox(height: LumaSpacing.sm),
-              if (server.can('sources.manage') &&
-                  dependencies.sources is MutableSourceRepository)
-                ListTile(
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: LumaSpacing.xxs,
+              AdaptiveActionWidth(
+                maxWidth: LumaLayout.shortActionMaxWidth,
+                child: OutlinedButton.icon(
+                  onPressed: () => _disconnect(context),
+                  icon: const Icon(Icons.logout_rounded),
+                  label: const Text('断开服务器'),
+                  // 只用错误色文字，描边保持中性，避免整块红框过于醒目。
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Theme.of(context).colorScheme.error,
+                    side: BorderSide(
+                      color: Theme.of(context).colorScheme.outlineVariant,
+                    ),
                   ),
-                  leading: const Icon(Icons.folder_copy_outlined),
-                  title: const Text('媒体源'),
-                  subtitle: const Text('指定个人视频、图片、电影或电视剧目录'),
-                  trailing: const Icon(Icons.chevron_right_rounded),
-                  onTap: () => context.pushNamed<void>(AppRoute.librarySources),
                 ),
-              if (canManageAccess) ...[
-                const SizedBox(height: LumaSpacing.xl),
-                const SectionHeader(title: '成员与访问'),
-                const SizedBox(height: LumaSpacing.sm),
-                ListTile(
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: LumaSpacing.xxs,
-                  ),
-                  leading: const Icon(Icons.manage_accounts_outlined),
-                  title: const Text('成员与访问管理'),
-                  subtitle: const Text('管理成员、媒体源授权和设备令牌'),
-                  trailing: const Icon(Icons.chevron_right_rounded),
-                  onTap: () =>
-                      context.pushNamed<void>(AppRoute.accessManagement),
-                ),
-              ],
-              const SizedBox(height: LumaSpacing.xl),
-              const SectionHeader(title: '存储与应用'),
-              const SizedBox(height: LumaSpacing.sm),
-              ApplicationSettingsCard(
-                settings: settings,
-                onClearCache: () => _clearCache(context),
-                onAbout: () => showAboutLumaDialog(context),
-                onDisconnect: () => _disconnect(context),
               ),
             ],
           ),
@@ -207,6 +248,7 @@ class _SettingsPageState extends State<SettingsPage> {
       title: '断开服务器？',
       message: '断开后将返回连接页，本次会话中的操作会被重置。',
       confirmLabel: '断开',
+      destructive: true,
     );
     if (!confirmed || !context.mounted) return;
     final dependencies = AppScope.of(context);

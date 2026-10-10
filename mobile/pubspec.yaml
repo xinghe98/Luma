@@ -38,6 +38,7 @@ flutter:
 
   assets:
     - assets/
+    - assets/mg/
     - assets/licenses/
 
   fonts:

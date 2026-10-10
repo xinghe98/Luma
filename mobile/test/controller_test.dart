@@ -21,7 +21,6 @@ import 'package:luma/data/storage/credential_store.dart';
 import 'package:luma/data/storage/server_alias_store.dart';
 import 'package:luma/data/services/connection_service.dart';
 import 'package:luma/features/connection/connection_controller.dart';
-import 'package:luma/features/home/widgets/home_header.dart';
 import 'package:luma/features/library/library_controller.dart';
 import 'package:luma/features/player/player_controller.dart';
 import 'package:luma/features/search/search_controller.dart' as feature;
@@ -392,15 +391,6 @@ void main() {
     expect(controller.isLoadingMore, isFalse);
     controller.dispose();
     media.dispose();
-  });
-
-  test('home greeting follows the device local hour', () {
-    expect(greetingForHour(5), '早上好');
-    expect(greetingForHour(11), '早上好');
-    expect(greetingForHour(12), '下午好');
-    expect(greetingForHour(17), '下午好');
-    expect(greetingForHour(18), '晚上好');
-    expect(greetingForHour(3), '晚上好');
   });
 
   test('player controller clamps seeks and updates controls', () async {

@@ -78,6 +78,11 @@ ThemeData applyTvTheme(ThemeData base) {
   ButtonStyle iconStyle(ButtonStyle? original) {
     final scheme = base.colorScheme;
     return (original ?? const ButtonStyle()).copyWith(
+      // 普通端图标按钮外观收到 40，TV 观看距离远，仍保持 48 外观和 24 图标。
+      minimumSize: const WidgetStatePropertyAll(
+        Size.square(LumaLayout.minTapTarget),
+      ),
+      iconSize: const WidgetStatePropertyAll(LumaIconSize.action),
       overlayColor: WidgetStateProperty.resolveWith((states) {
         if (focused(states)) return Colors.transparent;
         return null;

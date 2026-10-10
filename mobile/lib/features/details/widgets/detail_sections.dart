@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
 
+import '../../../app/app_navigation.dart';
+import '../../../app/app_scope.dart';
+import '../../../features/search/search_request.dart';
+import '../../../features/shell/app_destination.dart';
 import '../../../core/extensions.dart';
 import '../../../core/theme.dart';
 import '../../../data/models/media_item.dart';
@@ -24,11 +28,12 @@ class DetailSections extends StatelessWidget {
         const SizedBox(height: LumaSpacing.xs),
         Wrap(
           spacing: LumaSpacing.xs,
+          runSpacing: LumaSpacing.xs,
           children: item.tags
               .map(
                 (tag) => ActionChip(
                   label: Text(tag),
-                  onPressed: () => context.showLumaSnack('可在搜索页筛选“$tag”标签'),
+                  onPressed: () => _searchTag(context, tag),
                 ),
               )
               .toList(),
@@ -56,9 +61,7 @@ class DetailSections extends StatelessWidget {
           const SizedBox(height: LumaSpacing.xl),
           const SectionHeader(title: '文件信息'),
           ListTile(
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: LumaSpacing.xxs,
-            ),
+            contentPadding: EdgeInsets.zero,
             leading: const Icon(Icons.storage_rounded),
             title: const Text('媒体源'),
             subtitle: Text(
@@ -66,9 +69,7 @@ class DetailSections extends StatelessWidget {
             ),
           ),
           ListTile(
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: LumaSpacing.xxs,
-            ),
+            contentPadding: EdgeInsets.zero,
             leading: const Icon(Icons.insert_drive_file_outlined),
             title: const Text('文件名'),
             subtitle: Text(item.filename),
@@ -76,6 +77,16 @@ class DetailSections extends StatelessWidget {
         ],
       ],
     );
+  }
+
+  /// 点击标签时优先按标签 id 进入搜索分支，未匹配到 id 时退化为文本查询。
+  void _searchTag(BuildContext context, String tag) {
+    final scope = AppScope.of(context);
+    final match = scope.media.tags
+        .where((entry) => entry.name == tag)
+        .firstOrNull;
+    scope.searchRequest.value = SearchRequest(label: tag, tagId: match?.id);
+    context.goToDestination(AppDestination.search);
   }
 
   Future<void> _editNote(BuildContext context, MediaItem item) async {

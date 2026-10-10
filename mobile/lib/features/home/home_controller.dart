@@ -10,8 +10,9 @@ class HomeController extends ChangeNotifier {
 
   final MediaController media;
 
+  /// 继续观看取前 20 项：普通端前 4 项进主打卡片，其余进可翻页货架。
   List<MediaItem> get continuing =>
-      media.continueWatching.take(8).toList(growable: false);
+      media.continueWatching.take(20).toList(growable: false);
 
   /// 首页媒体列表默认已按 created_at desc 拉取，直接取前几项避免全库 sort。
   List<MediaItem> get recent => media.items.take(8).toList(growable: false);

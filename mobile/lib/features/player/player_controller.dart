@@ -114,6 +114,8 @@ class PlayerController extends ChangeNotifier {
   bool _disposed = false;
   bool _initialized = false;
   bool _buffering = false;
+  /// 播放到结尾的结束态；结束时控制层保持常亮，任何定位或起播操作会清除它。
+  bool _completed = false;
   bool _playing = false;
 
   /// 暂停意图：后台事件或媒体暂停键在原生暂停落地前同步记录；
@@ -151,6 +153,41 @@ class PlayerController extends ChangeNotifier {
   String? get error => _error;
   VideoController? get videoController => _videoController;
 
+  /// 已播放到结尾；此时控制层常亮并展示结束操作，定位或重新播放会复位。
+  bool get completed => _completed;
+
+  /// 原生已缓冲到的位置；尚未初始化或实现不回报时为 0。
+  Duration get buffered => _player?.state.buffer ?? Duration.zero;
+
+  /// 当前可选音轨；剔除 'auto'/'no' 占位项。
+  List<AudioTrack> get audioTracks => (_player?.state.tracks.audio ?? const [])
+      .where((t) => t.id != 'auto' && t.id != 'no')
+      .toList(growable: false);
+
+  /// 当前可选字幕轨；剔除 'auto'/'no' 占位项。
+  List<SubtitleTrack> get subtitleTracks =>
+      (_player?.state.tracks.subtitle ?? const [])
+          .where((t) => t.id != 'auto' && t.id != 'no')
+          .toList(growable: false);
+
+  /// 当前生效的音轨与字幕轨；未初始化时为 null。
+  AudioTrack? get selectedAudio => _player?.state.track.audio;
+  SubtitleTrack? get selectedSubtitle => _player?.state.track.subtitle;
+
+  /// 切换音频轨；命令失败走统一错误回包路径。
+  void selectAudioTrack(AudioTrack track) {
+    final player = _commandPlayer;
+    if (player == null) return;
+    unawaited(_runCommand(() => player.setAudioTrack(track)));
+  }
+
+  /// 切换字幕轨；传 [SubtitleTrack.no] 可关闭字幕。
+  void selectSubtitleTrack(SubtitleTrack track) {
+    final player = _commandPlayer;
+    if (player == null) return;
+    unawaited(_runCommand(() => player.setSubtitleTrack(track)));
+  }
+
   /// 当前可接受命令的底层播放器；未初始化或已释放时为 null。
   Player? get _commandPlayer {
     if (_disposed || !_initialized) return null;
@@ -168,6 +205,7 @@ class PlayerController extends ChangeNotifier {
 
   /// 启动播放与定时保存；可播放地址缺失时保留错误供用户重试。
   void start() {
+    _completed = false;
     final session = _apiSession;
     final streamUrl = item.streamUrl;
     if (item.status != 'ready') {
@@ -447,6 +485,18 @@ class PlayerController extends ChangeNotifier {
         _setBuffering(value);
         _notifyPlaybackState();
       }),
+      player.stream.buffer.listen((_) {
+        if (_disposed || generation != _initializationGeneration) return;
+        _notifyPlaybackState();
+      }),
+      player.stream.tracks.listen((_) {
+        if (_disposed || generation != _initializationGeneration) return;
+        _notifyPlaybackState();
+      }),
+      player.stream.track.listen((_) {
+        if (_disposed || generation != _initializationGeneration) return;
+        _notifyPlaybackState();
+      }),
       player.stream.volume.listen((value) {
         if (_disposed || generation != _initializationGeneration) return;
         final volume = (value / 100).clamp(0.0, 1.0);
@@ -464,6 +514,10 @@ class PlayerController extends ChangeNotifier {
           return;
         }
         _position = duration;
+        _completed = true;
+        // 结束态控制层常亮：取消自动隐藏计时，由用户决定重播或返回。
+        _controlsVisible = true;
+        _hideTimer?.cancel();
         unawaited(_saveProgress(forceEnd: true));
         _notifyPlaybackState(immediate: true);
       }),
@@ -834,6 +888,7 @@ class PlayerController extends ChangeNotifier {
 
   /// 所有定位入口的统一提交点：只保留最新目标，等待期间展示缓冲提示。
   void _requestSeek(Duration target, {required bool resumeAfter}) {
+    _completed = false;
     if (_disposed) return;
     _nativeErrorRecovery?.resetPosition();
     final clamped = _clampToDuration(target);
@@ -1020,8 +1075,15 @@ class PlayerController extends ChangeNotifier {
     scheduleHide();
   }
 
+  /// 从头重播已播完的媒体：先复位结束态，再走统一定位链路回到零并恢复播放。
+  void replay() {
+    _completed = false;
+    _requestSeek(Duration.zero, resumeAfter: true);
+  }
+
   /// 切换播放状态；显式暂停会取消定位结束后的自动续播，并保存当前进度。
   void togglePlay({bool revealControls = true}) {
+    _completed = false;
     if (revealControls) {
       _controlsVisible = true;
       scheduleHide();
@@ -1231,9 +1293,10 @@ class PlayerController extends ChangeNotifier {
     });
   }
 
+  /// 延迟隐藏控制层；锁定或播放结束时保持常亮，不启动计时。
   void scheduleHide() {
     _hideTimer?.cancel();
-    if (_locked) return;
+    if (_locked || _completed) return;
     _hideTimer = Timer(autoHideDelay, () {
       _hideTimer = null;
       _controlsVisible = false;

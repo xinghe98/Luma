@@ -10,7 +10,6 @@ import '../../../shared/media/tv_media_grid.dart';
 import '../../details/widgets/tv_scrollable_detail_region.dart';
 import 'catalog_detail_hero.dart';
 import 'catalog_detail_sections.dart';
-import 'catalog_detail_theme.dart';
 
 /// 呈现已加载作品的可滚动详情内容，并保留页面传入的播放与收藏回调。
 class CatalogDetailContent extends StatefulWidget {
@@ -147,9 +146,7 @@ class _CatalogDetailContentState extends State<CatalogDetailContent> {
           LumaSpacing.lg +
           LumaSpacing.sm;
     }
-    final scrollBody = Theme(
-      data: isTelevision ? Theme.of(context) : catalogDetailTheme(context),
-      child: CustomScrollView(
+    final scrollBody = CustomScrollView(
         controller: _scroll,
         cacheExtent: LumaLayout.scrollCacheExtent,
         slivers: [
@@ -197,11 +194,9 @@ class _CatalogDetailContentState extends State<CatalogDetailContent> {
                                 widget.item.overview,
                                 style: Theme.of(context).textTheme.bodyLarge
                                     ?.copyWith(
-                                      color: isTelevision
-                                          ? Theme.of(
-                                              context,
-                                            ).colorScheme.onSurface
-                                          : CatalogDetailPalette.text,
+                                      color: Theme.of(
+                                        context,
+                                      ).colorScheme.onSurface,
                                       fontWeight: FontWeight.w500,
                                       letterSpacing: 0.1,
                                     ),
@@ -219,11 +214,9 @@ class _CatalogDetailContentState extends State<CatalogDetailContent> {
                                   ].join(' · '),
                                   style: Theme.of(context).textTheme.bodyMedium
                                       ?.copyWith(
-                                        color: isTelevision
-                                            ? Theme.of(
-                                                context,
-                                              ).colorScheme.onSurfaceVariant
-                                            : CatalogDetailPalette.muted,
+                                        color: Theme.of(
+                                          context,
+                                        ).colorScheme.onSurfaceVariant,
                                       ),
                                 ),
                               ],
@@ -412,7 +405,6 @@ class _CatalogDetailContentState extends State<CatalogDetailContent> {
               ),
             ),
         ],
-      ),
     );
     if (!isTelevision) return scrollBody;
     // TV 外层集合管理版本/选集的方向移动与离屏滚动交接；纵向单列。

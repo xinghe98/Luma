@@ -31,7 +31,9 @@ import '../data/storage/secure_server_alias_store.dart';
 import '../data/storage/server_alias_store.dart';
 import '../data/storage/connection_form_store.dart';
 import '../data/storage/secure_connection_form_store.dart';
-
+import '../data/storage/secure_theme_preference_store.dart';
+import '../data/storage/theme_preference_store.dart';
+import '../features/search/search_request.dart';
 import '../features/connection/connection_controller.dart';
 import '../features/catalog/catalog_store.dart';
 import '../features/player/player_session_controller.dart';
@@ -48,6 +50,7 @@ class AppDependencies {
     this.deviceProfile = AppDeviceProfile.standard,
     ApiSession? apiSession,
     SettingsController? settingsController,
+    ThemePreferenceStore? themeStore,
     Dio? dio,
     CredentialStore? credentialStore,
     ConnectionFormStore? connectionFormStore,
@@ -65,9 +68,10 @@ class AppDependencies {
        settings =
            settingsController ??
            SettingsController(
+             themeStore: themeStore,
              initialThemeMode: deviceProfile.isTelevision
                  ? ThemeMode.dark
-                 : ThemeMode.light,
+                 : ThemeMode.system,
            ),
        apiSession = apiSession ?? ApiSession(),
        catalog = CatalogStore(
@@ -164,9 +168,10 @@ class AppDependencies {
       apiSession: apiSession,
       settingsController: SettingsController(
         scanRepository: ApiScanRepository(client, sources),
+        themeStore: SecureThemePreferenceStore(secureStorage),
         initialThemeMode: deviceProfile.isTelevision
             ? ThemeMode.dark
-            : ThemeMode.light,
+            : ThemeMode.system,
       ),
       dio: dio,
       credentialStore: credentials,
@@ -217,6 +222,9 @@ class AppDependencies {
 
   /// 恢复旧会话期间禁止新的连接尝试，避免两个请求改写同一 ApiSession。
   final ValueNotifier<bool> restoring = ValueNotifier(false);
+
+  /// 跨页面发起搜索的一次性请求；搜索页消费后置回 null。
+  final ValueNotifier<SearchRequest?> searchRequest = ValueNotifier(null);
   int _restoreOperation = 0;
   bool _disposed = false;
   StoredCredentials? _pendingProxyRestore;
@@ -416,6 +424,7 @@ class AppDependencies {
     settings.dispose();
     catalog.dispose();
     restoring.dispose();
+    searchRequest.dispose();
     _dio?.close(force: true);
   }
 }

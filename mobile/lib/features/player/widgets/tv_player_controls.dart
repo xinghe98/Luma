@@ -3,17 +3,25 @@
 // 控件走 LumaFocusableSurface。获焦时底板和图标对调，不靠一条近色描边辨认；
 // 控制层从隐藏变为可见时，把焦点交给播放按钮，速度弹窗关闭后焦点自动
 // 由路由焦点作用域还给速度按钮。
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:media_kit/media_kit.dart';
 
 import '../../../core/theme.dart';
 import '../../../shared/interaction/luma_focusable_surface.dart';
 import '../../../shared/widgets/single_choice_sheet.dart';
 import '../player_controller.dart';
+import '../player_track_labels.dart';
+import 'player_ended_overlay.dart';
 import 'player_timeline.dart';
 
 /// TV 播放速度档位，与普通端底部工具栏保持一致。
 const List<double> kTvPlaybackSpeeds = [0.5, 1.0, 1.25, 1.5, 2.0];
+
+/// 次要操作与主运输区需要另起一行的断点宽度。
+const double _stackedControlsWidth = 520;
 
 /// TV 全屏播放器的控制层；由 [PlayerScene] 在 television 分支挂载。
 class TvPlayerControls extends StatefulWidget {
@@ -115,6 +123,81 @@ class _TvPlayerControlsState extends State<TvPlayerControls> {
       controller.pauseAutoHide();
     }
   }
+  /// 弹出字幕轨选择；关闭后恢复自动隐藏计时。轨目变化时列表实时刷新。
+  Future<void> _chooseSubtitle() async {
+    final controller = widget.controller;
+    widget.onSpeedDialogChanged?.call(true);
+    controller.pauseAutoHide();
+    final tracks = controller.subtitleTracks;
+    final offTrack = SubtitleTrack.no();
+    final selected = await showSingleChoiceSheet<SubtitleTrack>(
+      context,
+      title: '字幕',
+      supportingText: '选择字幕轨道',
+      selectedValue: controller.selectedSubtitle,
+      choices: [
+        BottomSheetChoice<SubtitleTrack>(
+          value: offTrack,
+          label: '关闭',
+          icon: Icons.subtitles_off_rounded,
+        ),
+        for (var i = 0; i < tracks.length; i++)
+          BottomSheetChoice<SubtitleTrack>(
+            value: tracks[i],
+            label: trackLabel(
+              title: tracks[i].title,
+              language: tracks[i].language,
+              index: i,
+              fallbackPrefix: '字幕',
+            ),
+            icon: Icons.subtitles_rounded,
+          ),
+      ],
+    );
+    if (!mounted) return;
+    widget.onSpeedDialogChanged?.call(false);
+    if (selected != null) controller.selectSubtitleTrack(selected);
+    if (controller.playing && controller.error == null) {
+      controller.scheduleHide();
+    } else {
+      controller.pauseAutoHide();
+    }
+  }
+
+  /// 弹出音轨选择；关闭后恢复自动隐藏计时。
+  Future<void> _chooseAudio() async {
+    final controller = widget.controller;
+    widget.onSpeedDialogChanged?.call(true);
+    controller.pauseAutoHide();
+    final tracks = controller.audioTracks;
+    final selected = await showSingleChoiceSheet<AudioTrack>(
+      context,
+      title: '音轨',
+      supportingText: '选择音频轨道',
+      selectedValue: controller.selectedAudio,
+      choices: [
+        for (var i = 0; i < tracks.length; i++)
+          BottomSheetChoice<AudioTrack>(
+            value: tracks[i],
+            label: trackLabel(
+              title: tracks[i].title,
+              language: tracks[i].language,
+              index: i,
+              fallbackPrefix: '音轨',
+            ),
+            icon: Icons.audiotrack_rounded,
+          ),
+      ],
+    );
+    if (!mounted) return;
+    widget.onSpeedDialogChanged?.call(false);
+    if (selected != null) controller.selectAudioTrack(selected);
+    if (controller.playing && controller.error == null) {
+      controller.scheduleHide();
+    } else {
+      controller.pauseAutoHide();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -137,15 +220,7 @@ class _TvPlayerControlsState extends State<TvPlayerControls> {
         );
         return DecoratedBox(
           decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [
-                extras.playerInk.withValues(alpha: 0),
-                extras.playerInk.withValues(alpha: 0.85),
-              ],
-              stops: const [0.35, 1],
-            ),
+            gradient: LumaGradients.bottomScrim(extras.playerInk),
           ),
           child: Padding(
             padding: safePadding,
@@ -226,6 +301,24 @@ class _TvPlayerControlsState extends State<TvPlayerControls> {
                       final secondary = Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
+                          if (controller.subtitleTracks.isNotEmpty) ...[
+                            _TvControl(
+                              key: const ValueKey('tv-player-subtitle'),
+                              label: '字幕',
+                              icon: Icons.subtitles_rounded,
+                              onActivate: _chooseSubtitle,
+                            ),
+                            const SizedBox(width: LumaSpacing.sm),
+                          ],
+                          if (controller.audioTracks.length > 1) ...[
+                            _TvControl(
+                              key: const ValueKey('tv-player-audio'),
+                              label: '音轨',
+                              icon: Icons.audiotrack_rounded,
+                              onActivate: _chooseAudio,
+                            ),
+                            const SizedBox(width: LumaSpacing.sm),
+                          ],
                           _TvControl(
                             key: const ValueKey('tv-player-speed'),
                             label: '播放速度',
@@ -244,8 +337,18 @@ class _TvPlayerControlsState extends State<TvPlayerControls> {
                           ),
                         ],
                       );
+                      // 播完时用结束态替换运输行，返回交给页面路由处理。
+                      if (controller.completed) {
+                        return PlayerEndedOverlay(
+                          key: const ValueKey('tv-player-transport'),
+                          controller: controller,
+                          television: true,
+                          onExit: () =>
+                              unawaited(Navigator.of(context).maybePop()),
+                        );
+                      }
                       // 窄电视窗口为次要操作另起一行，主运输区仍保持左右顺序。
-                      if (constraints.maxWidth < 520) {
+                      if (constraints.maxWidth < _stackedControlsWidth) {
                         return Column(
                           key: const ValueKey('tv-player-transport'),
                           crossAxisAlignment: CrossAxisAlignment.start,

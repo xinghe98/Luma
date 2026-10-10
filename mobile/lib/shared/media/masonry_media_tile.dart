@@ -42,29 +42,33 @@ class MasonryMediaTile extends StatelessWidget {
           onActivate: onTap,
           onLongPress: onLongPress,
           borderRadius: radius,
-          child: ClipRRect(
+          paintHoverFill: false,
+          child: LumaCoverLift(
             borderRadius: radius,
-            child: SizedBox(
-              height: height,
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  _tileImage(
-                    placeholder: placeholder,
-                    cacheWidth: cacheWidth,
-                    cacheHeight: cacheHeight,
-                  ),
-                  if (onFavorite != null)
-                    Positioned(
-                      right: LumaSpacing.xxs,
-                      top: LumaSpacing.xxs,
-                      child: LumaFavoriteButton(
-                        isFavorite: item.isFavorite,
-                        onPressed: onFavorite,
-                        overlay: true,
-                      ),
+            child: ClipRRect(
+              borderRadius: radius,
+              child: SizedBox(
+                height: height,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    _tileImage(
+                      placeholder: placeholder,
+                      cacheWidth: cacheWidth,
+                      cacheHeight: cacheHeight,
                     ),
-                ],
+                    if (onFavorite != null)
+                      Positioned(
+                        right: LumaSpacing.xxs,
+                        top: LumaSpacing.xxs,
+                        child: LumaFavoriteButton(
+                          isFavorite: item.isFavorite,
+                          onPressed: onFavorite,
+                          overlay: true,
+                        ),
+                      ),
+                  ],
+                ),
               ),
             ),
           ),

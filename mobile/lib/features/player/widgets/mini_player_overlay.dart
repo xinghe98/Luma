@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 import '../../../core/theme.dart';
 import '../player_controller.dart';
 import '../player_session_controller.dart';
+import 'player_control_button.dart';
 import 'player_video_surface.dart';
 
 bool get _isWindowsDesktop =>
@@ -191,7 +192,6 @@ class _MiniPlayerCardState extends State<_MiniPlayerCard> {
       Size(width, height),
     );
     final colors = Theme.of(context).colorScheme;
-    final duration = LumaMotion.forContext(context, LumaMotion.normal);
     return Positioned(
       key: const ValueKey('mini-player-card'),
       left: position.dx,
@@ -239,17 +239,9 @@ class _MiniPlayerCardState extends State<_MiniPlayerCard> {
                     controller: widget.controller,
                     attachVideo: true,
                   ),
-                  const DecoratedBox(
+                  DecoratedBox(
                     decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [
-                          Color(0x5C000000),
-                          Color(0x00000000),
-                          Color(0x85000000),
-                        ],
-                      ),
+                      gradient: LumaGradients.bottomScrim(LumaColors.playerInk),
                     ),
                   ),
                   Positioned.fill(
@@ -330,18 +322,20 @@ class _MiniPlayerCardState extends State<_MiniPlayerCard> {
                             Positioned(
                               top: LumaSpacing.xxs,
                               left: LumaSpacing.xxs,
-                              child: _MiniPlayerIconButton(
-                                label: '还原全屏播放器',
+                              child: PlayerControlButton(
+                                tooltip: '还原全屏播放器',
                                 icon: Icons.fullscreen_rounded,
+                                iconSize: LumaIconSize.inline,
                                 onPressed: widget.onExpand,
                               ),
                             ),
                             Positioned(
                               top: LumaSpacing.xxs,
                               right: LumaSpacing.xxs,
-                              child: _MiniPlayerIconButton(
-                                label: '关闭小窗播放器',
+                              child: PlayerControlButton(
+                                tooltip: '关闭小窗播放器',
                                 icon: Icons.close_rounded,
+                                iconSize: LumaIconSize.inline,
                                 onPressed: widget.onClose,
                               ),
                             ),
@@ -354,24 +348,26 @@ class _MiniPlayerCardState extends State<_MiniPlayerCard> {
                                 builder: (context, _) => Row(
                                   mainAxisAlignment: MainAxisAlignment.center,
                                   children: [
-                                    _MiniPlayerIconButton(
-                                      label: '快退 10 秒',
+                                    PlayerControlButton(
+                                      tooltip: '快退 10 秒',
                                       icon: Icons.replay_10_rounded,
+                                      iconSize: LumaIconSize.inline,
                                       onPressed: () => _seekBy(-10),
                                     ),
-                                    _MiniPlayerIconButton(
-                                      label: widget.controller.playing
+                                    PlayerControlButton(
+                                      tooltip: widget.controller.playing
                                           ? '暂停'
                                           : '播放',
                                       icon: widget.controller.playing
                                           ? Icons.pause_rounded
                                           : Icons.play_arrow_rounded,
+                                      iconSize: LumaIconSize.inline,
                                       onPressed: _togglePlay,
-                                      animationDuration: duration,
                                     ),
-                                    _MiniPlayerIconButton(
-                                      label: '快进 10 秒',
+                                    PlayerControlButton(
+                                      tooltip: '快进 10 秒',
                                       icon: Icons.forward_10_rounded,
+                                      iconSize: LumaIconSize.inline,
                                       onPressed: () => _seekBy(10),
                                     ),
                                   ],
@@ -404,7 +400,7 @@ class _MiniPlayerCardState extends State<_MiniPlayerCard> {
                             child: Icon(
                               Icons.open_in_full_rounded,
                               size: 14,
-                              color: LumaColors.onInk,
+                              color: LumaColors.onPlayerInk,
                             ),
                           ),
                         ),
@@ -429,49 +425,5 @@ class _MiniPlayerCardState extends State<_MiniPlayerCard> {
         .clamp(minY, double.infinity)
         .toDouble();
     return Offset(position.dx.clamp(minX, maxX), position.dy.clamp(minY, maxY));
-  }
-}
-
-class _MiniPlayerIconButton extends StatelessWidget {
-  const _MiniPlayerIconButton({
-    required this.label,
-    required this.icon,
-    required this.onPressed,
-    this.animationDuration = Duration.zero,
-  });
-
-  final String label;
-  final IconData icon;
-  final VoidCallback onPressed;
-  final Duration animationDuration;
-
-  @override
-  Widget build(BuildContext context) {
-    return Semantics(
-      button: true,
-      label: label,
-      onTap: onPressed,
-      child: ExcludeSemantics(
-        child: IconButton(
-          onPressed: onPressed,
-          style: IconButton.styleFrom(
-            minimumSize: const Size.square(36),
-            maximumSize: const Size.square(36),
-            padding: const EdgeInsets.all(LumaSpacing.xs),
-            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            foregroundColor: LumaColors.onInk,
-          ),
-          icon: AnimatedSwitcher(
-            duration: animationDuration,
-            child: Icon(
-              icon,
-              key: ValueKey(icon),
-              size: LumaIconSize.inline,
-              shadows: const [Shadow(color: Colors.black54, blurRadius: 3)],
-            ),
-          ),
-        ),
-      ),
-    );
   }
 }

@@ -17,16 +17,19 @@ class AdaptiveActionWidth extends StatelessWidget {
   final double maxWidth;
   final AlignmentGeometry alignment;
 
-  /// 根据视口决定是否拉伸，避免宽屏表单按钮随页面无限增长。
+  /// 根据可用宽度决定是否拉伸，避免宽屏表单按钮随页面无限增长。
+  /// 优先看局部约束；约束无界时退回视口宽度。
   @override
   Widget build(BuildContext context) {
-    final fillWidth =
-        MediaQuery.sizeOf(context).width < LumaLayout.actionWidthBreakpoint;
+    final viewportWidth = MediaQuery.sizeOf(context).width;
     return LayoutBuilder(
       builder: (context, constraints) {
         final availableWidth = constraints.hasBoundedWidth
             ? constraints.maxWidth
             : maxWidth;
+        final fillWidth =
+            (constraints.hasBoundedWidth ? availableWidth : viewportWidth) <
+            LumaLayout.actionWidthBreakpoint;
         final constrainedWidth = availableWidth > maxWidth
             ? maxWidth
             : availableWidth;

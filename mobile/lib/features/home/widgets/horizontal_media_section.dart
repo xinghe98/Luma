@@ -10,13 +10,14 @@ import '../../../shared/layout/section_header.dart';
 import '../../../shared/media/media_actions.dart';
 import '../../../shared/media/media_card.dart';
 import '../../../shared/media/tv_media_grid.dart';
+import 'home_layout.dart';
 
 class HorizontalMediaSection extends StatefulWidget {
   /// 显示可触控横滑的媒体货架，并在宽屏提供键盘与箭头翻页。
   const HorizontalMediaSection({
     super.key,
     required this.title,
-    required this.subtitle,
+    this.subtitle,
     required this.heroPrefix,
     required this.items,
     required this.onOpenMedia,
@@ -24,7 +25,7 @@ class HorizontalMediaSection extends StatefulWidget {
   });
 
   final String title;
-  final String subtitle;
+  final String? subtitle;
   final String heroPrefix;
   final List<MediaItem> items;
   final MediaOpenCallback onOpenMedia;
@@ -111,90 +112,104 @@ class _HorizontalMediaSectionState extends State<HorizontalMediaSection> {
     if (AppScope.of(context).deviceProfile.isTelevision) {
       return _buildTvShelf(context);
     }
-    final desktop =
-        MediaQuery.sizeOf(context).width >= LumaLayout.navigationRailBreakpoint;
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: LumaSpacing.md),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(
-              horizontal: LumaLayout.pagePaddingH,
-            ),
-            child: SectionHeader(
-              title: widget.title,
-              subtitle: widget.subtitle,
-              action: desktop
-                  ? Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        IconButton.filledTonal(
-                          tooltip: '向左翻页',
-                          onPressed: _canScrollBack
-                              ? () => _scrollBy(-1)
-                              : null,
-                          icon: const Icon(Icons.chevron_left_rounded),
-                        ),
-                        const SizedBox(width: LumaSpacing.xs),
-                        IconButton.filledTonal(
-                          tooltip: '向右翻页',
-                          onPressed: _canScrollForward
-                              ? () => _scrollBy(1)
-                              : null,
-                          icon: const Icon(Icons.chevron_right_rounded),
-                        ),
-                      ],
-                    )
-                  : null,
-            ),
-          ),
-          const SizedBox(height: LumaSpacing.md),
-          CallbackShortcuts(
-            bindings: <ShortcutActivator, VoidCallback>{
-              const SingleActivator(LogicalKeyboardKey.arrowLeft): () =>
-                  _scrollBy(-1),
-              const SingleActivator(LogicalKeyboardKey.arrowRight): () =>
-                  _scrollBy(1),
-            },
-            child: SizedBox(
-              height: MediaCard.heightForWidth(
-                LumaLayout.horizontalCardWidth,
-                detailsHeight: MediaCard.textDetailsHeight(
-                  context,
-                  titleLines: 1,
+    final detailsHeight = MediaCard.textDetailsHeight(context, titleLines: 1);
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.maxWidth;
+        final inset = HomeLayout.sideInset(width);
+        final wide = width >= LumaLayout.navigationRailBreakpoint;
+        // 宽屏卡片与下方网格同列宽；手机保持固定卡宽，露出下一张提示可横滑。
+        final cardWidth = wide
+            ? HomeLayout.shelfCardWidth(HomeLayout.contentWidth(width))
+            : LumaLayout.horizontalCardWidth;
+        // 只有内容放不下时才给翻页箭头，四张卡一屏放得下就不显示。
+        final pageable = _canScrollBack || _canScrollForward;
+        return Padding(
+          padding: const EdgeInsets.symmetric(vertical: LumaSpacing.md),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: EdgeInsets.symmetric(horizontal: inset),
+                child: SectionHeader(
+                  title: widget.title,
+                  subtitle: widget.subtitle,
+                  action: wide && pageable
+                      ? Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              tooltip: '向左翻页',
+                              onPressed: _canScrollBack
+                                  ? () => _scrollBy(-1)
+                                  : null,
+                              icon: const Icon(Icons.chevron_left_rounded),
+                            ),
+                            IconButton(
+                              tooltip: '向右翻页',
+                              onPressed: _canScrollForward
+                                  ? () => _scrollBy(1)
+                                  : null,
+                              icon: const Icon(Icons.chevron_right_rounded),
+                            ),
+                          ],
+                        )
+                      : null,
                 ),
               ),
-              child: ListView.separated(
-                controller: _scroll,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: LumaLayout.pagePaddingH,
-                ),
-                scrollDirection: Axis.horizontal,
-                itemCount: widget.items.length,
-                separatorBuilder: (_, _) =>
-                    const SizedBox(width: LumaSpacing.md),
-                itemBuilder: (context, index) {
-                  final item = widget.items[index];
-                  final heroTag = item.type == MediaType.video
-                      ? null
-                      : '${widget.heroPrefix}-${item.id}';
-                  return SizedBox(
-                    width: LumaLayout.horizontalCardWidth,
-                    child: MediaCard(
-                      item: item,
-                      compact: true,
-                      heroTag: heroTag,
-                      onTap: () => widget.onOpenMedia(item, heroTag: heroTag),
-                      onFavorite: () => widget.onFavorite(item),
-                    ),
-                  );
+              const SizedBox(height: LumaSpacing.md),
+              CallbackShortcuts(
+                bindings: <ShortcutActivator, VoidCallback>{
+                  const SingleActivator(LogicalKeyboardKey.arrowLeft): () =>
+                      _scrollBy(-1),
+                  const SingleActivator(LogicalKeyboardKey.arrowRight): () =>
+                      _scrollBy(1),
                 },
+                child: SizedBox(
+                  height: MediaCard.heightForWidth(
+                    cardWidth,
+                    detailsHeight: detailsHeight,
+                  ),
+                  child: NotificationListener<ScrollMetricsNotification>(
+                    // 窗口缩放后可滚动范围会变，箭头显隐跟着重新判断。
+                    onNotification: (_) {
+                      WidgetsBinding.instance.addPostFrameCallback(
+                        (_) => _syncScrollActions(),
+                      );
+                      return false;
+                    },
+                    child: ListView.separated(
+                      controller: _scroll,
+                      padding: EdgeInsets.symmetric(horizontal: inset),
+                      scrollDirection: Axis.horizontal,
+                      itemCount: widget.items.length,
+                      separatorBuilder: (_, _) =>
+                          const SizedBox(width: LumaSpacing.md),
+                      itemBuilder: (context, index) {
+                        final item = widget.items[index];
+                        final heroTag = item.type == MediaType.video
+                            ? null
+                            : '${widget.heroPrefix}-${item.id}';
+                        return SizedBox(
+                          width: cardWidth,
+                          child: MediaCard(
+                            item: item,
+                            compact: true,
+                            heroTag: heroTag,
+                            onTap: () =>
+                                widget.onOpenMedia(item, heroTag: heroTag),
+                            onFavorite: () => widget.onFavorite(item),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ),
               ),
-            ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 

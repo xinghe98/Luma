@@ -55,8 +55,8 @@ void main() {
     );
     expect(play.center.dy, favorite.center.dy);
     expect(play.right, lessThan(favorite.left));
-    expect(favorite.width, LumaLayout.buttonHeight);
-    expect(favorite.height, LumaLayout.buttonHeight);
+    expect(favorite.width, LumaLayout.minTapTarget);
+    expect(favorite.height, LumaLayout.minTapTarget);
   });
 
   testWidgets('TV 详情操作：收藏带文字且不小于 56dp，隐藏笔记编辑', (tester) async {

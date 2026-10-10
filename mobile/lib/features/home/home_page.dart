@@ -1,16 +1,20 @@
 import 'package:flutter/material.dart';
 
+import '../../app/app_navigation.dart';
 import '../../app/app_scope.dart';
 import '../../app/controllers/media_controller.dart';
 import '../../core/extensions.dart';
 import '../../core/theme.dart';
+import '../shell/app_destination.dart';
 import '../../shared/media/media_actions.dart';
 import '../../shared/states/empty_state.dart';
 import '../../shared/states/error_state.dart';
 import '../../shared/states/skeleton.dart';
 import 'home_controller.dart';
+import 'widgets/continue_spotlight.dart';
 import 'widgets/home_header.dart';
 import 'widgets/horizontal_media_section.dart';
+import 'widgets/library_status_banner.dart';
 import 'widgets/recent_media_section.dart';
 import 'widgets/tv_home_feature.dart';
 
@@ -98,11 +102,12 @@ class _HomePageState extends State<HomePage>
                   },
                   onRefresh: controller.media.refresh,
                 )
-              : HomeHeader(
+              : HomeTopBar(
                   onOpenSearch: widget.onOpenSearch,
                   onScrollToTop: _scrollToTop,
                 ),
         ),
+        const SliverToBoxAdapter(child: LibraryStatusBanner()),
         if (controller.media.loadState == LoadState.loading &&
             controller.media.items.isEmpty)
           const SliverToBoxAdapter(child: HomeFeedSkeleton())
@@ -113,12 +118,17 @@ class _HomePageState extends State<HomePage>
             child: ErrorState(onRetry: controller.media.load),
           )
         else if (controller.media.items.isEmpty)
-          const SliverFillRemaining(
+          SliverFillRemaining(
             hasScrollBody: false,
             child: EmptyState(
               title: '媒体库还没有内容',
               message: '等待服务器扫描完成，或前往设置手动开始扫描。',
               icon: Icons.video_library_outlined,
+              action: FilledButton.tonal(
+                onPressed: () =>
+                    context.goToDestination(AppDestination.settings),
+                child: const Text('查看扫描状态'),
+              ),
             ),
           )
         else ...[
@@ -136,17 +146,28 @@ class _HomePageState extends State<HomePage>
             const SliverToBoxAdapter(
               child: LinearProgressIndicator(minHeight: 2),
             ),
-          SliverToBoxAdapter(
-            child: HorizontalMediaSection(
-              title: '继续观看',
-              subtitle: '回到上次停下的位置',
-              heroPrefix: 'continue',
-              items: continuing,
-              onOpenMedia: widget.onOpenMedia,
-              onFavorite: (item) =>
-                  context.toggleFavoriteWithFeedback(controller.media, item),
+          // 触控端用大卡聚焦第一项；TV 首页结构不变，继续沿用整排货架。
+          if (continuing.isNotEmpty && !isTelevision)
+            SliverToBoxAdapter(
+              child: ContinueSpotlight(
+                item: continuing.first,
+                upNext: continuing.skip(1).take(3).toList(growable: false),
+                onOpen: widget.onOpenMedia,
+              ),
             ),
-          ),
+          if (isTelevision ? continuing.isNotEmpty : continuing.length > 4)
+            SliverToBoxAdapter(
+              child: HorizontalMediaSection(
+                title: '继续观看',
+                heroPrefix: 'continue',
+                items: isTelevision
+                    ? continuing.take(8).toList(growable: false)
+                    : continuing.skip(4).toList(growable: false),
+                onOpenMedia: widget.onOpenMedia,
+                onFavorite: (item) =>
+                    context.toggleFavoriteWithFeedback(controller.media, item),
+              ),
+            ),
           SliverToBoxAdapter(
             child: RecentMediaSection(
               items: recent,
@@ -158,7 +179,6 @@ class _HomePageState extends State<HomePage>
           SliverToBoxAdapter(
             child: HorizontalMediaSection(
               title: '收藏',
-              subtitle: '留给以后再看的片段',
               heroPrefix: 'favorites',
               items: controller.favorites,
               onOpenMedia: widget.onOpenMedia,

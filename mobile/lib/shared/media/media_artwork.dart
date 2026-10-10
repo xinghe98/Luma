@@ -128,7 +128,7 @@ class _PlaceholderArtwork extends StatelessWidget {
               height: 150,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: palette[2].withAlpha(70),
+                color: palette[2].withValues(alpha: 0.27),
               ),
             ),
           ),
@@ -141,12 +141,12 @@ class _PlaceholderArtwork extends StatelessWidget {
                 width: item.isPortrait ? 110 : 210,
                 height: 150,
                 decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(80),
+                  borderRadius: BorderRadius.circular(LumaRadii.badge),
                   border: Border.all(
-                    color: LumaColors.onInk.withAlpha(35),
+                    color: LumaColors.onPlayerInk.withValues(alpha: 0.14),
                     width: 2,
                   ),
-                  color: palette[0].withAlpha(90),
+                  color: palette[0].withValues(alpha: 0.35),
                 ),
               ),
             ),
@@ -157,7 +157,7 @@ class _PlaceholderArtwork extends StatelessWidget {
                   ? Icons.play_circle_outline_rounded
                   : Icons.image_outlined,
               size: 38,
-              color: LumaColors.onInk.withAlpha(175),
+              color: LumaColors.onPlayerInk.withValues(alpha: 0.69),
             ),
           ),
         ],

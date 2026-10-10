@@ -19,7 +19,11 @@ class LumaFavoriteButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final label = tooltip ?? (isFavorite ? '取消收藏' : '收藏');
-    final heartColor = Theme.of(context).colorScheme.error;
+    final extras = context.luma;
+    // 覆盖层未收藏时用播放器墨色上的近白图标，已收藏点缀品牌琥珀。
+    final heartColor = overlay
+        ? (isFavorite ? LumaColors.brandAmber : extras.onPlayerInk)
+        : Theme.of(context).colorScheme.error;
     final icon = AnimatedSwitcher(
       duration: LumaMotion.forContext(context, LumaMotion.fast),
       switchInCurve: LumaMotion.standard,
@@ -35,7 +39,7 @@ class LumaFavoriteButton extends StatelessWidget {
         shadows: overlay
             ? [
                 Shadow(
-                  color: LumaColors.ink.withAlpha(190),
+                  color: extras.playerInk.withValues(alpha: 0.7),
                   offset: const Offset(0, 1),
                   blurRadius: 2,
                 ),
@@ -51,7 +55,7 @@ class LumaFavoriteButton extends StatelessWidget {
         style: IconButton.styleFrom(
           backgroundColor: Colors.transparent,
           foregroundColor: heartColor,
-          overlayColor: heartColor.withAlpha(30),
+          overlayColor: heartColor.withValues(alpha: 0.12),
           minimumSize: const Size(
             LumaLayout.minTapTarget,
             LumaLayout.minTapTarget,

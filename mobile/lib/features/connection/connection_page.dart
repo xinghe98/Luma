@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../../app/app_scope.dart';
-import '../../core/extensions.dart';
 import '../../core/theme.dart';
 import '../../data/services/connection_service.dart';
 import '../../data/storage/connection_form_store.dart';
@@ -11,7 +10,6 @@ import 'connection_controller.dart';
 
 import 'widgets/connection_brand_header.dart';
 import 'widgets/connection_form.dart';
-import 'widgets/recent_servers.dart';
 import 'widgets/vmess_proxy_control.dart';
 import 'widgets/tv_connection_layout.dart';
 
@@ -86,6 +84,7 @@ class _ConnectionPageState extends State<ConnectionPage> {
   }
 
   Future<void> _connect() async {
+    _splitPastedAddress();
     FocusScope.of(context).unfocus();
     final dependencies = AppScope.of(context);
     final host = _host.text.trim();
@@ -171,10 +170,6 @@ class _ConnectionPageState extends State<ConnectionPage> {
                       children: [
                         connectionForm,
                         if (restoring) const Text('正在恢复已保存的服务器连接…'),
-                        RecentServers(
-                          enabled: !restoring && !controller.isLoading,
-                          onSelect: _selectServer,
-                        ),
                       ],
                     ),
                   ),
@@ -209,10 +204,6 @@ class _ConnectionPageState extends State<ConnectionPage> {
                           const Text('正在恢复已保存的服务器连接…'),
                         ],
                         const SizedBox(height: LumaSpacing.lg),
-                        RecentServers(
-                          enabled: !restoring && !controller.isLoading,
-                          onSelect: _selectServer,
-                        ),
                       ],
                     ),
                   ),
@@ -235,31 +226,37 @@ class _ConnectionPageState extends State<ConnectionPage> {
     );
   }
 
-  void _selectServer(RecentServer server) {
-    final parsed = _parseAddress(server.address);
-    setState(() {
-      _host.value = TextEditingValue(
-        text: parsed.host,
-        selection: TextSelection.collapsed(offset: parsed.host.length),
-      );
-      _port.value = TextEditingValue(
-        text: parsed.port,
-        selection: TextSelection.collapsed(offset: parsed.port.length),
-      );
-    });
-    context.showLumaSnack('已填入 ${server.name}');
+  /// 提交前把粘贴的 http(s)://host:port 或 host:port 拆回地址与端口两个字段。
+  /// 用户粘贴完整地址时无需手动分段输入。
+  void _splitPastedAddress() {
+    final address = _host.text.trim();
+    if (address.isEmpty) return;
+    final parsed = _splitAddress(address);
+    if (parsed == null) return;
+    _host.value = TextEditingValue(
+      text: parsed.host,
+      selection: TextSelection.collapsed(offset: parsed.host.length),
+    );
+    if (parsed.port.isEmpty) return;
+    _port.value = TextEditingValue(
+      text: parsed.port,
+      selection: TextSelection.collapsed(offset: parsed.port.length),
+    );
   }
 
-  static ({String host, String port}) _parseAddress(String address) {
-    final uri = Uri.tryParse(address.trim());
-    if (uri != null && uri.host.isNotEmpty) {
-      return (host: uri.host, port: uri.hasPort ? '${uri.port}' : '8080');
+  /// 只拆分带协议或端口的地址；纯主机名返回 null，避免覆盖用户填写的端口。
+  /// 端口段不是 1–65535 的数字时也返回 null，交给字段校验提示。
+  static ({String host, String port})? _splitAddress(String address) {
+    final value = address.trim();
+    final hasScheme = RegExp(
+      r'^https?://',
+      caseSensitive: false,
+    ).hasMatch(value);
+    final uri = hasScheme ? Uri.tryParse(value) : Uri.tryParse('http://$value');
+    if (uri == null || uri.host.isEmpty) return null;
+    if (!uri.hasPort) {
+      return hasScheme ? (host: uri.host, port: '') : null;
     }
-    final bare = address.trim().replaceFirst(RegExp(r'^https?://'), '');
-    final parts = bare.split(':');
-    if (parts.length >= 2) {
-      return (host: parts.first, port: parts.sublist(1).join(':'));
-    }
-    return (host: bare, port: '8080');
+    return (host: uri.host, port: '${uri.port}');
   }
 }

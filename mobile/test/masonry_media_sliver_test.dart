@@ -139,7 +139,7 @@ void main() {
     ('手机浅色', const Size(390, 844), 350.0, LumaTheme.light()),
     ('Windows 宽屏深色', const Size(1280, 800), 1213.0, LumaTheme.dark()),
   ]) {
-    testWidgets('$name视频卡片的 hover 边框与文字保持内距', (tester) async {
+    testWidgets('$name视频卡片 hover 只浮起封面、不画描边且不改布局', (tester) async {
       await tester.binding.setSurfaceSize(viewport);
       addTearDown(() => tester.binding.setSurfaceSize(null));
 
@@ -191,17 +191,28 @@ void main() {
         of: find.byType(LumaFocusableSurface),
         matching: find.byType(InkWell),
       );
+      final coverBefore = tester.getSize(find.byType(LumaCoverLift));
       tester.widget<InkWell>(inkFinder).onHover!(true);
       await tester.pumpAndSettle();
 
-      final animated = tester.widget<AnimatedContainer>(
+      final hovered = tester.widget<AnimatedContainer>(
+        find
+            .descendant(
+              of: find.byType(LumaFocusableSurface),
+              matching: find.byType(AnimatedContainer),
+            )
+            .first,
+      );
+      expect((hovered.foregroundDecoration as BoxDecoration).border, isNull);
+      expect((hovered.decoration as BoxDecoration).color, isNull);
+      final lift = tester.widget<AnimatedContainer>(
         find.descendant(
-          of: find.byType(LumaFocusableSurface),
+          of: find.byType(LumaCoverLift),
           matching: find.byType(AnimatedContainer),
         ),
       );
-      final decoration = animated.foregroundDecoration as BoxDecoration;
-      expect(decoration.border, isNotNull);
+      expect((lift.decoration as BoxDecoration).boxShadow, isNotEmpty);
+      expect(tester.getSize(find.byType(LumaCoverLift)), coverBefore);
       expect(tester.getSize(find.byType(MediaCard)), cardSize);
       expect(tester.takeException(), isNull);
     });

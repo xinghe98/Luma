@@ -108,7 +108,7 @@ class _MemberDetailPageState extends State<MemberDetailPage> {
           ),
         const SizedBox(height: LumaSpacing.md),
         AdaptiveActionWidth(
-          maxWidth: 240,
+          maxWidth: LumaLayout.shortActionMaxWidth,
           child: FilledButton.tonalIcon(
             onPressed: _busy ? null : _resetPassword,
             icon: const Icon(Icons.lock_reset_outlined),
@@ -174,7 +174,18 @@ class _MemberDetailPageState extends State<MemberDetailPage> {
   }
 
   Future<List<Source>> _sourcesFuture() => widget.sources.list(refresh: true);
+  /// 停用成员时会撤销其全部登录设备（服务端在同一事务内执行），先确认再提交。
   Future<void> _setEnabled(bool value) async {
+    if (!value) {
+      final confirmed = await showConfirmationDialog(
+        context,
+        title: '禁用成员登录？',
+        message: '禁用后该成员将无法登录，已登录设备会失效。',
+        confirmLabel: '禁用',
+        destructive: true,
+      );
+      if (!confirmed || !mounted) return;
+    }
     setState(() => _savingUser = true);
     try {
       final user = await widget.access.updateUser(_user.id, enabled: value);
@@ -205,13 +216,13 @@ class _MemberDetailPageState extends State<MemberDetailPage> {
       if (mounted) setState(() => _saving.remove(sourceID));
     }
   }
-
   Future<void> _revokeSession(LoginSession session) async {
     final confirmed = await showConfirmationDialog(
       context,
       title: '撤销设备？',
       message: '该设备需要重新输入用户名和密码登录。',
       confirmLabel: '撤销',
+      destructive: true,
     );
     if (!confirmed || !mounted) return;
     setState(() => _saving.add(session.id));
@@ -273,6 +284,11 @@ class _ResetPasswordDialog extends StatefulWidget {
 class _ResetPasswordDialogState extends State<_ResetPasswordDialog> {
   late final TextEditingController _password;
   late final TextEditingController _confirmation;
+  bool _passwordVisible = false;
+  bool _confirmationVisible = false;
+  bool _submitted = false;
+  String? _passwordError;
+  String? _confirmationError;
 
   @override
   void initState() {
@@ -288,19 +304,19 @@ class _ResetPasswordDialogState extends State<_ResetPasswordDialog> {
     super.dispose();
   }
 
-  /// 校验两次密码一致且长度足够后关闭弹窗并返回新密码。
+  /// 校验两次密码一致且长度足够后关闭弹窗并返回新密码；错误显示在字段下方。
   void _confirm() {
     final password = _password.text;
     final confirmation = _confirmation.text;
-    if (password != confirmation) {
-      context.showLumaSnack('两次输入的密码不一致');
-      return;
-    }
-    final passwordLength = password.runes.length;
-    if (passwordLength < 10 || passwordLength > 128) {
-      context.showLumaSnack('密码须为 10 至 128 个字符');
-      return;
-    }
+    setState(() {
+      _submitted = true;
+      final passwordLength = password.runes.length;
+      _passwordError = passwordLength < 10 || passwordLength > 128
+          ? '密码须为 10 至 128 个字符'
+          : null;
+      _confirmationError = password != confirmation ? '两次输入的密码不一致' : null;
+    });
+    if (_passwordError != null || _confirmationError != null) return;
     Navigator.pop(context, password);
   }
 
@@ -314,22 +330,51 @@ class _ResetPasswordDialogState extends State<_ResetPasswordDialog> {
         TextField(
           controller: _password,
           maxLength: 128,
-          obscureText: true,
+          obscureText: !_passwordVisible,
           autofocus: true,
           autocorrect: false,
           enableSuggestions: false,
-          decoration: const InputDecoration(
+          autofillHints: const [AutofillHints.newPassword],
+          textInputAction: TextInputAction.next,
+          decoration: InputDecoration(
             labelText: '新密码',
             helperText: '10 至 128 个字符',
+            errorText: _submitted ? _passwordError : null,
+            suffixIcon: IconButton(
+              tooltip: _passwordVisible ? '隐藏密码' : '显示密码',
+              icon: Icon(
+                _passwordVisible
+                    ? Icons.visibility_off_rounded
+                    : Icons.visibility_rounded,
+              ),
+              onPressed: () =>
+                  setState(() => _passwordVisible = !_passwordVisible),
+            ),
           ),
         ),
         const SizedBox(height: LumaSpacing.sm),
         TextField(
           controller: _confirmation,
-          obscureText: true,
+          obscureText: !_confirmationVisible,
           autocorrect: false,
           enableSuggestions: false,
-          decoration: const InputDecoration(labelText: '确认密码'),
+          autofillHints: const [AutofillHints.newPassword],
+          textInputAction: TextInputAction.done,
+          decoration: InputDecoration(
+            labelText: '确认密码',
+            errorText: _submitted ? _confirmationError : null,
+            suffixIcon: IconButton(
+              tooltip: _confirmationVisible ? '隐藏密码' : '显示密码',
+              icon: Icon(
+                _confirmationVisible
+                    ? Icons.visibility_off_rounded
+                    : Icons.visibility_rounded,
+              ),
+              onPressed: () => setState(
+                () => _confirmationVisible = !_confirmationVisible,
+              ),
+            ),
+          ),
           onSubmitted: (_) => _confirm(),
         ),
       ],

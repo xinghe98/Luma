@@ -35,7 +35,7 @@ void main() {
 
   Future<void> dismissLaunchOverlay(WidgetTester tester) async {
     await tester.pump();
-    await tester.pump(const Duration(milliseconds: 1100));
+    await tester.pump(const Duration(milliseconds: 2700));
     await tester.pump(const Duration(milliseconds: 300));
   }
 

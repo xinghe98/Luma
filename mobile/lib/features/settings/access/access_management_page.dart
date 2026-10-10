@@ -89,7 +89,7 @@ class _AccessManagementPageState extends State<AccessManagementPage> {
         ),
         const SizedBox(height: LumaSpacing.lg),
         AdaptiveActionWidth(
-          maxWidth: 240,
+          maxWidth: LumaLayout.shortActionMaxWidth,
           child: FilledButton.icon(
             onPressed: _createMember,
             icon: const Icon(Icons.person_add_alt_1_outlined),
@@ -98,7 +98,7 @@ class _AccessManagementPageState extends State<AccessManagementPage> {
         ),
         const SizedBox(height: LumaSpacing.md),
         if (_error != null) ...[
-          _RefreshNotice(error: _error!),
+          const _RefreshNotice(),
           const SizedBox(height: LumaSpacing.sm),
         ],
         if (users.isEmpty)
@@ -129,19 +129,22 @@ class _AccessManagementPageState extends State<AccessManagementPage> {
           Positioned(
             right: -3,
             bottom: -3,
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                color: colorScheme.surface,
-                shape: BoxShape.circle,
-              ),
-              child: Padding(
-                padding: const EdgeInsets.all(2),
-                child: Icon(
-                  Icons.circle,
-                  size: 10,
-                  color: online
-                      ? colorScheme.primary
-                      : colorScheme.onSurfaceVariant.withValues(alpha: 0.55),
+            child: Semantics(
+              label: online ? '在线' : '离线',
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: colorScheme.surface,
+                  shape: BoxShape.circle,
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(2),
+                  child: Icon(
+                    Icons.circle,
+                    size: 10,
+                    color: online
+                        ? colorScheme.primary
+                        : colorScheme.onSurfaceVariant.withValues(alpha: 0.55),
+                  ),
                 ),
               ),
             ),
@@ -194,9 +197,7 @@ class _AccessManagementPageState extends State<AccessManagementPage> {
 }
 
 class _RefreshNotice extends StatelessWidget {
-  const _RefreshNotice({required this.error});
-
-  final Object error;
+  const _RefreshNotice();
 
   @override
   Widget build(BuildContext context) => DecoratedBox(
@@ -204,9 +205,9 @@ class _RefreshNotice extends StatelessWidget {
       color: Theme.of(context).colorScheme.errorContainer,
       borderRadius: BorderRadius.circular(LumaRadii.medium),
     ),
-    child: Padding(
-      padding: const EdgeInsets.all(LumaSpacing.sm),
-      child: Text('刷新失败，正在显示上次结果：$error'),
+    child: const Padding(
+      padding: EdgeInsets.all(LumaSpacing.sm),
+      child: Text('成员列表刷新失败，稍后会自动重试。'),
     ),
   );
 }

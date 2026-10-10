@@ -189,16 +189,7 @@ class _HeroFade extends StatelessWidget {
         children: [
           DecoratedBox(
             decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [
-                  background,
-                  background,
-                  background.withValues(alpha: 0.55),
-                  background.withValues(alpha: 0),
-                  background.withValues(alpha: 0.35),
-                ],
-                stops: const [0, 0.28, 0.46, 0.7, 1],
-              ),
+              gradient: LumaGradients.sideFade(background),
             ),
           ),
           DecoratedBox(

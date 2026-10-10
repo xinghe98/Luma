@@ -6,6 +6,7 @@ import '../../../data/models/media_item.dart';
 import '../../../shared/layout/section_header.dart';
 import '../../../shared/media/media_actions.dart';
 import '../../../shared/media/responsive_media_grid.dart';
+import 'home_layout.dart';
 import 'horizontal_media_section.dart';
 
 class RecentMediaSection extends StatelessWidget {
@@ -27,27 +28,26 @@ class RecentMediaSection extends StatelessWidget {
     if (isTelevision) {
       return HorizontalMediaSection(
         title: '最近添加',
-        subtitle: '',
         heroPrefix: 'recent',
         items: items,
         onOpenMedia: onOpenMedia,
         onFavorite: onFavorite,
       );
     }
-    final content = Center(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: LumaLayout.contentMaxWidth),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(
-            LumaLayout.pagePaddingH,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final inset = HomeLayout.sideInset(constraints.maxWidth);
+        return Padding(
+          padding: EdgeInsets.fromLTRB(
+            inset,
             LumaSpacing.sm,
-            LumaLayout.pagePaddingH,
+            inset,
             LumaSpacing.xl,
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const SectionHeader(title: '最近添加', subtitle: '服务器里新出现的内容'),
+              const SectionHeader(title: '最近添加'),
               const SizedBox(height: LumaSpacing.md),
               ResponsiveMediaGrid(
                 items: items,
@@ -57,9 +57,8 @@ class RecentMediaSection extends StatelessWidget {
               ),
             ],
           ),
-        ),
-      ),
+        );
+      },
     );
-    return content;
   }
 }

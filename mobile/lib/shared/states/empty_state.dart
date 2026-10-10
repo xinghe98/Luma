@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 
 import '../../core/theme.dart';
 
@@ -26,14 +27,14 @@ class EmptyState extends StatelessWidget {
         horizontal: LumaSpacing.lg,
       ),
       child: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 360),
+        child: _MaxWidthBox(
+          maxWidth: 360,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               DecoratedBox(
                 decoration: BoxDecoration(
-                  color: scheme.primaryContainer.withValues(alpha: 0.45),
+                  color: scheme.surfaceContainerHigh,
                   borderRadius: BorderRadius.circular(LumaRadii.large),
                 ),
                 child: Padding(
@@ -41,7 +42,7 @@ class EmptyState extends StatelessWidget {
                   child: Icon(
                     icon,
                     size: LumaIconSize.emptyState,
-                    color: scheme.primary,
+                    color: scheme.onSurfaceVariant,
                   ),
                 ),
               ),
@@ -69,4 +70,31 @@ class EmptyState extends StatelessWidget {
       ),
     );
   }
+}
+
+/// 限宽盒：与 ConstrainedBox 相同，但计算固有高度时也按限宽测量文字。
+/// SliverFillRemaining 依赖固有高度，ConstrainedBox 会按整行宽度测量而低估换行高度。
+class _MaxWidthBox extends ConstrainedBox {
+  _MaxWidthBox({required double maxWidth, required super.child})
+    : super(constraints: BoxConstraints(maxWidth: maxWidth));
+
+  @override
+  RenderConstrainedBox createRenderObject(BuildContext context) =>
+      _RenderMaxWidthBox(additionalConstraints: constraints);
+}
+
+class _RenderMaxWidthBox extends RenderConstrainedBox {
+  _RenderMaxWidthBox({required super.additionalConstraints});
+
+  double _clamp(double width) => width < additionalConstraints.maxWidth
+      ? width
+      : additionalConstraints.maxWidth;
+
+  @override
+  double computeMinIntrinsicHeight(double width) =>
+      super.computeMinIntrinsicHeight(_clamp(width));
+
+  @override
+  double computeMaxIntrinsicHeight(double width) =>
+      super.computeMaxIntrinsicHeight(_clamp(width));
 }

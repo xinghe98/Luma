@@ -2,6 +2,7 @@
 // 组件只渲染传入的资料，播放行为始终交还给详情页面的回调。
 import 'package:flutter/material.dart';
 
+import '../../../shared/layout/surface_card.dart';
 import '../../../core/theme.dart';
 import '../../../data/models/api_catalog.dart';
 import '../../../shared/formatters/duration_formatter.dart';
@@ -300,9 +301,39 @@ class CatalogMetadataStatus extends StatelessWidget {
       'failed' => '资料暂时无法更新',
       _ => '资料状态更新中',
     };
-    return Text(
-      message,
-      style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+    final scheme = Theme.of(context).colorScheme;
+    final (icon, iconColor) = switch (status) {
+      'failed' || 'needs_review' => (
+        Icons.error_outline_rounded,
+        context.luma.warning,
+      ),
+      'pending' => (Icons.schedule_rounded, scheme.onSurfaceVariant),
+      _ => (null, scheme.primary),
+    };
+    return SurfaceCard(
+      child: Row(
+        children: [
+          if (icon == null)
+            SizedBox.square(
+              dimension: 20,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: scheme.primary,
+              ),
+            )
+          else
+            Icon(icon, size: 20, color: iconColor),
+          const SizedBox(width: LumaSpacing.sm),
+          Expanded(
+            child: Text(
+              message,
+              style: Theme.of(
+                context,
+              ).textTheme.bodyMedium?.copyWith(color: scheme.onSurfaceVariant),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

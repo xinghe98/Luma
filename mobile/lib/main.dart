@@ -84,9 +84,9 @@ class _LumaAppState extends State<LumaApp> {
         : LumaTheme.dark();
     if (widget.ownsDependencies) {
       unawaited(widget.dependencies.restoreSession());
+      unawaited(widget.dependencies.settings.restoreThemeMode());
     }
   }
-
   @override
   void dispose() {
     _router.dispose();
@@ -152,23 +152,14 @@ class _LaunchBrandOverlay extends StatefulWidget {
 
 class _LaunchBrandOverlayState extends State<_LaunchBrandOverlay>
     with TickerProviderStateMixin {
-  static const _minimumPresentation = Duration(seconds: 1);
-  static const _entranceDuration = Duration(milliseconds: 400);
+  // MG 片头约 1.8s：展示时长覆盖动画 + 末帧定格，随后整屏淡出。
+  static const _minimumPresentation = Duration(milliseconds: 2600);
   static const _exitDuration = Duration(milliseconds: 280);
-  static const _compactBrandHeight = 72.0;
-  static const _wideBrandHeight = 180.0;
 
-  late final AnimationController _entrance = AnimationController(
-    vsync: this,
-    duration: _entranceDuration,
-  );
+  // 退场沿用 FadeTransition；MG 片头自身完成入场动效，不再需要额外 entrance 曲线。
   late final AnimationController _exit = AnimationController(
     vsync: this,
     duration: _exitDuration,
-  );
-  late final CurvedAnimation _entranceCurve = CurvedAnimation(
-    parent: _entrance,
-    curve: Curves.easeOutQuart,
   );
   late final Animation<double> _exitFade = _exit.drive(
     Tween<double>(begin: 1, end: 0),
@@ -176,23 +167,36 @@ class _LaunchBrandOverlayState extends State<_LaunchBrandOverlay>
 
   Timer? _dismissTimer;
   bool _isVisible = true;
+  bool _reducedMotion = false;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     if (_dismissTimer != null) return;
-    // 系统减少动画时入场/退场都退化为瞬时行为，与无动画的硬切一致。
+    // 减少动画时退场瞬时完成；MG 片头由 _reducedMotion 降级为静态横版 Logo。
     if (MediaQuery.disableAnimationsOf(context)) {
-      _entrance.duration = Duration.zero;
+      _reducedMotion = true;
       _exit.duration = Duration.zero;
     }
-    // 最短展示时间与资源预缓存、入场动画并行；不因解码阻塞计时，避免遮罩长期吞掉点击。
-    unawaited(_entrance.forward());
+    // 最短展示时间与资源预缓存并行；不因解码阻塞计时，避免遮罩长期吞掉点击。
     _startDismissTimer();
+    final brightness = MediaQuery.platformBrightnessOf(context);
+    unawaited(
+      precacheImage(
+        const AssetImage('assets/mg/luma-splash.webp'),
+        context,
+      ).catchError((_) {}),
+    );
+    unawaited(
+      precacheImage(
+        const AssetImage('assets/mg/luma-splash-wide.webp'),
+        context,
+      ).catchError((_) {}),
+    );
     final lockup = AssetImage(
       BrandMark.assetFor(
         variant: BrandMarkVariant.horizontal,
-        brightness: MediaQuery.platformBrightnessOf(context),
+        brightness: brightness,
       ),
     );
     unawaited(precacheImage(lockup, context).catchError((_) {}));
@@ -229,21 +233,16 @@ class _LaunchBrandOverlayState extends State<_LaunchBrandOverlay>
   @override
   void dispose() {
     _dismissTimer?.cancel();
-    _entranceCurve.dispose();
-    _entrance.dispose();
     _exit.dispose();
     super.dispose();
   }
 
-  /// 按开屏可用宽度选择品牌比例，手机保持克制，Windows 宽屏沿用既有尺寸。
+  /// 开屏按可用宽度挑选 MG 片头（竖版/横版），宽屏与 TV 使用横版构图。
+  /// 动画只播一次，片头本身即品牌入场动效，退场仍走整屏淡出。
   @override
   Widget build(BuildContext context) {
-    // 开屏与原生启动画面共用设备亮度这一决策源，不随 App 内主题变化；
-    // TV 默认深色主题但多数设备上报浅色，避免启动出现白底到蓝底的硬切。
-    final platformBrightness = MediaQuery.platformBrightnessOf(context);
-    final background = platformBrightness == Brightness.dark
-        ? LumaColors.deepBlue
-        : LumaColors.paper;
+    // 开屏底色为品牌画框白（略暖的米白），MG 片头换为深色笔画版本后在其上清晰可读。
+    const background = LumaColors.brandPaper;
     return Stack(
       fit: StackFit.expand,
       children: [
@@ -263,28 +262,27 @@ class _LaunchBrandOverlayState extends State<_LaunchBrandOverlay>
                   color: background,
                   child: LayoutBuilder(
                     builder: (context, constraints) {
-                      final brandHeight =
+                      final wide =
                           constraints.maxWidth >=
-                              LumaLayout.navigationRailBreakpoint
-                          ? _wideBrandHeight
-                          : _compactBrandHeight;
-                      return Center(
-                        child: FadeTransition(
-                          opacity: _entranceCurve,
-                          child: ScaleTransition(
-                            scale: _entranceCurve.drive(
-                              Tween<double>(begin: 0.94, end: 1),
-                            ),
-                            child: Theme(
-                              data: Theme.of(
-                                context,
-                              ).copyWith(brightness: platformBrightness),
-                              child: BrandMark(
-                                variant: BrandMarkVariant.horizontal,
-                                height: brandHeight,
-                              ),
+                          LumaLayout.navigationRailBreakpoint;
+                      if (_reducedMotion) {
+                        // 系统减少动画：退化为浅色横版 Logo，与白底保持一致。
+                        return Center(
+                          child: Theme(
+                            data: Theme.of(
+                              context,
+                            ).copyWith(brightness: Brightness.light),
+                            child: BrandMark(
+                              variant: BrandMarkVariant.horizontal,
+                              height: wide ? 180 : 72,
                             ),
                           ),
+                        );
+                      }
+                      return RepaintBoundary(
+                        child: _SplashAnimation(
+                          wide: wide,
+                          constraints: constraints,
                         ),
                       );
                     },
@@ -294,6 +292,34 @@ class _LaunchBrandOverlayState extends State<_LaunchBrandOverlay>
             ),
           ),
       ],
+    );
+  }
+}
+
+/// 播放品牌 MG 片头的动画层；动画在画布内居中、contain，不拉伸不裁切。
+class _SplashAnimation extends StatelessWidget {
+  const _SplashAnimation({required this.wide, required this.constraints});
+
+  final bool wide;
+  final BoxConstraints constraints;
+
+  @override
+  Widget build(BuildContext context) {
+    final asset = wide
+        ? 'assets/mg/luma-splash-wide.webp'
+        : 'assets/mg/luma-splash.webp';
+    // 宽屏给动画约 62% 可用宽、窄屏约 78%；纵向限高防顶满。
+    final maxWidth = constraints.maxWidth * (wide ? 0.62 : 0.78);
+    final maxHeight = constraints.maxHeight * (wide ? 0.5 : 0.34);
+    return Center(
+      child: Image.asset(
+        asset,
+        width: maxWidth,
+        height: maxHeight,
+        fit: BoxFit.contain,
+        gaplessPlayback: true,
+        errorBuilder: (_, _, _) => const SizedBox.shrink(),
+      ),
     );
   }
 }

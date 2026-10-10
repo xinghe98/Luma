@@ -46,7 +46,7 @@ class MediaGridSkeleton extends StatelessWidget {
                 child: const SizedBox.expand(
                   child: SkeletonBox(
                     height: double.infinity,
-                    radius: LumaRadii.medium,
+                    radius: LumaRadii.cover,
                   ),
                 ),
               ),

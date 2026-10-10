@@ -73,7 +73,8 @@ class _CatalogShelfPlaceholder extends StatelessWidget {
             SizedBox(
               height:
                   cardWidth * 1.5 +
-                  MediaCard.textDetailsHeight(context, titleLines: 1),
+                  LumaSpacing.xs +
+                  CatalogCard.textDetailsHeight(context),
               child: ListView.separated(
                 padding: const EdgeInsets.symmetric(
                   horizontal: LumaLayout.pagePaddingH,
@@ -105,35 +106,54 @@ class _CatalogShelfPlaceholder extends StatelessWidget {
     }
     return Padding(
       padding: const EdgeInsets.only(top: LumaSpacing.lg),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _SectionHeading(title: title, onOpenAll: onOpenAll),
-          const SizedBox(height: LumaSpacing.md),
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: LumaLayout.pagePaddingH),
-            child: SizedBox(
-              height: 262,
-              child: Row(
-                children: [
-                  Expanded(
-                    child: SkeletonBox(
-                      height: double.infinity,
-                      radius: LumaRadii.large,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final cardWidth = LumaLayout.posterShelfWidth(constraints.maxWidth);
+          final shelfHeight =
+              cardWidth * 1.5 +
+              LumaSpacing.xs +
+              CatalogCard.textDetailsHeight(context);
+          final visibleCards = (constraints.maxWidth / cardWidth).ceil().clamp(
+            2,
+            8,
+          );
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _SectionHeading(title: title, onOpenAll: onOpenAll),
+              const SizedBox(height: LumaSpacing.md),
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: LumaLayout.pagePaddingH,
+                ),
+                child: SizedBox(
+                  height: shelfHeight,
+                  child: ListView.separated(
+                    scrollDirection: Axis.horizontal,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: visibleCards,
+                    separatorBuilder: (_, _) =>
+                        const SizedBox(width: LumaSpacing.md),
+                    itemBuilder: (_, _) => SizedBox(
+                      width: cardWidth,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          SkeletonBox(
+                            height: cardWidth * 1.5,
+                            radius: LumaRadii.cover,
+                          ),
+                          const SizedBox(height: LumaSpacing.sm),
+                          const SkeletonBox(height: 18, width: 96),
+                        ],
+                      ),
                     ),
                   ),
-                  SizedBox(width: LumaSpacing.md),
-                  Expanded(
-                    child: SkeletonBox(
-                      height: double.infinity,
-                      radius: LumaRadii.large,
-                    ),
-                  ),
-                ],
+                ),
               ),
-            ),
-          ),
-        ],
+            ],
+          );
+        },
       ),
     );
   }
@@ -156,19 +176,27 @@ class _CatalogSectionIssue extends StatelessWidget {
     child: Column(
       children: [
         _SectionHeading(title: title, onOpenAll: onOpenAll),
-        SizedBox(
-          height: 262,
-          child: Center(
-            child: TextButton.icon(
-              onPressed: onRetry,
-              icon: const Icon(Icons.refresh_rounded),
-              label: Text(
-                AppScope.of(context).deviceProfile.isTelevision
-                    ? '加载失败，重试'
-                    : '加载失败，轻触重试',
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final cardWidth = LumaLayout.posterShelfWidth(constraints.maxWidth);
+            return SizedBox(
+              height:
+                  cardWidth * 1.5 +
+                  LumaSpacing.xs +
+                  CatalogCard.textDetailsHeight(context),
+              child: Center(
+                child: TextButton.icon(
+                  onPressed: onRetry,
+                  icon: const Icon(Icons.refresh_rounded),
+                  label: Text(
+                    AppScope.of(context).deviceProfile.isTelevision
+                        ? '加载失败，重试'
+                        : '加载失败，轻触重试',
+                  ),
+                ),
               ),
-            ),
-          ),
+            );
+          },
         ),
       ],
     ),
@@ -203,7 +231,7 @@ class _CatalogSectionEmpty extends StatelessWidget {
   );
 }
 
-class _CatalogShelf extends StatelessWidget {
+class _CatalogShelf extends StatefulWidget {
   const _CatalogShelf({
     required this.title,
     required this.items,
@@ -227,6 +255,63 @@ class _CatalogShelf extends StatelessWidget {
   final VoidCallback? onEntryFocused;
 
   @override
+  State<_CatalogShelf> createState() => _CatalogShelfState();
+}
+
+class _CatalogShelfState extends State<_CatalogShelf> {
+  final _scroll = ScrollController();
+  bool _canScrollBack = false;
+  bool _canScrollForward = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _scroll.addListener(_syncScrollActions);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _syncScrollActions());
+  }
+
+  @override
+  void didUpdateWidget(_CatalogShelf oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.items.length != widget.items.length) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _syncScrollActions());
+    }
+  }
+
+  @override
+  void dispose() {
+    _scroll
+      ..removeListener(_syncScrollActions)
+      ..dispose();
+    super.dispose();
+  }
+
+  void _syncScrollActions() {
+    if (!mounted || !_scroll.hasClients) return;
+    final position = _scroll.position;
+    final back = position.pixels > position.minScrollExtent + 1;
+    final forward = position.pixels < position.maxScrollExtent - 1;
+    if (back == _canScrollBack && forward == _canScrollForward) return;
+    setState(() {
+      _canScrollBack = back;
+      _canScrollForward = forward;
+    });
+  }
+
+  /// 按当前可视宽度翻动货架，与首页媒体货架同一翻页比例。
+  void _scrollBy(int direction) {
+    if (!_scroll.hasClients) return;
+    final position = _scroll.position;
+    final target =
+        position.pixels + position.viewportDimension * 0.72 * direction;
+    _scroll.animateTo(
+      target.clamp(position.minScrollExtent, position.maxScrollExtent),
+      duration: LumaMotion.forContext(context, LumaMotion.normal),
+      curve: Curves.easeOutQuart,
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
     final isTelevision = AppScope.of(context).deviceProfile.isTelevision;
     return Padding(
@@ -236,13 +321,61 @@ class _CatalogShelf extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _SectionHeading(title: title, onOpenAll: onOpenAll),
-          if (loading)
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final wide =
+                  constraints.maxWidth >= LumaLayout.navigationRailBreakpoint;
+              return Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: LumaLayout.pagePaddingH,
+                ),
+                child: SectionHeader(
+                  title: widget.title,
+                  action: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // 与首页货架一致：只在放不下时显示，普通图标按钮不加底色。
+                      if (!isTelevision &&
+                          wide &&
+                          (_canScrollBack || _canScrollForward)) ...[
+                        IconButton(
+                          tooltip: '向左翻页',
+                          onPressed: _canScrollBack
+                              ? () => _scrollBy(-1)
+                              : null,
+                          icon: const Icon(Icons.chevron_left_rounded),
+                        ),
+                        IconButton(
+                          tooltip: '向右翻页',
+                          onPressed: _canScrollForward
+                              ? () => _scrollBy(1)
+                              : null,
+                          icon: const Icon(Icons.chevron_right_rounded),
+                        ),
+                        const SizedBox(width: LumaSpacing.xs),
+                      ],
+                      TextButton(
+                        onPressed: widget.onOpenAll,
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text('查看全部'),
+                            Icon(Icons.chevron_right_rounded),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+          if (widget.loading)
             const Padding(
               padding: EdgeInsets.only(top: LumaSpacing.xs),
               child: LinearProgressIndicator(minHeight: 2),
             )
-          else if (hasError)
+          else if (widget.hasError)
             Align(
               alignment: Alignment.centerLeft,
               child: Padding(
@@ -250,7 +383,7 @@ class _CatalogShelf extends StatelessWidget {
                   horizontal: LumaLayout.pagePaddingH,
                 ),
                 child: TextButton.icon(
-                  onPressed: onRetry,
+                  onPressed: widget.onRetry,
                   icon: const Icon(Icons.refresh_rounded),
                   label: const Text('刷新失败，当前保留上次内容'),
                 ),
@@ -260,35 +393,48 @@ class _CatalogShelf extends StatelessWidget {
           // TV：大海报货架与逐项焦点；触控端保持既有小卡与箭头-free 横滑。
           if (isTelevision)
             _TvCatalogShelf(
-              items: items,
-              onOpenCatalog: onOpenCatalog,
-              entryFocusId: entryFocusId,
-              onEntryFocused: onEntryFocused,
+              items: widget.items,
+              onOpenCatalog: widget.onOpenCatalog,
+              entryFocusId: widget.entryFocusId,
+              onEntryFocused: widget.onEntryFocused,
             )
           else
-            SizedBox(
-              height: 262,
-              child: ListView.separated(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: LumaLayout.pagePaddingH,
-                ),
-                scrollDirection: Axis.horizontal,
-                itemCount: items.length.clamp(0, 12),
-                separatorBuilder: (_, _) =>
-                    const SizedBox(width: LumaSpacing.md),
-                itemBuilder: (context, index) {
-                  final item = items[index];
-                  final heroTag = CatalogCard.heroTagFor(item);
-                  return SizedBox(
-                    width: 138,
-                    child: CatalogCard(
-                      item: item,
-                      heroTag: heroTag,
-                      onTap: () => onOpenCatalog(item, heroTag: heroTag),
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final cardWidth = LumaLayout.posterShelfWidth(
+                  constraints.maxWidth,
+                );
+                final shelfHeight =
+                    cardWidth * 1.5 +
+                    LumaSpacing.xs +
+                    CatalogCard.textDetailsHeight(context);
+                return SizedBox(
+                  height: shelfHeight,
+                  child: ListView.separated(
+                    controller: _scroll,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: LumaLayout.pagePaddingH,
                     ),
-                  );
-                },
-              ),
+                    scrollDirection: Axis.horizontal,
+                    itemCount: widget.items.length.clamp(0, 12),
+                    separatorBuilder: (_, _) =>
+                        const SizedBox(width: LumaSpacing.md),
+                    itemBuilder: (context, index) {
+                      final item = widget.items[index];
+                      final heroTag = CatalogCard.heroTagFor(item);
+                      return SizedBox(
+                        width: cardWidth,
+                        child: CatalogCard(
+                          item: item,
+                          heroTag: heroTag,
+                          onTap: () =>
+                              widget.onOpenCatalog(item, heroTag: heroTag),
+                        ),
+                      );
+                    },
+                  ),
+                );
+              },
             ),
         ],
       ),

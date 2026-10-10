@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Light-mode colors shared by the native startup window and Android 12 splash. -->
+<!-- 启动画面底色与 Flutter 开屏品牌画框白一致（暖米白，非纯白）。 -->
 <resources>
-    <color name="luma_splash_background">#FAFAFA</color>
+    <color name="luma_splash_background">#F7F5F0</color>
 </resources>

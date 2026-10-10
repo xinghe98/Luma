@@ -11,6 +11,8 @@ import '../../shared/media/media_actions.dart';
 import '../../shared/media/tv_media_grid.dart';
 import '../../shared/layout/scroll_to_top_app_bar_title.dart';
 import '../shell/widgets/tv_field_gate.dart';
+import '../shell/search_return_scope.dart';
+import 'search_request.dart';
 import 'search_controller.dart' as feature;
 import 'widgets/recent_searches.dart';
 import 'widgets/search_filters.dart';
@@ -52,6 +54,9 @@ class _SearchPageState extends State<SearchPage>
 
   feature.SearchController? _controller;
 
+  /// 跨页面搜索意图来源；非空时由本页消费并置回 null。
+  ValueNotifier<SearchRequest?>? _searchRequest;
+
   TvGridReveal get _tvRevealSafe =>
       _tvReveal ??= TvGridReveal(controller: _scroll);
 
@@ -84,15 +89,45 @@ class _SearchPageState extends State<SearchPage>
       _pendingResultFocus = null;
       _submissionGeneration++;
     }
-    if (_controller != null) return;
-    final controller = feature.SearchController(AppScope.of(context).media);
-    _controller = controller;
-    controller.addListener(_onControllerChanged);
-    controller.addListener(_invalidateTvIds);
+    if (_controller == null) {
+      final controller = feature.SearchController(AppScope.of(context).media);
+      _controller = controller;
+      controller.addListener(_onControllerChanged);
+      controller.addListener(_invalidateTvIds);
+    }
+    final request = AppScope.of(context).searchRequest;
+    if (!identical(request, _searchRequest)) {
+      _searchRequest?.removeListener(_onSearchRequest);
+      _searchRequest = request..addListener(_onSearchRequest);
+      // 进入页面前已有待处理请求时立即消费；控制器已在上方创建，保证标签跳转直达结果。
+      if (request.value != null) _onSearchRequest();
+    }
+  }
+
+  /// 应用跨页面搜索请求：标签 id 走 tag 过滤，纯文本回填输入框并记为最近搜索。
+  void _onSearchRequest() {
+    final notifier = _searchRequest;
+    final request = notifier?.value;
+    final controller = _controller;
+    if (request == null || controller == null) return;
+    controller.clearCriteria();
+    if (request.tagId != null) {
+      _text.clear();
+      controller.toggleTag(request.tagId!, request.label);
+    } else {
+      _text.value = TextEditingValue(
+        text: request.label,
+        selection: TextSelection.collapsed(offset: request.label.length),
+      );
+      controller.setQuery(request.label);
+      controller.remember(request.label);
+    }
+    notifier?.value = null;
   }
 
   @override
   void dispose() {
+    _searchRequest?.removeListener(_onSearchRequest);
     _text.dispose();
     _searchFocus.dispose();
     _firstResultFocus.dispose();
@@ -194,6 +229,9 @@ class _SearchPageState extends State<SearchPage>
     final media = AppScope.of(context).media;
     final controller = _controller!;
     final isTelevision = AppScope.of(context).deviceProfile.isTelevision;
+    final returnScope = isTelevision
+        ? null
+        : SearchReturnScope.maybeOf(context);
     // 只听搜索控制器；标签变更由 controller 选择性转发。
     return ListenableBuilder(
       listenable: controller,
@@ -291,7 +329,7 @@ class _SearchPageState extends State<SearchPage>
                       onSubmitted: controller.remember,
                       onClear: _clearQuery,
                     ),
-                  if (!isTelevision)
+                  if (!isTelevision && !controller.hasCriteria)
                     RecentSearches(
                       terms: controller.recent,
                       onSelect: _selectRecent,
@@ -341,6 +379,13 @@ class _SearchPageState extends State<SearchPage>
           appBar: isTelevision
               ? null
               : AppBar(
+                  leading: returnScope == null
+                      ? null
+                      : IconButton(
+                          tooltip: '返回',
+                          onPressed: returnScope.close,
+                          icon: const Icon(Icons.arrow_back_rounded),
+                        ),
                   title: ScrollToTopAppBarTitle(
                     title: '搜索',
                     controller: _scroll,

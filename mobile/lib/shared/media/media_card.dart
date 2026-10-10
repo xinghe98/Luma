@@ -7,6 +7,7 @@ import '../../data/models/media_types.dart';
 import '../formatters/date_formatter.dart';
 import '../formatters/duration_formatter.dart';
 import '../interaction/luma_focusable_surface.dart';
+import 'cover_progress_bar.dart';
 import 'luma_favorite_button.dart';
 import 'media_artwork.dart';
 import 'media_badge.dart';
@@ -88,7 +89,7 @@ class MediaCard extends StatelessWidget {
     final duration = formatDuration(item.duration);
     final television =
         AppScope.maybeOf(context)?.deviceProfile.isTelevision ?? false;
-    final coverRadius = context.luma.coverRadius;
+    const coverRadius = LumaRadii.cover;
     final interactionInset = !television && item.type == MediaType.video
         ? LumaSpacing.xs
         : 0.0;
@@ -122,6 +123,7 @@ class MediaCard extends StatelessWidget {
       focusId: focusId,
       focusBorderWidth: focusBorderWidth,
       paintFocusBorder: !television,
+      paintHoverFill: false,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -157,10 +159,7 @@ class MediaCard extends StatelessWidget {
                       left: 0,
                       right: 0,
                       bottom: 0,
-                      child: LinearProgressIndicator(
-                        value: item.progress,
-                        minHeight: 3,
-                      ),
+                      child: CoverProgressBar(progress: item.progress),
                     ),
                 ],
               ),
@@ -211,5 +210,8 @@ class _TvCardArtwork extends StatelessWidget {
   @override
   Widget build(BuildContext context) => television
       ? TvArtworkFocus(borderRadius: borderRadius, child: child)
-      : ClipRRect(borderRadius: borderRadius, child: child);
+      : LumaCoverLift(
+          borderRadius: borderRadius,
+          child: ClipRRect(borderRadius: borderRadius, child: child),
+        );
 }

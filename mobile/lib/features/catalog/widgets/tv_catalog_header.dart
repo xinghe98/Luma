@@ -42,13 +42,13 @@ class TvCatalogHeader extends StatelessWidget {
               : null,
           child: const Text('电影'),
         ),
-        const SizedBox(width: 12),
+        const SizedBox(width: LumaSpacing.sm),
         OutlinedButton(
           key: const ValueKey('tv-category-series'),
           onPressed: onSeries,
           child: const Text('电视剧'),
         ),
-        const SizedBox(width: 12),
+        const SizedBox(width: LumaSpacing.sm),
         OutlinedButton(
           key: const ValueKey('tv-category-personal'),
           onPressed: onPersonalVideos,
@@ -59,9 +59,9 @@ class TvCatalogHeader extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.fromLTRB(
         LumaLayout.pagePaddingH,
-        8,
+        LumaSpacing.xs,
         LumaLayout.pagePaddingH,
-        4,
+        LumaSpacing.xxs,
       ),
       child: LayoutBuilder(
         builder: (context, constraints) {
@@ -76,7 +76,7 @@ class TvCatalogHeader extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 masthead,
-                const SizedBox(height: 12),
+                const SizedBox(height: LumaSpacing.sm),
                 SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
                   child: categories,
@@ -87,7 +87,7 @@ class TvCatalogHeader extends StatelessWidget {
           return Row(
             children: [
               Text('影视库', style: Theme.of(context).textTheme.headlineLarge),
-              const SizedBox(width: 24),
+              const SizedBox(width: LumaSpacing.lg),
               categories,
               const Spacer(),
               Tooltip(
@@ -131,9 +131,9 @@ class TvCatalogCollectionHeader extends StatelessWidget {
   Widget build(BuildContext context) => Padding(
     padding: const EdgeInsets.fromLTRB(
       LumaLayout.pagePaddingH,
-      16,
+      LumaSpacing.md,
       LumaLayout.pagePaddingH,
-      24,
+      LumaSpacing.lg,
     ),
     child: _CatalogMasthead(
       title: title,
@@ -163,15 +163,15 @@ class _CatalogMasthead extends StatelessWidget {
   Widget build(BuildContext context) {
     final heading = Row(
       children: [
-        if (showBack) ...[const BackButton(), const SizedBox(width: 12)],
+        if (showBack) ...[const BackButton(), const SizedBox(width: LumaSpacing.sm)],
         Expanded(
           child: Text(title, style: Theme.of(context).textTheme.headlineLarge),
         ),
       ],
     );
     final actions = Wrap(
-      spacing: 12,
-      runSpacing: 8,
+      spacing: LumaSpacing.sm,
+      runSpacing: LumaSpacing.xs,
       children: [
         Tooltip(
           message: '搜索',
@@ -193,19 +193,24 @@ class _CatalogMasthead extends StatelessWidget {
     );
     return LayoutBuilder(
       builder: (context, constraints) {
-        final compact =
-            constraints.maxWidth <
-            640 * MediaQuery.textScalerOf(context).scale(18) / 18;
+        final compact = LumaTvLayout.compactHeader(
+          constraints,
+          MediaQuery.textScalerOf(context),
+        );
         if (compact) {
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
-            children: [heading, const SizedBox(height: 12), actions],
+            children: [
+              heading,
+              const SizedBox(height: LumaSpacing.sm),
+              actions,
+            ],
           );
         }
         return Row(
           children: [
             Expanded(child: heading),
-            const SizedBox(width: 16),
+            const SizedBox(width: LumaSpacing.md),
             actions,
           ],
         );

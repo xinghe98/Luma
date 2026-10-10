@@ -8,7 +8,6 @@ import 'package:luma/data/repositories/catalog_repository.dart';
 import 'package:luma/features/catalog/catalog_detail_page.dart';
 import 'package:luma/features/catalog/widgets/catalog_detail_hero.dart';
 import 'package:luma/features/catalog/widgets/catalog_detail_sections.dart';
-import 'package:luma/features/catalog/widgets/catalog_detail_theme.dart';
 import 'package:luma/shared/media/authenticated_media_image.dart';
 
 void main() {
@@ -140,7 +139,9 @@ void main() {
     );
     expect(
       backButton.style?.backgroundColor?.resolve({}),
-      CatalogDetailPalette.text,
+      Theme.of(
+        tester.element(find.byKey(const ValueKey('catalog-detail-back'))),
+      ).colorScheme.surfaceContainerHigh.withValues(alpha: 0.9),
     );
     expect(backButton.style?.shape?.resolve({}), isA<CircleBorder>());
     expect(
@@ -150,10 +151,7 @@ void main() {
     expect(find.text('剧情'), findsOneWidget);
     expect(find.text('★ 8.4'), findsOneWidget);
     expect(
-      find.descendant(
-        of: find.byType(FilledButton),
-        matching: find.text('继续观看'),
-      ),
+      find.descendant(of: find.byType(FilledButton), matching: find.text('播放')),
       findsOneWidget,
     );
     expect(
@@ -176,7 +174,6 @@ void main() {
     expect(find.text('本库其他版本'), findsOneWidget);
     expect(find.text('4K HEVC'), findsOneWidget);
     expect(find.text('资料正在更新'), findsOneWidget);
-    expect(find.byType(CircularProgressIndicator), findsNothing);
   });
 
   testWidgets('catalog detail saves a work favorite optimistically', (

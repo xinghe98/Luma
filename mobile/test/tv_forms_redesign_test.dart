@@ -14,8 +14,10 @@ import 'package:luma/data/models/server_profile.dart';
 import 'package:luma/features/connection/connection_page.dart';
 import 'package:luma/features/connection/widgets/connection_brand_header.dart';
 import 'package:luma/features/settings/settings_page.dart';
-import 'package:luma/features/settings/widgets/application_settings_card.dart';
 import 'package:luma/features/settings/widgets/server_settings_card.dart';
+import 'package:luma/app/controllers/settings_controller.dart';
+import 'package:luma/data/storage/theme_preference_store.dart';
+import 'package:luma/features/settings/widgets/theme_mode_button.dart';
 import 'package:luma/features/shell/widgets/tv_field_gate.dart';
 
 void main() {
@@ -78,7 +80,7 @@ void main() {
     addTearDown(dependencies.dispose);
     await _pump(tester, dependencies, const SettingsPage());
     expect(find.byType(ServerSettingsCard), findsNothing);
-    expect(find.byType(ApplicationSettingsCard), findsNothing);
+    expect(find.byType(ThemeModeButton), findsNothing);
     expect(find.byType(AppBar), findsNothing);
     final before = dependencies.settings.themeMode;
     await _press(tester, LogicalKeyboardKey.select);
@@ -138,21 +140,44 @@ void main() {
   });
 
   for (final size in [const Size(390, 844), const Size(1280, 800)]) {
-    testWidgets('普通端 ${size.width} 保留品牌表单、设置卡片与主题工具栏', (tester) async {
+    testWidgets('普通端 ${size.width} 设置页主题三态写入存储并可恢复', (tester) async {
       _viewport(tester, size);
-      final dependencies = _dependencies(false, connected: true);
+      final store = _MemoryThemeStore();
+      final dependencies = _dependencies(false, connected: true, store: store);
       addTearDown(dependencies.dispose);
       await _pump(tester, dependencies, const ConnectionPage());
       expect(find.byType(ConnectionBrandHeader), findsOneWidget);
       expect(find.byType(TvTextFieldGate), findsNothing);
       await _pump(tester, dependencies, const SettingsPage());
       expect(find.byType(ServerSettingsCard), findsOneWidget);
-      expect(find.byType(ApplicationSettingsCard), findsOneWidget);
-      expect(find.byType(AppBar), findsOneWidget);
       expect(find.byKey(const ValueKey('tv-settings-actions')), findsNothing);
+
+      await tester.tap(find.byTooltip('主题：跟随系统'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('深色'));
+      await tester.pumpAndSettle();
+      expect(find.byTooltip('主题：深色'), findsOneWidget);
+      expect(dependencies.settings.themeMode, ThemeMode.dark);
+      expect(store.writes, [ThemeMode.dark]);
+
+      final restored = SettingsController(themeStore: store);
+      addTearDown(restored.dispose);
+      await restored.restoreThemeMode();
+      expect(restored.themeMode, ThemeMode.dark);
       expect(tester.takeException(), isNull);
     });
   }
+}
+
+/// 内存主题存储：记录每次写入，读取返回最后一次写入值。
+class _MemoryThemeStore implements ThemePreferenceStore {
+  final writes = <ThemeMode>[];
+
+  @override
+  Future<ThemeMode?> read() async => writes.isEmpty ? null : writes.last;
+
+  @override
+  Future<void> write(ThemeMode mode) async => writes.add(mode);
 }
 
 Finder _field(String label) => find.byWidgetPredicate(
@@ -177,10 +202,15 @@ Future<void> _press(WidgetTester tester, LogicalKeyboardKey key) async {
   await tester.pumpAndSettle();
 }
 
-AppDependencies _dependencies(bool television, {bool connected = false}) {
+AppDependencies _dependencies(
+  bool television, {
+  bool connected = false,
+  ThemePreferenceStore? store,
+}) {
   final dependencies = AppDependencies(
     mediaRepository: MockMediaRepository(),
     connectionService: MockConnectionService(),
+    themeStore: store,
     deviceProfile: television
         ? AppDeviceProfile.television
         : AppDeviceProfile.standard,
@@ -211,9 +241,10 @@ Future<void> _pump(
       child: ListenableBuilder(
         listenable: dependencies.settings,
         builder: (context, _) {
-          final base = dependencies.settings.themeMode == ThemeMode.light
-              ? LumaTheme.light()
-              : LumaTheme.dark();
+          final base = switch (dependencies.settings.themeMode) {
+            ThemeMode.light => LumaTheme.light(),
+            _ => LumaTheme.dark(),
+          };
           return MaterialApp(
             theme: dependencies.deviceProfile.isTelevision
                 ? applyTvTheme(base)

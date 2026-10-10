@@ -357,7 +357,7 @@ class _TvNavigationItem extends StatelessWidget {
             final foreground = focused
                 ? colors.onInverseSurface
                 : selected
-                ? colors.onSecondaryContainer
+                ? colors.onPrimaryContainer
                 : colors.onSurfaceVariant;
             return Container(
               constraints: const BoxConstraints(
@@ -367,7 +367,7 @@ class _TvNavigationItem extends StatelessWidget {
                 color: focused
                     ? colors.inverseSurface
                     : selected
-                    ? colors.secondaryContainer
+                    ? colors.primaryContainer
                     : Colors.transparent,
                 borderRadius: BorderRadius.circular(LumaRadii.small),
               ),

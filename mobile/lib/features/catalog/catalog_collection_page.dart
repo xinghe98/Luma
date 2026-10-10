@@ -270,9 +270,13 @@ class CatalogCollectionBodyState extends State<CatalogCollectionBody>
                     ? _buildTvPosterGrid(controller)
                     : SliverLayoutBuilder(
                         builder: (context, constraints) {
-                          final columns = _posterColumns(
+                          final columns = LumaLayout.posterColumns(
                             constraints.crossAxisExtent,
                           );
+                          final cellWidth =
+                              (constraints.crossAxisExtent -
+                                  LumaSpacing.md * (columns - 1)) /
+                              columns;
                           return SliverGrid.builder(
                             itemCount: controller.items.length,
                             gridDelegate:
@@ -280,7 +284,10 @@ class CatalogCollectionBodyState extends State<CatalogCollectionBody>
                                   crossAxisCount: columns,
                                   crossAxisSpacing: LumaSpacing.md,
                                   mainAxisSpacing: LumaSpacing.lg,
-                                  childAspectRatio: 0.59,
+                                  mainAxisExtent:
+                                      cellWidth * 1.5 +
+                                      LumaSpacing.xs +
+                                      CatalogCard.textDetailsHeight(context),
                                 ),
                             itemBuilder: (context, index) {
                               final item = controller.items[index];
@@ -373,14 +380,6 @@ class CatalogCollectionBodyState extends State<CatalogCollectionBody>
     if (!mounted || _entrySettled) return;
     setState(() => _entrySettled = true);
   }
-}
-
-int _posterColumns(double width) {
-  if (width < 360) return 2;
-  if (width < 620) return 3;
-  if (width < 900) return 5;
-  if (width < 1240) return 6;
-  return 8;
 }
 
 /// TV 海报网格几何：与媒体网格共用局部宽度来源，行高按海报 2:3 计算。

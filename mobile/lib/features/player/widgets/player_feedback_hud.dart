@@ -13,6 +13,10 @@ class PlayerFeedbackHud extends StatefulWidget {
   State<PlayerFeedbackHud> createState() => _PlayerFeedbackHudState();
 }
 
+/// 状态提示的最大宽度与内置进度条宽度。
+const double _hudMaxWidth = 280;
+const double _hudProgressWidth = 210;
+
 class _PlayerFeedbackHudState extends State<PlayerFeedbackHud> {
   /// 淡出时保留最后一帧内容，避免 hidden 占位图标闪一下。
   _HudPresentation _lastPresentation = const _HudPresentation(
@@ -41,10 +45,10 @@ class _PlayerFeedbackHudState extends State<PlayerFeedbackHud> {
             curve: LumaMotion.standard,
             child: Center(
               child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 280),
+                constraints: const BoxConstraints(maxWidth: _hudMaxWidth),
                 child: DecoratedBox(
                   decoration: BoxDecoration(
-                    color: extras.playerInk.withAlpha(235),
+                    color: extras.playerInk.withValues(alpha: 0.92),
                     borderRadius: BorderRadius.circular(LumaRadii.medium),
                   ),
                   child: Padding(
@@ -78,7 +82,7 @@ class _PlayerFeedbackHudState extends State<PlayerFeedbackHud> {
                         if (shown.progress != null) ...[
                           const SizedBox(height: LumaSpacing.sm),
                           SizedBox(
-                            width: 210,
+                            width: _hudProgressWidth,
                             child: LinearProgressIndicator(
                               value: shown.progress!.clamp(0, 1),
                               minHeight: 4,
@@ -115,8 +119,8 @@ class _PlayerFeedbackHudState extends State<PlayerFeedbackHud> {
               ? Icons.fast_rewind_rounded
               : Icons.fast_forward_rounded,
           title:
-              '${formatDuration(interaction.seekTarget)} / '
-              '${formatDuration(interaction.player.duration)}',
+              '${formatClock(interaction.seekTarget)} / '
+              '${formatClock(interaction.player.duration)}',
           subtitle: '$sign$deltaSeconds 秒',
           progress: interaction.seekProgress,
         );

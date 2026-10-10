@@ -1,58 +1,148 @@
 import 'package:flutter/material.dart';
 
 abstract final class LumaColors {
-  static const ink = Color(0xFF182236);
-  static const deepBlue = Color(0xFF111827);
-  static const surface = Color(0xFF172033);
-  static const elevated = Color(0xFF212C3E);
-  static const accentBlue = Color(0xFF8FB6FF);
-  static const paper = Color(0xFFF3F6FC);
-  static const success = Color(0xFF87C9A0);
-  static const warning = Color(0xFFE2B86B);
-  static const lightSuccess = Color(0xFF2F7650);
-  static const lightWarning = Color(0xFF805A14);
-  static const lightPrimary = Color(0xFF426FC4);
-  static const darkPrimary = Color(0xFFA9C7FF);
-  static const lightSecondary = Color(0xFF536D9D);
-  static const lightSurfaceContainer = Color(0xFFFBFCFF);
-  static const lightSurfaceContainerHigh = Color(0xFFEAF0F9);
-  static const onInk = Color(0xFFEEF3FB);
-  static const onInkMuted = Color(0xBDB7C1D0);
-  static const lightPrimaryContainer = Color(0xFFDCE8FB);
-  static const lightSecondaryContainer = Color(0xFFE4EBF7);
-  static const lightTertiary = Color(0xFF5F6684);
-  static const lightTertiaryContainer = Color(0xFFE8E9F4);
-  static const lightOutline = Color(0xFF647084);
-  static const lightOutlineVariant = Color(0xFFD5DEEB);
-  static const darkPrimaryContainer = Color(0xFF294771);
-  static const darkSecondaryContainer = Color(0xFF293950);
-  static const darkTertiary = Color(0xFFC2C7E5);
-  static const darkTertiaryContainer = Color(0xFF373B58);
-  static const darkOutline = Color(0xFF9BA8BC);
-  static const darkOutlineVariant = Color(0xFF435169);
-  static const lightSurfaceDim = Color(0xFFE6ECF5);
-  static const darkSurfaceBright = Color(0xFF2B374B);
-  static const lightBrandSurface = Color(0xFFE8F0FC);
-  static const lightBrandSurfaceVariant = Color(0xFFF5F8FD);
-  static const darkBrandSurface = Color(0xFF1B2940);
-  static const darkBrandSurfaceVariant = Color(0xFF243650);
-  static const error = Color(0xFFB3261E);
-  static const onError = Color(0xFFFFF8F6);
-  static const lightErrorContainer = Color(0xFFFFDAD5);
+  // 「放映室」调色板：暖调石墨中性色，琥珀色是唯一强调色。
+  // 深色与浅色按 Material 角色命名，正文对比度控制在 12–16:1。
+  static const darkSurface = Color(0xFF141311);
+  static const darkSurfaceDim = Color(0xFF100F0D);
+  static const darkSurfaceContainerLowest = Color(0xFF100F0D);
+  static const darkSurfaceContainerLow = Color(0xFF191816);
+  static const darkSurfaceContainer = Color(0xFF1E1C19);
+  static const darkSurfaceContainerHigh = Color(0xFF282622);
+  static const darkSurfaceContainerHighest = Color(0xFF322F2A);
+  static const darkSurfaceBright = Color(0xFF3A3631);
+  static const darkOnSurface = Color(0xFFE6E0D6);
+  static const darkOnSurfaceVariant = Color(0xFFB3ACA0);
+  static const darkOutline = Color(0xFF8C857A);
+  static const darkOutlineVariant = Color(0xFF48443C);
+  static const darkPrimary = Color(0xFFF0B43C);
+  static const darkOnPrimary = Color(0xFF2A1C00);
+  static const darkPrimaryContainer = Color(0xFF4A3810);
+  static const darkOnPrimaryContainer = Color(0xFFFFDFA3);
+  static const darkSecondary = Color(0xFFCDC4B6);
+  static const darkOnSecondary = Color(0xFF2E2A23);
+  static const darkSecondaryContainer = Color(0xFF3A362F);
+  static const darkOnSecondaryContainer = Color(0xFFEDE6DA);
+  static const darkTertiary = Color(0xFFA9C6D4);
+  static const darkOnTertiary = Color(0xFF0F2A36);
+  static const darkTertiaryContainer = Color(0xFF27404C);
+  static const darkOnTertiaryContainer = Color(0xFFD5EAF5);
+  static const darkError = Color(0xFFFFB4A9);
+  static const darkOnError = Color(0xFF561E16);
+  static const darkErrorContainer = Color(0xFF5E1B13);
+  static const darkOnErrorContainer = Color(0xFFFFDAD4);
+  static const darkInverseSurface = Color(0xFFE6E0D6);
+  static const darkOnInverseSurface = Color(0xFF2E2B26);
+  static const darkInversePrimary = Color(0xFF835700);
+  static const darkSuccess = Color(0xFF9CCFA6);
+  static const darkWarning = Color(0xFFF2B08A);
+
+  static const lightSurface = Color(0xFFF5F2EC);
+  static const lightSurfaceDim = Color(0xFFE3DED5);
+  static const lightSurfaceContainerLowest = Color(0xFFFDFCF9);
+  static const lightSurfaceContainerLow = Color(0xFFF9F7F2);
+  static const lightSurfaceContainer = Color(0xFFFCFBF8);
+  static const lightSurfaceContainerHigh = Color(0xFFEDE9E1);
+  static const lightSurfaceContainerHighest = Color(0xFFE5E0D6);
+  static const lightSurfaceBright = Color(0xFFFDFCF9);
+  static const lightOnSurface = Color(0xFF1F1C17);
+  static const lightOnSurfaceVariant = Color(0xFF58524A);
+  static const lightOutline = Color(0xFF756E63);
+  static const lightOutlineVariant = Color(0xFFD6CFC2);
+  static const lightPrimary = Color(0xFF835700);
+  static const lightOnPrimary = Color(0xFFFFF8EE);
+  static const lightPrimaryContainer = Color(0xFFF6DEAB);
+  static const lightOnPrimaryContainer = Color(0xFF2A1D00);
+  static const lightSecondary = Color(0xFF685F52);
+  static const lightOnSecondary = Color(0xFFFFF8EE);
+  static const lightSecondaryContainer = Color(0xFFEAE3D6);
+  static const lightOnSecondaryContainer = Color(0xFF2A251D);
+  static const lightTertiary = Color(0xFF3B6170);
+  static const lightOnTertiary = Color(0xFFF2FAFF);
+  static const lightTertiaryContainer = Color(0xFFCFE6F2);
+  static const lightOnTertiaryContainer = Color(0xFF0E2732);
+  static const lightError = Color(0xFFB02A1F);
+  static const lightOnError = Color(0xFFFFF8F6);
+  static const lightErrorContainer = Color(0xFFFFDAD4);
   static const lightOnErrorContainer = Color(0xFF410002);
-  static const darkErrorContainer = Color(0xFF8C1D18);
-  static const darkOnErrorContainer = Color(0xFFFFDAD5);
-  static const lightBadgeScrim = Color(0xA6182236);
-  static const darkBadgeScrim = Color(0xC4111827);
+  static const lightInverseSurface = Color(0xFF322E28);
+  static const lightOnInverseSurface = Color(0xFFF2EDE4);
+  static const lightInversePrimary = Color(0xFFF0B43C);
+  static const lightSuccess = Color(0xFF2D683C);
+  static const lightWarning = Color(0xFF94420F);
+
+  // 与亮暗无关的常量：开屏品牌色与播放器墨色。
+  /// 品牌石墨/画框白；开屏品牌色，不作界面大面积底色。
+  static const brandGraphite = Color(0xFF1F1E1B);
+  static const brandPaper = Color(0xFFF7F5F0);
+
+  /// Logo 半日琥珀；仅限开屏与品牌点缀，不作文字色或大面积底色。
+  static const brandAmber = Color(0xFFF5B800);
+  static const playerInk = Color(0xFF0E0D0B);
+  static const onPlayerInk = Color(0xFFECE6DC);
+  static const onPlayerInkMuted = Color(0xFFB8B0A4);
+  static const badgeScrim = Color(0xB80E0D0B);
+  static const shadow = Color(0xFF0E0D0B);
+  static const scrim = Color(0xFF0E0D0B);
+}
+
+/// 交互态透明度 token；装饰性遮罩的停靠值见 [LumaGradients]。
+abstract final class LumaOpacity {
+  static const hover = 0.06;
+  static const focus = 0.10;
+  static const pressed = 0.10;
+  static const disabled = 0.38;
+  static const divider = 1.0;
+  static const scrim = 0.72;
+}
+
+/// 统一的封面/详情遮罩渐变，替代各页面复制的多套停靠值。
+abstract final class LumaGradients {
+  /// 底部控制层遮罩：顶部透明过渡到底部 85% 墨色。
+  static LinearGradient bottomScrim(Color ink) => LinearGradient(
+    begin: Alignment.topCenter,
+    end: Alignment.bottomCenter,
+    colors: [
+      ink.withValues(alpha: 0),
+      ink.withValues(alpha: 0),
+      ink.withValues(alpha: 0.55),
+      ink.withValues(alpha: 0.85),
+    ],
+    stops: const [0, 0.35, 0.7, 1],
+  );
+
+  /// 详情首屏顶部到底部的淡出：背景图融入页面底色。
+  static LinearGradient heroFade(Color surface) => LinearGradient(
+    begin: Alignment.topCenter,
+    end: Alignment.bottomCenter,
+    colors: [
+      surface.withValues(alpha: 0),
+      surface.withValues(alpha: 0.55),
+      surface.withValues(alpha: 0.92),
+      surface,
+    ],
+    stops: const [0, 0.40, 0.68, 1],
+  );
+
+  /// TV 详情横向淡出：左侧页面底色过渡到右侧背景图。
+  static LinearGradient sideFade(Color surface) => LinearGradient(
+    colors: [
+      surface,
+      surface.withValues(alpha: 0.92),
+      surface.withValues(alpha: 0.4),
+      surface.withValues(alpha: 0),
+    ],
+    stops: const [0, 0.38, 0.62, 1],
+  );
 }
 
 abstract final class LumaArtworkColors {
   static const palettes = <List<Color>>[
-    [Color(0xFF7190C6), Color(0xFF33435F), Color(0xFFA9C7FF)],
-    [Color(0xFF7D88AC), Color(0xFF394159), Color(0xFFB7C8E8)],
-    [Color(0xFF71879A), Color(0xFF34444F), Color(0xFFA8C4D9)],
-    [Color(0xFF857D9E), Color(0xFF433D54), Color(0xFFC1B9DD)],
-    [Color(0xFF6F829C), Color(0xFF354052), Color(0xFFAABCD5)],
+    [Color(0xFF6E6457), Color(0xFF2F2B26), Color(0xFFC9B48A)],
+    [Color(0xFF7A6A4F), Color(0xFF332E25), Color(0xFFD9BE8E)],
+    [Color(0xFF5F7079), Color(0xFF272E33), Color(0xFFB9CDD6)],
+    [Color(0xFF6E6055), Color(0xFF2E2924), Color(0xFFD4B9A0)],
+    [Color(0xFF66705A), Color(0xFF2B2E26), Color(0xFFC2CDA4)],
   ];
 }
 
@@ -65,71 +155,72 @@ abstract final class LumaTypography {
       fontFamily: fontFamily,
       fontFamilyFallback: fontFamilyFallback,
     );
+    // 阶梯按「放映室」层级重排，字距统一归零由字重与行高区分层级。
     return themed.copyWith(
       displayLarge: themed.displayLarge?.copyWith(
-        fontSize: 40,
-        fontWeight: FontWeight.w700,
-        height: 1.2,
+        fontSize: 48,
+        fontWeight: FontWeight.w600,
+        height: 1.1,
         letterSpacing: 0,
       ),
       displayMedium: themed.displayMedium?.copyWith(
-        fontSize: 36,
-        fontWeight: FontWeight.w700,
-        height: 1.2,
+        fontSize: 40,
+        fontWeight: FontWeight.w600,
+        height: 1.15,
         letterSpacing: 0,
       ),
       displaySmall: themed.displaySmall?.copyWith(
-        fontSize: 32,
-        fontWeight: FontWeight.w700,
+        fontSize: 34,
+        fontWeight: FontWeight.w600,
         height: 1.2,
         letterSpacing: 0,
       ),
       headlineLarge: themed.headlineLarge?.copyWith(
-        fontSize: 32,
-        fontWeight: FontWeight.w700,
+        fontSize: 30,
+        fontWeight: FontWeight.w600,
         height: 1.2,
         letterSpacing: 0,
       ),
       headlineMedium: themed.headlineMedium?.copyWith(
-        fontSize: 28,
-        fontWeight: FontWeight.w700,
-        height: 1.2,
+        fontSize: 26,
+        fontWeight: FontWeight.w600,
+        height: 1.25,
         letterSpacing: 0,
       ),
       headlineSmall: themed.headlineSmall?.copyWith(
-        fontSize: 24,
-        fontWeight: FontWeight.w700,
-        height: 1.2,
+        fontSize: 22,
+        fontWeight: FontWeight.w600,
+        height: 1.3,
         letterSpacing: 0,
       ),
       titleLarge: themed.titleLarge?.copyWith(
-        fontSize: 20,
+        fontSize: 19,
         fontWeight: FontWeight.w600,
         height: 1.3,
         letterSpacing: 0,
       ),
       titleMedium: themed.titleMedium?.copyWith(
         fontSize: 16,
-        fontWeight: FontWeight.w500,
+        fontWeight: FontWeight.w600,
         height: 1.35,
         letterSpacing: 0,
       ),
       titleSmall: themed.titleSmall?.copyWith(
         fontSize: 14,
-        fontWeight: FontWeight.w500,
+        fontWeight: FontWeight.w600,
         height: 1.4,
         letterSpacing: 0,
       ),
       bodyLarge: themed.bodyLarge?.copyWith(
         fontSize: 16,
         fontWeight: FontWeight.w400,
-        height: 1.5,
+        height: 1.55,
         letterSpacing: 0,
       ),
       bodyMedium: themed.bodyMedium?.copyWith(
         fontSize: 14,
         fontWeight: FontWeight.w400,
-        height: 1.5,
+        height: 1.55,
         letterSpacing: 0,
       ),
       bodySmall: themed.bodySmall?.copyWith(
@@ -140,8 +231,8 @@ abstract final class LumaTypography {
       ),
       labelLarge: themed.labelLarge?.copyWith(
         fontSize: 14,
-        fontWeight: FontWeight.w600,
-        height: 1.25,
+        fontWeight: FontWeight.w500,
+        height: 1.3,
         letterSpacing: 0,
       ),
       labelMedium: themed.labelMedium?.copyWith(
@@ -173,14 +264,17 @@ abstract final class LumaLayout {
   static const pagePaddingWideH = 32.0;
   static const pagePaddingTop = 12.0;
   static const pagePaddingBottom = 40.0;
+
+  /// 按钮外观高度；触控区由主题的 padded 补足到 [minTapTarget]。
   static const buttonHeight = 40.0;
-  static const navigationBarHeight = 68.0;
+  static const navigationBarHeight = 64.0;
   static const minTapTarget = 48.0;
   static const inputHeight = 52.0;
-  static const compactControlHeight = 40.0;
-  static const chipHeight = 40.0;
   static const actionWidthBreakpoint = 600.0;
-  static const actionMaxWidth = 360.0;
+  static const actionMaxWidth = 280.0;
+
+  /// 宽屏短操作（断开、应用等）的宽度上限。
+  static const shortActionMaxWidth = 240.0;
 
   static const scrollCacheExtent = 320.0;
 
@@ -203,6 +297,26 @@ abstract final class LumaLayout {
       : width >= 600
       ? 3
       : 2;
+
+  /// 2:3 海报网格列数；与货架、集合页共用同一断点表。
+  static int posterColumns(double width) => width < 360
+      ? 2
+      : width < 600
+      ? 3
+      : width < 840
+      ? 4
+      : width < 1100
+      ? 5
+      : width < 1400
+      ? 6
+      : 7;
+
+  /// 海报货架卡片宽度；空间越宽卡片越大，但不随容器无限拉伸。
+  static double posterShelfWidth(double width) => width >= 1200
+      ? 176
+      : width >= 600
+      ? 160
+      : 140;
 }
 
 /// TV 十英尺界面的布局常量；仅在设备形态为 television 的分支使用。
@@ -220,12 +334,22 @@ abstract final class LumaTvLayout {
   static const contentMaxWidth = 1600.0;
   static const pagePadding = 32.0;
 
+  /// 详情首屏进入左右分栏的局部宽度下限。
+  static const detailSplitWidth = 900.0;
+
+  /// 详情首屏横幅的最小高度，保证标题与操作区可读。
+  static const heroMinHeight = 288.0;
+
   /// 按扣除导航与边距后的局部宽度计算规则网格列数，夹在 1–5 列。
   static int gridColumns(double width, {double minItemWidth = posterMinWidth}) {
     final columns = ((width + cardSpacing) / (minItemWidth + cardSpacing))
         .floor();
     return columns.clamp(1, 5);
   }
+
+  /// TV 页头在局部宽度不足时重排为上下两行；文字缩放会同步收窄阈值。
+  static bool compactHeader(BoxConstraints constraints, TextScaler scaler) =>
+      constraints.maxWidth < 640 * scaler.scale(18) / 18;
 }
 
 abstract final class LumaSpacing {
@@ -239,16 +363,20 @@ abstract final class LumaSpacing {
 }
 
 abstract final class LumaRadii {
-  static const small = 12.0;
-  static const medium = 16.0;
-  static const large = 22.0;
-  static const extraLarge = 30.0;
+  static const small = 8.0;
+  static const medium = 12.0;
+  static const large = 16.0;
+  static const extraLarge = 24.0;
+  static const cover = 10.0;
   static const badge = 999.0;
 }
 
 abstract final class LumaIconSize {
   static const status = 18.0;
   static const inline = 22.0;
+
+  /// 普通端图标按钮内的图标；比 [action] 小一号，配合 40 外观。
+  static const compact = 20.0;
   static const action = 24.0;
   static const prominent = 28.0;
   static const emptyState = 40.0;

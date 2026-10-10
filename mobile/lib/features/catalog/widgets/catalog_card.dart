@@ -4,6 +4,8 @@ import '../../../core/theme.dart';
 import '../../../data/models/api_catalog.dart';
 import '../../../shared/interaction/luma_focusable_surface.dart';
 import '../../../shared/media/authenticated_media_image.dart';
+import '../../../shared/media/cover_progress_bar.dart';
+import '../../../shared/media/media_card.dart';
 
 /// 打开作品详情，并可携带来源海报的 Hero 标签。
 typedef CatalogOpenCallback =
@@ -55,6 +57,10 @@ class CatalogCard extends StatelessWidget {
     return endpoint.child;
   }
 
+  /// 标题一行加副标题一行的文字区实测高度，供货架与网格计算行高。
+  static double textDetailsHeight(BuildContext context) =>
+      MediaCard.textDetailsHeight(context, titleLines: 1);
+
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
@@ -76,7 +82,7 @@ class CatalogCard extends StatelessWidget {
                 640,
               );
               final artwork = ClipRRect(
-                borderRadius: BorderRadius.circular(LumaRadii.large),
+                borderRadius: BorderRadius.circular(LumaRadii.cover),
                 child: Material(
                   type: MaterialType.transparency,
                   child: AuthenticatedMediaImage(
@@ -88,7 +94,7 @@ class CatalogCard extends StatelessWidget {
                         item.kind == CatalogKind.movie
                             ? Icons.movie_outlined
                             : Icons.tv_outlined,
-                        size: 42,
+                        size: LumaIconSize.emptyState,
                         color: scheme.onSurfaceVariant,
                       ),
                     ),
@@ -96,7 +102,7 @@ class CatalogCard extends StatelessWidget {
                 ),
               );
               final poster = ClipRRect(
-                borderRadius: BorderRadius.circular(LumaRadii.large),
+                borderRadius: BorderRadius.circular(LumaRadii.cover),
                 child: Stack(
                   fit: StackFit.expand,
                   children: [
@@ -110,19 +116,23 @@ class CatalogCard extends StatelessWidget {
                         child: artwork,
                       ),
                     if (item.progress > 0 && !item.completed)
-                      Align(
-                        alignment: Alignment.bottomCenter,
-                        child: LinearProgressIndicator(
-                          value: item.progress,
-                          minHeight: 3,
-                        ),
+                      Positioned(
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        child: CoverProgressBar(progress: item.progress),
                       ),
                   ],
                 ),
               );
-              if (focusId == null) return poster;
+              if (focusId == null) {
+                return LumaCoverLift(
+                  borderRadius: BorderRadius.circular(LumaRadii.cover),
+                  child: poster,
+                );
+              }
               return TvArtworkFocus(
-                borderRadius: BorderRadius.circular(LumaRadii.large),
+                borderRadius: BorderRadius.circular(LumaRadii.cover),
                 child: poster,
               );
             },
@@ -155,7 +165,7 @@ class CatalogCard extends StatelessWidget {
       return LumaFocusableSurface(
         label: '${item.title}，$subtitle',
         onActivate: onTap,
-        borderRadius: BorderRadius.circular(LumaRadii.large),
+        borderRadius: BorderRadius.circular(LumaRadii.cover),
         focusId: focusId,
         autofocus: autofocus,
         onFocusChange: onFocusChange,
@@ -164,17 +174,12 @@ class CatalogCard extends StatelessWidget {
         child: content,
       );
     }
-    return Semantics(
-      button: true,
+    return LumaFocusableSurface(
       label: '${item.title}，$subtitle',
-      child: InkWell(
-        onTap: onTap,
-        // 详情页立即入场，避免默认水波纹在海报上留下短暂蒙层。
-        splashFactory: NoSplash.splashFactory,
-        overlayColor: const WidgetStatePropertyAll(Colors.transparent),
-        borderRadius: BorderRadius.circular(LumaRadii.large),
-        child: content,
-      ),
+      onActivate: onTap,
+      borderRadius: BorderRadius.circular(LumaRadii.cover),
+      paintHoverFill: false,
+      child: content,
     );
   }
 }

@@ -34,24 +34,6 @@ StatefulShellRoute buildShellRoutes() => StatefulShellRoute(
     StatefulShellBranch(
       routes: [
         GoRoute(
-          name: AppDestination.photos.routeName,
-          path: AppDestination.photos.path,
-          builder: (context, _) => LibraryPage(
-            inShell: true,
-            type: MediaType.image,
-            pageSize: 18,
-            onOpenMedia: (item, {heroTag}) =>
-                context.openImagePreview(item, heroTag: heroTag),
-            onLongPressMedia: (item, {heroTag}) =>
-                context.openMediaDetails(item, heroTag: heroTag),
-            onOpenSearch: () => context.goToDestination(AppDestination.search),
-          ),
-        ),
-      ],
-    ),
-    StatefulShellBranch(
-      routes: [
-        GoRoute(
           name: AppDestination.videos.routeName,
           path: AppDestination.videos.path,
           builder: (context, _) => CatalogPage(
@@ -66,6 +48,24 @@ StatefulShellRoute buildShellRoutes() => StatefulShellRoute(
                 context.pushNamed(AppRoute.seriesCollection, extra: items),
             onOpenPersonalVideos: (items) =>
                 context.pushNamed(AppRoute.personalVideos, extra: items),
+          ),
+        ),
+      ],
+    ),
+    StatefulShellBranch(
+      routes: [
+        GoRoute(
+          name: AppDestination.photos.routeName,
+          path: AppDestination.photos.path,
+          builder: (context, _) => LibraryPage(
+            inShell: true,
+            type: MediaType.image,
+            pageSize: 18,
+            onOpenMedia: (item, {heroTag}) =>
+                context.openImagePreview(item, heroTag: heroTag),
+            onLongPressMedia: (item, {heroTag}) =>
+                context.openMediaDetails(item, heroTag: heroTag),
+            onOpenSearch: () => context.goToDestination(AppDestination.search),
           ),
         ),
       ],

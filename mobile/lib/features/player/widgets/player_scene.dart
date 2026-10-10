@@ -72,19 +72,22 @@ class PlayerScene extends StatelessWidget {
       const SingleActivator(LogicalKeyboardKey.arrowDown): () =>
           controller.setLocalVolume(controller.volume - 0.05),
       const SingleActivator(LogicalKeyboardKey.keyM): controller.toggleMute,
-      const SingleActivator(LogicalKeyboardKey.escape): onEscape ?? onBack,
     };
+    // Escape 只在桌面/有 onEscape 的宿主注册，避免误触移动端的锁定拦截。
+    if (onEscape != null || isDesktop) {
+      shortcuts[const SingleActivator(LogicalKeyboardKey.escape)] =
+          onEscape ?? onBack;
+    }
     final toggleFullScreen = onToggleFullScreen;
     if (toggleFullScreen != null) {
       shortcuts[const SingleActivator(LogicalKeyboardKey.keyF)] =
           toggleFullScreen;
     }
     return CallbackShortcuts(
-      bindings: isDesktop
-          ? shortcuts
-          : const <ShortcutActivator, VoidCallback>{},
+      // 快捷键在手机与桌面同用：外接键盘的平板也可用；F 仅桌面有全屏回调。
+      bindings: shortcuts,
       child: Focus(
-        autofocus: isDesktop,
+        autofocus: true,
         child: _PlayerPointerRegion(
           controller: controller,
           isDesktop: isDesktop,
@@ -382,43 +385,38 @@ class _PlayerShade extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ink = context.luma.playerInk;
-    return Stack(
+    // 控制层用统一底部遮罩；顶部再叠一条局部渐变保护返回与标题。
+    return AnimatedOpacity(
+      opacity: visible ? 1 : 0,
+      duration: LumaMotion.forContext(context, LumaMotion.normal),
+      curve: LumaMotion.standard,
+      child: Stack(
       fit: StackFit.expand,
       children: [
+        // 控制层用统一底部遮罩；顶部再叠一条局部渐变保护返回与标题。
         DecoratedBox(
           decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [
-                ink.withAlpha(30),
-                Colors.transparent,
-                ink.withAlpha(50),
-              ],
-              stops: const [0, 0.48, 1],
-            ),
+            gradient: LumaGradients.bottomScrim(ink),
           ),
         ),
-        AnimatedOpacity(
-          opacity: visible ? 1 : 0,
-          duration: LumaMotion.forContext(context, LumaMotion.normal),
-          curve: LumaMotion.standard,
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [
-                  ink.withAlpha(130),
-                  Colors.transparent,
-                  ink.withAlpha(190),
-                ],
-                stops: const [0, 0.48, 1],
+        Align(
+          alignment: Alignment.topCenter,
+          child: FractionallySizedBox(
+            heightFactor: 0.25,
+            widthFactor: 1,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [ink.withValues(alpha: 0.55), ink.withValues(alpha: 0)],
+                ),
               ),
             ),
           ),
         ),
       ],
+      ),
     );
   }
 }

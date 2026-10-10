@@ -18,7 +18,8 @@ import 'package:luma/features/home/widgets/horizontal_media_section.dart';
 import 'package:luma/features/home/widgets/tv_home_feature.dart';
 import 'package:luma/features/shell/widgets/tv_app_navigation.dart';
 import 'package:luma/shared/interaction/tv_key_bindings.dart';
-import 'package:luma/shared/media/media_card.dart';
+import 'package:luma/shared/interaction/luma_focusable_surface.dart';
+import 'package:luma/features/home/widgets/continue_spotlight.dart';
 
 void main() {
   for (final size in [const Size(960, 540), const Size(1280, 800)]) {
@@ -141,7 +142,7 @@ void main() {
       );
       await tester.pumpAndSettle();
       if (layout.tv) {
-        expect(find.byType(HomeHeader), findsNothing);
+        expect(find.byType(HomeTopBar), findsNothing);
         final feature = find.byType(TvHomeFeature);
         final shelf = find.byWidgetPredicate(
           (widget) =>
@@ -157,11 +158,17 @@ void main() {
         expect(opened, 'resume');
       } else {
         expect(find.byType(TvHomeFeature), findsNothing);
-        expect(find.byType(HomeHeader), findsOneWidget);
-        final firstCard = find.byType(MediaCard).first;
-        await tester.ensureVisible(firstCard);
+        expect(find.byType(HomeTopBar), findsOneWidget);
+        // 触控端首项进入「继续观看」主打卡片，点封面进入详情。
+        final cover = find
+            .descendant(
+              of: find.byType(ContinueSpotlight),
+              matching: find.byType(LumaFocusableSurface),
+            )
+            .first;
+        await tester.ensureVisible(cover);
         await tester.pumpAndSettle();
-        await tester.tap(firstCard);
+        await tester.tap(cover);
         expect(opened, 'resume');
       }
       expect(tester.takeException(), isNull);

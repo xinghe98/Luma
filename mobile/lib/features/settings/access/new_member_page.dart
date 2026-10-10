@@ -34,10 +34,21 @@ class _NewMemberPageState extends State<NewMemberPage> {
   Set<String>? _pendingSourceIds;
   Object? _error;
   bool _submitting = false;
+  bool _submitted = false;
+  bool _passwordVisible = false;
+  bool _confirmationVisible = false;
   @override
   void initState() {
     super.initState();
+    for (final field in [_name, _username, _password, _confirmation]) {
+      field.addListener(_revalidate);
+    }
     _load();
+  }
+
+  /// 提交失败后随输入刷新字段错误，修正后提示立即消失。
+  void _revalidate() {
+    if (_submitted && mounted) setState(() {});
   }
 
   @override
@@ -79,9 +90,14 @@ class _NewMemberPageState extends State<NewMemberPage> {
           controller: _name,
           enabled: !_submitting && !accountCreated,
           maxLength: 80,
-          decoration: const InputDecoration(
+          textInputAction: TextInputAction.next,
+          autofillHints: const [AutofillHints.name],
+          decoration: InputDecoration(
             labelText: '成员名称',
-            prefixIcon: Icon(Icons.person_outline_rounded),
+            prefixIcon: const Icon(Icons.person_outline_rounded),
+            errorText: _submitted && _name.text.trim().isEmpty
+                ? '请填写成员名称'
+                : null,
           ),
         ),
         const SizedBox(height: LumaSpacing.sm),
@@ -91,10 +107,15 @@ class _NewMemberPageState extends State<NewMemberPage> {
           maxLength: 32,
           autocorrect: false,
           enableSuggestions: false,
-          decoration: const InputDecoration(
+          textInputAction: TextInputAction.next,
+          autofillHints: const [AutofillHints.username],
+          decoration: InputDecoration(
             labelText: '用户名',
             hintText: 'alice',
-            prefixIcon: Icon(Icons.badge_outlined),
+            prefixIcon: const Icon(Icons.badge_outlined),
+            errorText: _submitted && _username.text.trim().isEmpty
+                ? '请填写用户名'
+                : null,
           ),
         ),
         const SizedBox(height: LumaSpacing.sm),
@@ -102,25 +123,56 @@ class _NewMemberPageState extends State<NewMemberPage> {
           controller: _password,
           enabled: !_submitting && !accountCreated,
           maxLength: 128,
-          obscureText: true,
+          obscureText: !_passwordVisible,
           autocorrect: false,
           enableSuggestions: false,
-          decoration: const InputDecoration(
+          textInputAction: TextInputAction.next,
+          autofillHints: const [AutofillHints.newPassword],
+          decoration: InputDecoration(
             labelText: '初始密码',
             helperText: '10 至 128 个字符',
-            prefixIcon: Icon(Icons.lock_outline_rounded),
+            prefixIcon: const Icon(Icons.lock_outline_rounded),
+            errorText: _submitted ? _passwordError() : null,
+            suffixIcon: IconButton(
+              tooltip: _passwordVisible ? '隐藏密码' : '显示密码',
+              icon: Icon(
+                _passwordVisible
+                    ? Icons.visibility_off_rounded
+                    : Icons.visibility_rounded,
+              ),
+              onPressed: () =>
+                  setState(() => _passwordVisible = !_passwordVisible),
+            ),
           ),
         ),
         const SizedBox(height: LumaSpacing.sm),
         TextField(
           controller: _confirmation,
           enabled: !_submitting && !accountCreated,
-          obscureText: true,
+          obscureText: !_confirmationVisible,
           autocorrect: false,
           enableSuggestions: false,
-          decoration: const InputDecoration(
+          textInputAction: TextInputAction.done,
+          autofillHints: const [AutofillHints.newPassword],
+          onSubmitted: (_) => _submit(),
+          decoration: InputDecoration(
             labelText: '确认密码',
-            prefixIcon: Icon(Icons.lock_reset_outlined),
+            prefixIcon: const Icon(Icons.lock_reset_outlined),
+            errorText:
+                _submitted && _password.text != _confirmation.text
+                ? '两次输入的密码不一致'
+                : null,
+            suffixIcon: IconButton(
+              tooltip: _confirmationVisible ? '隐藏密码' : '显示密码',
+              icon: Icon(
+                _confirmationVisible
+                    ? Icons.visibility_off_rounded
+                    : Icons.visibility_rounded,
+              ),
+              onPressed: () => setState(
+                () => _confirmationVisible = !_confirmationVisible,
+              ),
+            ),
           ),
         ),
         const SizedBox(height: LumaSpacing.lg),
@@ -175,25 +227,25 @@ class _NewMemberPageState extends State<NewMemberPage> {
     }
   }
 
+  /// 密码字段的错误文案；空值与长度规则沿用提交时的校验。
+  String? _passwordError() {
+    if (_password.text.isEmpty) return '请填写初始密码';
+    final length = _password.text.runes.length;
+    if (length < 10 || length > 128) return '密码须为 10 至 128 个字符';
+    return null;
+  }
+
+  bool _hasValidationError() =>
+      _name.text.trim().isEmpty ||
+      _username.text.trim().isEmpty ||
+      _passwordError() != null ||
+      _password.text != _confirmation.text;
+
   /// 创建账号后逐个授权；部分失败时保留成员、request ID 和待授权集合供重试。
   Future<void> _submit() async {
     if (_submitting) return;
-    if (_createdUser == null &&
-        (_name.text.trim().isEmpty ||
-            _username.text.trim().isEmpty ||
-            _password.text.isEmpty)) {
-      context.showLumaSnack('请完整填写账号信息');
-      return;
-    }
-    if (_createdUser == null && _password.text != _confirmation.text) {
-      context.showLumaSnack('两次输入的密码不一致');
-      return;
-    }
-    final passwordLength = _password.text.runes.length;
-    if (_createdUser == null && (passwordLength < 10 || passwordLength > 128)) {
-      context.showLumaSnack('密码须为 10 至 128 个字符');
-      return;
-    }
+    setState(() => _submitted = true);
+    if (_createdUser == null && _hasValidationError()) return;
     setState(() => _submitting = true);
     try {
       var user = _createdUser;

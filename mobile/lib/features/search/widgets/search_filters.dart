@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import '../../../core/theme.dart';
 import '../../../data/models/media_types.dart';
 import '../../../data/models/api_tag.dart';
-import '../../../shared/layout/section_header.dart';
 
 class SearchFilters extends StatelessWidget {
   const SearchFilters({
@@ -27,7 +26,6 @@ class SearchFilters extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
     if (television) {
       final selectedTags = tags.where((tag) => tag.id == tagId);
       final selectedTag = selectedTags.isEmpty ? null : selectedTags.first;
@@ -86,75 +84,40 @@ class SearchFilters extends StatelessWidget {
         ),
       );
     }
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const SizedBox(height: LumaSpacing.lg),
-        const SectionHeader(title: '类型与标签'),
-        const SizedBox(height: LumaSpacing.sm),
-        const _GroupLabel('类型'),
-        const SizedBox(height: LumaSpacing.xs),
-        Wrap(
-          spacing: LumaSpacing.xs,
-          runSpacing: LumaSpacing.xs,
+    return Padding(
+      padding: const EdgeInsets.only(top: LumaSpacing.md),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
           children: [
             ChoiceChip(
               label: const Text('全部'),
               selected: type == null,
               onSelected: (_) => onType(null),
             ),
+            const SizedBox(width: LumaSpacing.xs),
             ChoiceChip(
               label: const Text('视频'),
               selected: type == MediaType.video,
               onSelected: (_) => onType(MediaType.video),
             ),
+            const SizedBox(width: LumaSpacing.xs),
             ChoiceChip(
               label: const Text('图片'),
               selected: type == MediaType.image,
               onSelected: (_) => onType(MediaType.image),
             ),
+            if (tags.isNotEmpty)
+              for (final value in tags) ...[
+                const SizedBox(width: LumaSpacing.xs),
+                FilterChip(
+                  label: Text(value.name),
+                  selected: tagId == value.id,
+                  onSelected: (_) => onTag(value.id, value.name),
+                ),
+              ],
           ],
         ),
-        const SizedBox(height: LumaSpacing.md),
-        const _GroupLabel('标签'),
-        const SizedBox(height: LumaSpacing.xs),
-        if (tags.isEmpty)
-          Text(
-            '暂无标签',
-            style: Theme.of(
-              context,
-            ).textTheme.bodyMedium?.copyWith(color: scheme.onSurfaceVariant),
-          )
-        else
-          Wrap(
-            spacing: LumaSpacing.xs,
-            runSpacing: LumaSpacing.xs,
-            children: tags
-                .map(
-                  (value) => FilterChip(
-                    label: Text(value.name),
-                    selected: tagId == value.id,
-                    onSelected: (_) => onTag(value.id, value.name),
-                  ),
-                )
-                .toList(growable: false),
-          ),
-      ],
-    );
-  }
-}
-
-class _GroupLabel extends StatelessWidget {
-  const _GroupLabel(this.text);
-
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    return Text(
-      text,
-      style: Theme.of(context).textTheme.labelMedium?.copyWith(
-        color: Theme.of(context).colorScheme.onSurfaceVariant,
       ),
     );
   }

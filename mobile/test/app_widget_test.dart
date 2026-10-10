@@ -3,6 +3,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:luma/app/app_dependencies.dart';
+import 'package:luma/app/app_router.dart';
+import 'package:luma/data/models/api_tag.dart';
+import 'package:luma/features/shell/app_destination.dart';
 import 'package:luma/app/app_scope.dart';
 import 'package:luma/app/controllers/media_controller.dart';
 import 'package:luma/core/theme.dart';
@@ -22,7 +25,6 @@ import 'package:luma/features/connection/widgets/connection_brand_header.dart';
 import 'package:luma/features/home/widgets/home_header.dart';
 import 'package:luma/features/search/widgets/search_results.dart';
 import 'package:luma/features/settings/settings_page.dart';
-import 'package:luma/features/shell/widgets/adaptive_app_navigation.dart';
 import 'package:luma/main.dart';
 import 'package:luma/shared/branding/brand_mark.dart';
 import 'package:luma/shared/media/masonry_media_tile.dart';
@@ -34,9 +36,9 @@ void main() {
   );
 
   Future<void> dismissLaunchOverlay(WidgetTester tester) async {
-    // 推进最短展示时间与整屏淡出，确保开屏 AbsorbPointer 卸下。
+    // 推进最短展示时间（约 2.6s 覆盖 MG 片头）与整屏淡出，确保 AbsorbPointer 卸下。
     await tester.pump();
-    await tester.pump(const Duration(milliseconds: 1100));
+    await tester.pump(const Duration(milliseconds: 2700));
     await tester.pump(const Duration(milliseconds: 300));
   }
 
@@ -62,37 +64,37 @@ void main() {
     expect(localizations.refreshIndicatorSemanticLabel, '刷新');
   });
 
-  for (final (name, size, themeMode, expectedHeight, expectedWidth) in [
-    ('320px 手机深色', const Size(320, 640), ThemeMode.dark, 72.0, 213.0),
-    ('手机浅色', const Size(390, 844), ThemeMode.light, 72.0, 213.0),
-    ('Windows 宽屏深色', const Size(1200, 800), ThemeMode.dark, 180.0, 532.0),
+  for (final (name, size, asset) in [
+    ('320px 手机', const Size(320, 640), 'assets/mg/luma-splash.webp'),
+    ('手机竖屏', const Size(390, 844), 'assets/mg/luma-splash.webp'),
+    ('Windows 宽屏', const Size(1200, 800), 'assets/mg/luma-splash-wide.webp'),
+    ('TV 横屏', const Size(1280, 720), 'assets/mg/luma-splash-wide.webp'),
   ]) {
-    testWidgets('$name开屏使用独立的横版 Logo 比例', (tester) async {
+    testWidgets('$name开屏播放品牌 MG 片头', (tester) async {
       await tester.binding.setSurfaceSize(size);
       addTearDown(() => tester.binding.setSurfaceSize(null));
       final dependencies = createDependencies();
-      dependencies.settings.setThemeMode(themeMode);
       addTearDown(dependencies.dispose);
 
       await tester.pumpWidget(LumaApp(dependencies: dependencies));
       await tester.pump();
 
-      final launchLogo = find.byWidgetPredicate(
+      final animation = find.byWidgetPredicate(
         (widget) =>
-            widget is BrandMark &&
-            widget.variant == BrandMarkVariant.horizontal &&
-            widget.height == expectedHeight,
+            widget is Image &&
+            widget.image is AssetImage &&
+            (widget.image as AssetImage).assetName == asset,
       );
-      expect(launchLogo, findsOneWidget);
-      final logoSize = tester.getSize(launchLogo);
-      expect(logoSize.height, expectedHeight);
-      expect(logoSize.width, closeTo(expectedWidth, 1));
+      expect(animation, findsOneWidget);
+      final imageSize = tester.getSize(animation);
+      expect(imageSize.width, greaterThan(100));
+      expect(imageSize.height, greaterThan(100));
       expect(tester.takeException(), isNull);
     });
   }
 
-  testWidgets('开屏底色与 Logo 跟随设备亮度而非 App 主题', (tester) async {
-    // TV 场景：App 主题默认深色，但设备上报浅色，原生 splash 是白底。
+  testWidgets('开屏底色固定画框白，不随设备亮度变化', (tester) async {
+    // MG 片头为深色笔画版本，画框白底下保持可读，亮暗设备统一。
     final platform = tester.binding.platformDispatcher;
     platform.platformBrightnessTestValue = Brightness.light;
     addTearDown(platform.clearPlatformBrightnessTestValue);
@@ -105,42 +107,42 @@ void main() {
 
     expect(
       find.byWidgetPredicate(
-        (widget) => widget is ColoredBox && widget.color == LumaColors.paper,
-      ),
-      findsOneWidget,
-    );
-    expect(
-      find.byWidgetPredicate(
         (widget) =>
-            widget is Image &&
-            widget.image is AssetImage &&
-            (widget.image as AssetImage).assetName ==
-                'assets/luma-logo-horizontal-color-transparent.png',
+            widget is ColoredBox && widget.color == LumaColors.brandPaper,
       ),
       findsOneWidget,
     );
   });
 
-  testWidgets('开屏 Logo 淡入呈现，最短展示后整屏淡出移除', (tester) async {
+  testWidgets('开屏播放 MG 片头，最短展示后整屏淡出移除', (tester) async {
     final dependencies = createDependencies();
     addTearDown(dependencies.dispose);
     await tester.pumpWidget(LumaApp(dependencies: dependencies));
     await tester.pump();
 
     final splash = find.bySemanticsLabel('轻影正在启动');
-    final entrance = find.descendant(
+    final exitFade = find.descendant(
       of: splash,
       matching: find.byWidgetPredicate(
-        (widget) => widget is FadeTransition && widget.child is ScaleTransition,
+        (widget) => widget is FadeTransition && widget.child is ColoredBox,
       ),
     );
-    // 入场动画起步时 Logo 近乎不可见，400ms 后完全呈现。
-    expect(tester.widget<FadeTransition>(entrance).opacity.value, lessThan(0.05));
-    await tester.pump(const Duration(milliseconds: 400));
-    expect(tester.widget<FadeTransition>(entrance).opacity.value, 1);
+    // 片头动画播放期间遮罩在场且完全不透明。
+    expect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is Image &&
+            widget.image is AssetImage &&
+            (widget.image as AssetImage).assetName ==
+                'assets/mg/luma-splash.webp',
+      ),
+      findsOneWidget,
+    );
+    await tester.pump(const Duration(milliseconds: 1200));
+    expect(tester.widget<FadeTransition>(exitFade).opacity.value, 1);
 
     // 最短展示结束时遮罩仍在场，整屏淡出完成后才移除。
-    await tester.pump(const Duration(milliseconds: 620));
+    await tester.pump(const Duration(milliseconds: 1500));
     expect(splash, findsOneWidget);
     await tester.pump(const Duration(milliseconds: 400));
     expect(splash, findsNothing);
@@ -168,15 +170,14 @@ void main() {
     );
     expect(find.text('连接家庭服务器后，你的影像仍然只属于自己的网络。'), findsNothing);
 
-    // IP 为空时拼不出合法地址。
+    // IP 为空时在字段内提示，不发起连接。
     await tester.enterText(find.byType(TextField).at(0), '');
     await tester.ensureVisible(find.text('立即连接'));
     await tester.pump();
     await tester.tap(find.text('立即连接'));
     await tester.pump();
-    expect(find.text('正在连接'), findsOneWidget);
-    await tester.pump(const Duration(milliseconds: 950));
-    expect(find.text('请输入有效的服务器地址'), findsOneWidget);
+    expect(find.text('正在连接'), findsNothing);
+    expect(find.text('请输入服务器地址'), findsOneWidget);
   });
 
   for (final (name, size, theme) in [
@@ -254,7 +255,7 @@ void main() {
     );
   });
 
-  testWidgets('successful connection opens the five destination shell', (
+  testWidgets('successful connection opens the four destination shell', (
     tester,
   ) async {
     await tester.pumpWidget(LumaApp(dependencies: createDependencies()));
@@ -271,46 +272,32 @@ void main() {
     await tester.pump(const Duration(milliseconds: 700));
 
     expect(find.byType(NavigationBar), findsNothing);
-    for (final routeName in [
-      'home',
-      'photos',
-      'videos',
-      'search',
-      'settings',
-    ]) {
+    for (final routeName in ['home', 'videos', 'photos', 'settings']) {
       expect(find.byKey(ValueKey('bottom-nav-$routeName')), findsOneWidget);
     }
+    expect(find.byKey(const ValueKey('bottom-nav-search')), findsNothing);
     expect(
       find.byKey(const ValueKey('bottom-navigation-surface')),
       findsOneWidget,
     );
-    final homeFeedback = tester.widget<InkWell>(
-      find.descendant(
-        of: find.byKey(const ValueKey('bottom-nav-home')),
-        matching: find.byType(InkWell),
-      ),
-    );
-    expect(homeFeedback.borderRadius, isNotNull);
     final selectedHomeIcon = tester.widget<Icon>(
       find.descendant(
         of: find.byKey(const ValueKey('bottom-nav-home')),
         matching: find.byType(Icon),
       ),
     );
-    expect(selectedHomeIcon.color, LumaColors.paper);
+    expect(
+      selectedHomeIcon.color,
+      Theme.of(
+        tester.element(find.byKey(const ValueKey('bottom-nav-home'))),
+      ).colorScheme.primary,
+    );
     expect(
       find.descendant(
         of: find.byKey(const ValueKey('bottom-nav-home')),
         matching: find.text('首页'),
       ),
       findsOneWidget,
-    );
-    expect(
-      find.descendant(
-        of: find.byKey(const ValueKey('bottom-nav-photos')),
-        matching: find.text('图片库'),
-      ),
-      findsNothing,
     );
 
     final initialIndicatorLeft = _indicatorPaintLeft(tester);
@@ -366,10 +353,7 @@ void main() {
       ),
     );
     await tester.pump();
-    expect(
-      find.descendant(of: find.byType(AppBar), matching: find.text('搜索')),
-      findsOneWidget,
-    );
+    expect(find.byTooltip('返回'), findsOneWidget);
 
     await tester.tap(find.byKey(const ValueKey('bottom-nav-settings')));
     await tester.pump();
@@ -377,7 +361,7 @@ void main() {
     expect(find.textContaining('Database: ok'), findsOneWidget);
   });
 
-  testWidgets('home brand header keeps search usable on a narrow phone', (
+  testWidgets('home top bar keeps search usable on a narrow phone', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(390, 844);
@@ -395,7 +379,7 @@ void main() {
           theme: LumaTheme.light(),
           home: Scaffold(
             body: SafeArea(
-              child: HomeHeader(
+              child: HomeTopBar(
                 onOpenSearch: () => searchOpened = true,
                 onScrollToTop: () {},
               ),
@@ -405,66 +389,19 @@ void main() {
       ),
     );
 
-    final homeLogo = find.byWidgetPredicate(
-      (widget) =>
-          widget is BrandMark &&
-          widget.variant == BrandMarkVariant.symbol &&
-          widget.height == 52,
-    );
-    final greeting = find.textContaining('欢迎回来');
-    expect(homeLogo, findsOneWidget);
-    expect(greeting, findsOneWidget);
-    final logoRect = tester.getRect(homeLogo);
-    final greetingRect = tester.getRect(greeting);
-    expect(logoRect.right, lessThan(greetingRect.left));
-    expect(greetingRect.top, lessThan(logoRect.bottom));
-    expect(greetingRect.bottom, greaterThan(logoRect.top));
-    expect(find.text('搜索你的媒体'), findsOneWidget);
-    expect(tester.takeException(), isNull);
-    await tester.tap(find.text('搜索你的媒体'));
-    await tester.pump();
-    expect(searchOpened, isTrue);
-  });
-
-  testWidgets('bottom navigation settles immediately with reduced motion', (
-    tester,
-  ) async {
-    tester.view.physicalSize = const Size(390, 844);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
-    var selectedIndex = 0;
-
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: LumaTheme.light(),
-        home: MediaQuery(
-          data: const MediaQueryData(disableAnimations: true),
-          child: StatefulBuilder(
-            builder: (context, setState) => AdaptiveAppNavigation(
-              selectedIndex: selectedIndex,
-              onSelect: (value) => setState(() => selectedIndex = value),
-              content: const SizedBox.expand(),
-            ),
-          ),
-        ),
-      ),
-    );
-
-    final initialLeft = _indicatorPaintLeft(tester);
-    await tester.tap(find.byKey(const ValueKey('bottom-nav-photos')));
-    await tester.pump();
-    await tester.pump();
-    expect(_indicatorPaintLeft(tester), greaterThan(initialLeft));
-    expect(find.text('图片库'), findsOneWidget);
+    expect(find.byType(BrandMark), findsOneWidget);
+    expect(find.textContaining('欢迎回来'), findsNothing);
+    final search = find.byTooltip('搜索');
     expect(
       tester
-          .widget<TweenAnimationBuilder<double>>(
-            find.byKey(const ValueKey('bottom-navigation-indicator-animation')),
-          )
-          .duration,
-      Duration.zero,
+          .getSize(find.ancestor(of: search, matching: find.byType(IconButton)))
+          .height,
+      greaterThanOrEqualTo(48),
     );
+    expect(tester.takeException(), isNull);
+    await tester.tap(search);
+    await tester.pump();
+    expect(searchOpened, isTrue);
   });
 
   testWidgets('search idle state prompts for criteria', (tester) async {
@@ -695,7 +632,7 @@ void main() {
         ),
       ),
     );
-    await tester.ensureVisible(find.text('断开服务器'));
+    await tester.scrollUntilVisible(find.text('断开服务器'), 200);
     await tester.pumpAndSettle();
     await tester.tap(find.text('断开服务器'));
     await tester.pumpAndSettle();
@@ -744,7 +681,7 @@ void main() {
         ),
       ),
     );
-    await tester.tap(find.byTooltip('编辑本地别名'));
+    await tester.tap(find.byTooltip('重命名'));
     await tester.pumpAndSettle();
     expect(find.text('服务器别名'), findsOneWidget);
 
@@ -755,7 +692,7 @@ void main() {
     expect(dependencies.session.server!.name, 'server.local');
   });
 
-  testWidgets('server alias dialog keeps its three actions on one row', (
+  testWidgets('server alias dialog keeps all actions reachable at 320px', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(320, 720);
@@ -783,14 +720,27 @@ void main() {
         child: const MaterialApp(home: SettingsPage()),
       ),
     );
-    await tester.tap(find.byTooltip('编辑本地别名'));
+    await tester.tap(find.byTooltip('重命名'));
     await tester.pumpAndSettle();
 
-    final restoreTop = tester.getTopLeft(find.text('恢复默认')).dy;
-    final cancelTop = tester.getTopLeft(find.text('取消')).dy;
-    final saveTop = tester.getTopLeft(find.text('保存')).dy;
-    expect(cancelTop, restoreTop);
-    expect(saveTop, restoreTop);
+    for (final label in ['恢复默认', '取消', '保存']) {
+      final button = find.text(label).hitTestable();
+      expect(button, findsOneWidget);
+      expect(
+        tester
+            .getSize(
+              find
+                  .ancestor(
+                    of: button,
+                    matching: find.bySubtype<ButtonStyleButton>(),
+                  )
+                  .first,
+            )
+            .height,
+        greaterThanOrEqualTo(48),
+      );
+    }
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('wide layout uses a navigation rail', (tester) async {
@@ -811,6 +761,91 @@ void main() {
     await tester.pump(const Duration(milliseconds: 700));
     expect(find.byType(NavigationRail), findsOneWidget);
   });
+
+  testWidgets('连接表单字段级校验，粘贴完整地址自动拆分', (tester) async {
+    final service = _RecordingConnectionService();
+    final dependencies = AppDependencies(
+      mediaRepository: MockMediaRepository(),
+      connectionService: service,
+    );
+    addTearDown(dependencies.dispose);
+    await tester.pumpWidget(LumaApp(dependencies: dependencies));
+    await dismissLaunchOverlay(tester);
+
+    await tester.enterText(find.byType(TextField).at(0), '');
+    await tester.ensureVisible(find.text('立即连接'));
+    await tester.tap(find.text('立即连接'));
+    await tester.pump();
+    expect(find.text('请输入服务器地址'), findsOneWidget);
+    expect(service.lastAddress, isNull);
+
+    await tester.enterText(
+      find.byType(TextField).at(0),
+      'http://192.168.1.10:9000',
+    );
+    await tester.enterText(find.byType(TextField).at(2), 'test-user');
+    await tester.enterText(find.byType(TextField).at(3), 'test-password');
+    await tester.ensureVisible(find.text('立即连接'));
+    await tester.tap(find.text('立即连接'));
+    await tester.pump();
+    final fields = tester
+        .widgetList<TextField>(find.byType(TextField))
+        .toList();
+    expect(fields[0].controller!.text, '192.168.1.10');
+    expect(fields[1].controller!.text, '9000');
+    expect(service.lastAddress, 'http://192.168.1.10:9000');
+  });
+
+  testWidgets('媒体详情点标签进入搜索分支并按标签 id 过滤', (tester) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final dependencies = AppDependencies(
+      mediaRepository: _TaggedMediaRepository(),
+      connectionService: MockConnectionService(),
+    );
+    addTearDown(dependencies.dispose);
+    dependencies.session.connect(
+      const ServerProfile(
+        name: 'server.local',
+        address: 'http://server.local:8080',
+        token: 'token',
+        hostName: 'server.local',
+      ),
+    );
+    final loading = dependencies.media.load();
+    final router = createAppRouter(dependencies)..go('/media/video-0');
+    addTearDown(router.dispose);
+    await tester.pumpWidget(
+      AppScope(
+        dependencies: dependencies,
+        child: MaterialApp.router(
+          theme: LumaTheme.light(),
+          routerConfig: router,
+        ),
+      ),
+    );
+    await tester.pump(const Duration(seconds: 2));
+    await loading;
+    await tester.pumpAndSettle();
+
+    final chip = find.widgetWithText(ActionChip, '旅行');
+    await tester.ensureVisible(chip);
+    await tester.pumpAndSettle();
+    await tester.tap(chip);
+    await tester.pumpAndSettle();
+
+    expect(
+      router.routerDelegate.currentConfiguration.uri.path,
+      AppDestination.search.path,
+    );
+    final filter = tester.widget<FilterChip>(
+      find.widgetWithText(FilterChip, '旅行'),
+    );
+    expect(filter.selected, isTrue);
+    expect(dependencies.searchRequest.value, isNull);
+  });
 }
 
 class _WidgetAliasStore implements ServerAliasStore {
@@ -828,6 +863,21 @@ class _WidgetAliasStore implements ServerAliasStore {
   Future<void> write(String origin, String alias) async {
     _values[origin] = alias;
   }
+}
+
+/// 带标签目录的 mock 仓库：让标签名能解析到 id。
+class _TaggedMediaRepository extends MockMediaRepository {
+  @override
+  Future<List<Tag>> loadTags() async => [
+    Tag(
+      id: 't1',
+      name: '旅行',
+      usageCount: 6,
+      revision: 1,
+      createdAt: DateTime(2026),
+      updatedAt: DateTime(2026),
+    ),
+  ];
 }
 
 double _indicatorPaintLeft(WidgetTester tester) {

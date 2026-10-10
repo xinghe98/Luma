@@ -13,6 +13,7 @@ import '../../shared/layout/tv_content_frame.dart';
 import '../../shared/media/media_artwork.dart';
 import '../../shared/layout/scroll_to_top_app_bar_title.dart';
 import '../../shared/states/skeleton.dart';
+import '../../shared/states/error_state.dart';
 import 'details_controller.dart';
 import 'widgets/detail_information.dart';
 import 'widgets/tv_media_detail_content.dart';
@@ -107,6 +108,12 @@ class _MediaDetailPageState extends State<MediaDetailPage> {
                 ),
                 body: controller.isLoading
                     ? const DetailPageSkeleton()
+                    : controller.detailError != null
+                    ? ErrorState(
+                        onRetry: controller.reload,
+                        title: '无法加载媒体详情',
+                        message: '请检查网络后重试。',
+                      )
                     : Center(
                         child: Padding(
                           padding: const EdgeInsets.all(LumaSpacing.lg),
@@ -114,7 +121,7 @@ class _MediaDetailPageState extends State<MediaDetailPage> {
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               Text(
-                                controller.detailError ?? '找不到该媒体，可能已被移除或尚未加载。',
+                                '找不到该媒体，可能已被移除或尚未加载。',
                                 textAlign: TextAlign.center,
                                 style: Theme.of(context).textTheme.bodyLarge
                                     ?.copyWith(
@@ -135,7 +142,7 @@ class _MediaDetailPageState extends State<MediaDetailPage> {
               ),
             );
           }
-          final coverRadius = context.luma.coverRadius;
+          const coverRadius = LumaRadii.cover;
           final cover = AspectRatio(
             aspectRatio: item.isPortrait ? 3 / 4 : 16 / 10,
             child: MediaArtwork(
@@ -189,6 +196,13 @@ class _MediaDetailPageState extends State<MediaDetailPage> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
+                            if (controller.media.detailLoading)
+                              const Padding(
+                                padding: EdgeInsets.only(
+                                  bottom: LumaSpacing.sm,
+                                ),
+                                child: LinearProgressIndicator(minHeight: 2),
+                              ),
                             if (controller.detailError != null)
                               Padding(
                                 padding: const EdgeInsets.only(

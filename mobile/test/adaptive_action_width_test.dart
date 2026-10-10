@@ -38,7 +38,8 @@ void main() {
         find.byKey(const ValueKey('primary-action')),
       );
       expect(buttonRect.width, expectedWidth);
-      expect(buttonRect.height, LumaLayout.buttonHeight);
+      // 外观 40，padded 触控区补足 48。
+      expect(buttonRect.height, LumaLayout.minTapTarget);
       expect(buttonRect.center.dx, closeTo(viewport.width / 2, 0.01));
       expect(tester.takeException(), isNull);
     });
@@ -101,7 +102,7 @@ void main() {
         find.byKey(const ValueKey('intrinsic-action')),
       );
       expect(buttonRect.width, lessThan(200));
-      expect(buttonRect.height, LumaLayout.buttonHeight);
+      expect(buttonRect.height, LumaLayout.minTapTarget);
     });
   }
 }

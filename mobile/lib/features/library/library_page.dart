@@ -24,6 +24,8 @@ import '../shell/shell_entry_gate.dart';
 import 'dialogs/library_filter_sheet.dart';
 import 'library_controller.dart';
 import 'widgets/tv_library_header.dart';
+import 'widgets/active_filter_bar.dart';
+import 'widgets/library_sort_button.dart';
 
 /// 固定类型的媒体库页：底部导航拆分为影音库与图片库两个入口。
 class LibraryPage extends StatefulWidget {
@@ -213,12 +215,8 @@ class _LibraryPageState extends State<LibraryPage>
                     ),
                     sliver: SliverToBoxAdapter(
                       child: Align(
-                        alignment: Alignment.centerRight,
-                        child: TextButton.icon(
-                          onPressed: controller.clearFilters,
-                          icon: const Icon(Icons.close_rounded, size: 18),
-                          label: const Text('清除筛选'),
-                        ),
+                        alignment: Alignment.centerLeft,
+                        child: ActiveFilterBar(controller: controller),
                       ),
                     ),
                   ),
@@ -319,19 +317,26 @@ class _LibraryPageState extends State<LibraryPage>
                       ),
                     )
                   else
-                    SliverPadding(
-                      padding: const EdgeInsets.fromLTRB(
-                        LumaSpacing.sm,
-                        LumaSpacing.xs,
-                        LumaSpacing.sm,
-                        LumaSpacing.xs,
-                      ),
-                      sliver: MasonryMediaSliver(
-                        items: items,
-                        onTap: widget.onOpenMedia,
-                        onLongPress: widget.onLongPressMedia,
-                        onFavorite: (item) =>
-                            context.toggleFavoriteWithFeedback(media, item),
+                    SliverLayoutBuilder(
+                      builder: (context, constraints) => SliverPadding(
+                        padding: EdgeInsets.fromLTRB(
+                          LumaLayout.pageHorizontalPadding(
+                            constraints.crossAxisExtent,
+                          ),
+                          LumaSpacing.xs,
+                          LumaLayout.pageHorizontalPadding(
+                            constraints.crossAxisExtent,
+                          ),
+                          LumaSpacing.xs,
+                        ),
+                        sliver: MasonryMediaSliver(
+                          items: items,
+                          spacing: LumaSpacing.xxs,
+                          onTap: widget.onOpenMedia,
+                          onLongPress: widget.onLongPressMedia,
+                          onFavorite: (item) =>
+                              context.toggleFavoriteWithFeedback(media, item),
+                        ),
                       ),
                     ),
                   if (controller.hasLoadMoreError)
@@ -484,16 +489,10 @@ class _LibraryPageState extends State<LibraryPage>
           ),
         ),
       ),
-    PopupMenuButton<MediaSort>(
-      tooltip: '排序',
-      initialValue: _controller?.sort ?? MediaSort.newest,
-      onSelected: _controller?.setSort,
-      itemBuilder: (_) => [
-        const PopupMenuItem(value: MediaSort.newest, child: Text('最近添加')),
-        const PopupMenuItem(value: MediaSort.title, child: Text('标题名称')),
-        if (widget.type == MediaType.video)
-          const PopupMenuItem(value: MediaSort.duration, child: Text('视频时长')),
-      ],
+    LibrarySortButton(
+      value: _controller?.sort ?? MediaSort.newest,
+      onChanged: (sort) => _controller?.setSort(sort),
+      showDuration: widget.type == MediaType.video,
     ),
   ];
 

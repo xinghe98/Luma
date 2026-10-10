@@ -117,12 +117,18 @@ class _TvSettingsContentState extends State<TvSettingsContent> {
             context,
             index: 0,
             title: '显示主题',
-            subtitle: settings.themeMode == ThemeMode.light ? '浅色模式' : '深色模式',
+            subtitle: switch (settings.themeMode) {
+              ThemeMode.system => '跟随系统',
+              ThemeMode.light => '浅色模式',
+              ThemeMode.dark => '深色模式',
+            },
             icon: Icons.contrast_rounded,
             onActivate: () => settings.setThemeMode(
-              settings.themeMode == ThemeMode.dark
-                  ? ThemeMode.light
-                  : ThemeMode.dark,
+              switch (settings.themeMode) {
+                ThemeMode.system => ThemeMode.light,
+                ThemeMode.light => ThemeMode.dark,
+                ThemeMode.dark => ThemeMode.system,
+              },
             ),
           ),
           _row(
@@ -246,62 +252,39 @@ class _TvSettingsContentState extends State<TvSettingsContent> {
         borderRadius: BorderRadius.circular(LumaRadii.small),
         focusBorderWidth: LumaTvLayout.focusStroke,
         contentPadding: const EdgeInsets.all(LumaSpacing.md),
-        child: Builder(
-          builder: (context) {
-            final focused = LumaFocusMark.focusedOf(context);
-            final scheme = theme.colorScheme;
-            final titleColor = destructive
-                ? color
-                : focused
-                ? scheme.onInverseSurface
-                : scheme.onSurface;
-            final subtitleColor = focused
-                ? scheme.onInverseSurface.withValues(alpha: 0.72)
-                : scheme.onSurfaceVariant;
-            return DecoratedBox(
-              decoration: BoxDecoration(
-                color: focused ? scheme.inverseSurface : Colors.transparent,
-                borderRadius: BorderRadius.circular(LumaRadii.small),
-              ),
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(
-                  minHeight: LumaTvLayout.controlMinHeight,
-                ),
-                child: Row(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(
+            minHeight: LumaTvLayout.controlMinHeight,
+          ),
+          child: Row(
+            children: [
+              Icon(icon, color: color, size: 28),
+              const SizedBox(width: LumaSpacing.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(
-                      icon,
-                      color: destructive ? color : titleColor,
-                      size: 28,
-                    ),
-                    const SizedBox(width: LumaSpacing.md),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            title,
-                            style: theme.textTheme.titleMedium?.copyWith(
-                              color: destructive ? color : titleColor,
-                            ),
-                          ),
-                          const SizedBox(height: LumaSpacing.xxs),
-                          Text(
-                            subtitle,
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              color: subtitleColor,
-                            ),
-                          ),
-                        ],
+                    Text(
+                      title,
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        color: color,
                       ),
                     ),
-                    const SizedBox(width: LumaSpacing.sm),
-                    Icon(Icons.chevron_right_rounded, color: titleColor),
+                    const SizedBox(height: LumaSpacing.xxs),
+                    Text(
+                      subtitle,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
                   ],
                 ),
               ),
-            );
-          },
+              const SizedBox(width: LumaSpacing.sm),
+              Icon(Icons.chevron_right_rounded, color: color),
+            ],
+          ),
         ),
       ),
     );

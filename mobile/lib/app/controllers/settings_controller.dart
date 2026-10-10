@@ -4,19 +4,23 @@ import 'package:flutter/material.dart';
 
 import '../../data/models/api_scan.dart';
 import '../../data/repositories/scan_repository.dart';
+import '../../data/storage/theme_preference_store.dart';
 
 class SettingsController extends ChangeNotifier {
   SettingsController({
     ScanRepository? scanRepository,
+    ThemePreferenceStore? themeStore,
     this.scanPollInterval = const Duration(seconds: 1),
-    this.initialThemeMode = ThemeMode.light,
+    this.initialThemeMode = ThemeMode.system,
   }) : _scanRepository = scanRepository,
+       _themeStore = themeStore,
        _themeMode = initialThemeMode;
 
   final ScanRepository? _scanRepository;
+  final ThemePreferenceStore? _themeStore;
   final Duration scanPollInterval;
 
-  /// 构造时确定的首帧主题；TV 默认深色，普通端保持浅色。
+  /// 构造时确定的首帧主题；普通端跟随系统，TV 默认深色。
   final ThemeMode initialThemeMode;
   ThemeMode _themeMode;
   double? _scanProgress;
@@ -86,10 +90,38 @@ class SettingsController extends ChangeNotifier {
       _processing.failed > 0 ||
       _metadata.failed > 0;
 
+  /// 从本地存储恢复主题模式；没有保存值、读取失败，或读取期间用户已手动切换时保持当前值。
+  Future<void> restoreThemeMode() async {
+    final store = _themeStore;
+    if (store == null) return;
+    final generation = _themeGeneration;
+    try {
+      final saved = await store.read();
+      if (saved == null || generation != _themeGeneration) return;
+      _applyThemeMode(saved);
+    } on Object {
+      // 读取失败不阻塞启动，继续用初始主题。
+    }
+  }
+
+  /// 用户主动切换次数；恢复读取完成时据此判断是否已被新选择取代。
+  int _themeGeneration = 0;
+
+  /// 切换主题并把选择写入本地存储；写入失败静默忽略。
   void setThemeMode(ThemeMode value) {
-    if (_themeMode == value) return;
+    _themeGeneration++;
+    if (!_applyThemeMode(value)) return;
+    final store = _themeStore;
+    if (store != null) {
+      unawaited(store.write(value).catchError((_) {}));
+    }
+  }
+
+  bool _applyThemeMode(ThemeMode value) {
+    if (_themeMode == value) return false;
     _themeMode = value;
     notifyListeners();
+    return true;
   }
 
   void clearCache() {

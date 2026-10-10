@@ -312,7 +312,7 @@ class _SelectionField extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     final shape = RoundedRectangleBorder(
       borderRadius: BorderRadius.circular(LumaRadii.medium),
-      side: BorderSide(color: scheme.outlineVariant.withAlpha(100)),
+      side: BorderSide(color: scheme.outlineVariant.withValues(alpha: 0.39)),
     );
     return Semantics(
       button: enabled,

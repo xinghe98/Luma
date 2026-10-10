@@ -315,7 +315,7 @@ void main() {
       ),
     );
     await tester.pumpWidget(LumaApp(dependencies: dependencies));
-    await tester.pump(const Duration(milliseconds: 1100));
+    await tester.pump(const Duration(milliseconds: 2700));
     await tester.pumpAndSettle();
     for (var i = 0; i < 3; i++) {
       await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);

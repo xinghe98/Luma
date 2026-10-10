@@ -9,7 +9,7 @@ class SurfaceCard extends StatelessWidget {
     super.key,
     required this.child,
     this.padding = const EdgeInsets.all(LumaSpacing.md),
-    this.radius = LumaRadii.medium,
+    this.radius = LumaRadii.large,
     this.onTap,
     this.outlined = false,
     this.color,
@@ -26,21 +26,17 @@ class SurfaceCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final borderRadius = BorderRadius.circular(radius);
-    final resolvedColor =
-        color ?? Theme.of(context).cardTheme.color ?? scheme.surfaceContainer;
+    final resolvedColor = color ?? scheme.surfaceContainer;
 
     final content = Padding(padding: padding, child: child);
 
     return Material(
       color: resolvedColor,
-      elevation: outlined ? 0 : 0.5,
-      shadowColor: scheme.shadow.withValues(alpha: 0.08),
+      elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: borderRadius,
         side: BorderSide(
-          color: scheme.outlineVariant.withValues(
-            alpha: outlined ? 0.72 : 0.42,
-          ),
+          color: outlined ? scheme.outline : scheme.outlineVariant,
         ),
       ),
       child: onTap == null

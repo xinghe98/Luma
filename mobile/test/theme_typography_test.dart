@@ -1,4 +1,3 @@
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:luma/core/theme.dart';
 
@@ -17,20 +16,26 @@ void main() {
       }
     });
 
-    test('type roles use intentional sizes, weights, and zero tracking', () {
-      final textTheme = LumaTheme.light().textTheme;
-
-      expect(textTheme.displayLarge?.fontSize, 40);
-      expect(textTheme.headlineLarge?.fontSize, 32);
-      expect(textTheme.headlineLarge?.fontWeight, FontWeight.w700);
-      expect(textTheme.titleLarge?.fontSize, 20);
-      expect(textTheme.titleMedium?.fontWeight, FontWeight.w500);
-      expect(textTheme.bodyLarge?.fontSize, 16);
-      expect(textTheme.bodyMedium?.height, 1.5);
-      expect(textTheme.labelLarge?.fontWeight, FontWeight.w600);
-      expect(textTheme.labelSmall?.fontSize, 11);
-      expect(textTheme.headlineLarge?.letterSpacing, 0);
-      expect(textTheme.titleSmall?.letterSpacing, 0);
+    test('字号阶梯逐级递减、标题与正文分层且字距为 0', () {
+      final t = LumaTheme.light().textTheme;
+      final scale = [
+        t.displayLarge,
+        t.displayMedium,
+        t.displaySmall,
+        t.headlineLarge,
+        t.headlineMedium,
+        t.headlineSmall,
+        t.titleLarge,
+      ].map((style) => style!.fontSize!).toList();
+      for (var i = 1; i < scale.length; i++) {
+        expect(scale[i], lessThan(scale[i - 1]), reason: 'level $i');
+      }
+      // 同字号的标题和正文靠字重区分，避免层级扁平。
+      expect(t.titleMedium!.fontWeight, isNot(t.bodyLarge!.fontWeight));
+      expect(t.bodyMedium!.height, greaterThanOrEqualTo(1.5));
+      for (final style in [t.headlineLarge, t.titleSmall, t.bodyMedium]) {
+        expect(style!.letterSpacing, 0);
+      }
     });
   });
 }

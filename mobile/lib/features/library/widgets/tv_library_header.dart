@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/theme.dart';
 import '../../../data/models/media_types.dart';
+import 'library_sort_button.dart';
 
 /// 用局部宽度重排标题操作，筛选始终保持可横向遥控的单行。
 class TvLibraryHeader extends StatelessWidget {
@@ -46,8 +47,8 @@ class TvLibraryHeader extends StatelessWidget {
       ],
     );
     final actions = Wrap(
-      spacing: 12,
-      runSpacing: 8,
+      spacing: LumaSpacing.sm,
+      runSpacing: LumaSpacing.xs,
       children: [
         if (onSearch != null)
           Tooltip(
@@ -71,34 +72,35 @@ class TvLibraryHeader extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.fromLTRB(
         LumaLayout.pagePaddingH,
-        16,
+        LumaSpacing.md,
         LumaLayout.pagePaddingH,
-        20,
+        LumaSpacing.lg,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           LayoutBuilder(
             builder: (context, constraints) {
-              final compact =
-                  constraints.maxWidth <
-                  640 * MediaQuery.textScalerOf(context).scale(18) / 18;
+              final compact = LumaTvLayout.compactHeader(
+                constraints,
+                MediaQuery.textScalerOf(context),
+              );
               if (compact) {
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [heading, const SizedBox(height: 12), actions],
+                  children: [heading, const SizedBox(height: LumaSpacing.sm), actions],
                 );
               }
               return Row(
                 children: [
                   Expanded(child: heading),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: LumaSpacing.sm),
                   actions,
                 ],
               );
             },
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: LumaSpacing.md),
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: Row(
@@ -114,53 +116,19 @@ class TvLibraryHeader extends StatelessWidget {
                     label: const Text('仅显示收藏'),
                     selected: favoritesOnly,
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 14,
+                      horizontal: LumaSpacing.md,
+                      vertical: LumaSpacing.sm + 2,
                     ),
                     onSelected: onFavorites,
                   ),
-                const SizedBox(width: 16),
-                PopupMenuButton<MediaSort>(
-                  tooltip: '排序',
-                  initialValue: sort,
-                  onSelected: onSort,
-                  itemBuilder: (_) => [
-                    const PopupMenuItem(
-                      value: MediaSort.newest,
-                      child: Text('最近添加'),
-                    ),
-                    const PopupMenuItem(
-                      value: MediaSort.title,
-                      child: Text('标题名称'),
-                    ),
-                    if (isVideo)
-                      const PopupMenuItem(
-                        value: MediaSort.duration,
-                        child: Text('视频时长'),
-                      ),
-                  ],
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 18,
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(Icons.sort_rounded),
-                        const SizedBox(width: 10),
-                        Text(switch (sort) {
-                          MediaSort.newest => '最近添加',
-                          MediaSort.title => '标题名称',
-                          MediaSort.duration => '视频时长',
-                        }),
-                        const Icon(Icons.arrow_drop_down_rounded),
-                      ],
-                    ),
-                  ),
+                const SizedBox(width: LumaSpacing.md),
+                LibrarySortButton(
+                  value: sort,
+                  onChanged: onSort,
+                  showDuration: isVideo,
                 ),
                 if (hasExtraFilters) ...[
-                  const SizedBox(width: 16),
+                  const SizedBox(width: LumaSpacing.md),
                   TextButton.icon(
                     onPressed: onClear,
                     icon: const Icon(Icons.close_rounded),

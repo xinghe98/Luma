@@ -47,6 +47,7 @@ class _ConnectionFormState extends State<ConnectionForm> {
   FocusNode? _portField;
   FocusNode? _usernameField;
   FocusNode? _passwordField;
+  bool _submitted = false;
 
   /// TV：字段节点不参与方向遍历（浏览焦点落在外层闸门上），
   /// 只经 OK/requestFocus 进入编辑；Next 链由提交回调显式驱动。
@@ -65,8 +66,51 @@ class _ConnectionFormState extends State<ConnectionForm> {
   void _submitPort(String value) => _username.requestFocus();
   void _submitUsername(String value) => _password.requestFocus();
 
+  /// 校验失败时把焦点移到第一个出错的字段，并阻止提交。
+  void _handleConnect() {
+    setState(() => _submitted = true);
+    if (_hostError != null) {
+      _host.requestFocus();
+      return;
+    }
+    if (_portError != null) {
+      _port.requestFocus();
+      return;
+    }
+    widget.onConnect();
+  }
+
+  String? get _hostError {
+    final text = widget.hostController.text.trim();
+    if (text.isEmpty) return '请输入服务器地址';
+    if (text.contains(' ')) return '地址不能包含空格';
+    return null;
+  }
+
+  String? get _portError {
+    final text = widget.portController.text.trim();
+    if (text.isEmpty) return null;
+    final port = int.tryParse(text);
+    if (port == null || port < 1 || port > 65535) return '端口范围为 1–65535';
+    return null;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    widget.hostController.addListener(_revalidate);
+    widget.portController.addListener(_revalidate);
+  }
+
+  /// 已提交后随输入实时刷新错误提示，让修正立即生效。
+  void _revalidate() {
+    if (_submitted && mounted) setState(() {});
+  }
+
   @override
   void dispose() {
+    widget.hostController.removeListener(_revalidate);
+    widget.portController.removeListener(_revalidate);
     _hostField?.dispose();
     _portField?.dispose();
     _usernameField?.dispose();
@@ -94,10 +138,11 @@ class _ConnectionFormState extends State<ConnectionForm> {
                 textInputAction: TextInputAction.next,
                 autocorrect: false,
                 onSubmitted: widget.television ? _submitHost : null,
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   labelText: 'IP 地址',
                   hintText: '192.168.1.10',
-                  prefixIcon: Icon(Icons.dns_outlined),
+                  prefixIcon: const Icon(Icons.dns_outlined),
+                  errorText: _submitted ? _hostError : null,
                 ),
               ),
             );
@@ -111,10 +156,11 @@ class _ConnectionFormState extends State<ConnectionForm> {
                 textInputAction: TextInputAction.next,
                 inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                 onSubmitted: widget.television ? _submitPort : null,
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   labelText: '端口',
                   hintText: '8080',
-                  prefixIcon: Icon(Icons.tag_rounded),
+                  prefixIcon: const Icon(Icons.tag_rounded),
+                  errorText: _submitted ? _portError : null,
                 ),
               ),
             );
@@ -170,7 +216,7 @@ class _ConnectionFormState extends State<ConnectionForm> {
             enableSuggestions: false,
             onSubmitted: widget.controller.isLoading
                 ? null
-                : (_) => widget.onConnect(),
+                : (_) => _handleConnect(),
             decoration: const InputDecoration(
               labelText: '密码',
               prefixIcon: Icon(Icons.lock_outline_rounded),
@@ -195,13 +241,12 @@ class _ConnectionFormState extends State<ConnectionForm> {
             style: widget.television
                 ? FilledButton.styleFrom(
                     minimumSize: const Size(0, LumaTvLayout.controlMinHeight),
-                    textStyle: const TextStyle(fontSize: 18),
                   )
                 : null,
             focusNode: widget.connectFocusNode,
             onPressed: !widget.enabled || widget.controller.isLoading
                 ? null
-                : widget.onConnect,
+                : _handleConnect,
             icon: widget.controller.isLoading
                 ? SizedBox.square(
                     dimension: 18,
@@ -214,17 +259,20 @@ class _ConnectionFormState extends State<ConnectionForm> {
             label: Text(widget.controller.isLoading ? '正在连接' : '立即连接'),
           ),
         ),
-        AnimatedSwitcher(
-          duration: LumaMotion.forContext(context, LumaMotion.normal),
-          switchInCurve: LumaMotion.standard,
-          switchOutCurve: LumaMotion.standard,
-          child: widget.controller.message == null
-              ? const SizedBox(height: LumaSpacing.xl)
-              : ConnectionNotice(
-                  key: ValueKey(widget.controller.message),
-                  phase: widget.controller.phase,
-                  message: widget.controller.message!,
-                ),
+        ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 48),
+          child: AnimatedSwitcher(
+            duration: LumaMotion.forContext(context, LumaMotion.normal),
+            switchInCurve: LumaMotion.standard,
+            switchOutCurve: LumaMotion.standard,
+            child: widget.controller.message == null
+                ? const SizedBox(height: 48)
+                : ConnectionNotice(
+                    key: ValueKey(widget.controller.message),
+                    phase: widget.controller.phase,
+                    message: widget.controller.message!,
+                  ),
+          ),
         ),
       ],
     );

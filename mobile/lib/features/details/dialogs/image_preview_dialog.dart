@@ -247,7 +247,6 @@ class _ImagePreviewDialogState extends State<ImagePreviewDialog> {
   @override
   Widget build(BuildContext context) {
     final item = widget.item;
-    final top = MediaQuery.paddingOf(context).top;
     final routeAnimation = ModalRoute.of(context)?.animation;
     final dpr = MediaQuery.devicePixelRatioOf(context);
     final size = MediaQuery.sizeOf(context);
@@ -340,7 +339,7 @@ class _ImagePreviewDialogState extends State<ImagePreviewDialog> {
     final chromeWidget = _PreviewChrome(
       onDetails: () => unawaited(_close(ImagePreviewAction.openDetails)),
       onClose: () => unawaited(_close()),
-      // TV：显式缩放工具与首按钮焦点；普通端保持两个动作。
+      // TV：显式缩放工具与首按钮焦点；普通端也提供同一组缩放动作。
       television: isTv,
       zoomIn: () => _zoomBy(1.25),
       zoomOut: () => _zoomBy(0.8),
@@ -358,10 +357,10 @@ class _ImagePreviewDialogState extends State<ImagePreviewDialog> {
             child: chromeWidget,
           );
     final chrome = Positioned(
-      top: isTv ? null : top + LumaSpacing.xs,
+      top: isTv ? null : 0,
       bottom: isTv ? size.height * 0.05 : null,
-      left: isTv ? size.width * 0.05 : LumaSpacing.xs,
-      right: isTv ? size.width * 0.05 : LumaSpacing.xs,
+      left: isTv ? size.width * 0.05 : 0,
+      right: isTv ? size.width * 0.05 : 0,
       child: isTv
           ? Focus(
               canRequestFocus: false,
@@ -554,7 +553,54 @@ class _PreviewChrome extends StatelessWidget {
       icon: const Icon(Icons.close_rounded),
     );
     if (!television) {
-      return Row(children: [detailsButton, const Spacer(), closeButton]);
+      // 普通端顶栏：底部遮罩反转为顶部渐变，缩放与详情、关闭同一排。
+      return DecoratedBox(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.bottomCenter,
+            end: Alignment.topCenter,
+            colors: LumaGradients.bottomScrim(extras.playerInk).colors,
+            stops: LumaGradients.bottomScrim(extras.playerInk).stops,
+          ),
+        ),
+        child: SafeArea(
+          bottom: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(
+              LumaSpacing.xs,
+              LumaSpacing.xs,
+              LumaSpacing.xs,
+              LumaSpacing.xl,
+            ),
+            child: Row(
+              children: [
+                detailsButton,
+                const Spacer(),
+                IconButton.filledTonal(
+                  tooltip: '放大',
+                  style: chromeStyle,
+                  onPressed: zoomIn,
+                  icon: const Icon(Icons.zoom_in_rounded),
+                ),
+                IconButton.filledTonal(
+                  tooltip: '缩小',
+                  style: chromeStyle,
+                  onPressed: zoomOut,
+                  icon: const Icon(Icons.zoom_out_rounded),
+                ),
+                IconButton.filledTonal(
+                  tooltip: '还原',
+                  style: chromeStyle,
+                  onPressed: onReset,
+                  icon: const Icon(Icons.fit_screen_rounded),
+                ),
+                const SizedBox(width: LumaSpacing.xs),
+                closeButton,
+              ],
+            ),
+          ),
+        ),
+      );
     }
     return DecoratedBox(
       decoration: BoxDecoration(

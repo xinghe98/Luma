@@ -2,11 +2,12 @@ import 'package:flutter/material.dart';
 
 import '../../../core/theme.dart';
 import '../../../shared/branding/brand_mark.dart';
-import 'scan_status_card.dart';
+import 'home_layout.dart';
 
-/// 展示首页品牌信息、搜索入口和扫描状态，不改变媒体加载流程。
-class HomeHeader extends StatelessWidget {
-  const HomeHeader({
+/// 首页顶部紧凑栏：品牌标志（双击回顶）、搜索入口。
+/// 只负责导航与回顶，不持有媒体状态。
+class HomeTopBar extends StatelessWidget {
+  const HomeTopBar({
     super.key,
     required this.onOpenSearch,
     required this.onScrollToTop,
@@ -20,153 +21,50 @@ class HomeHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final luma = context.luma;
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: luma.brandSurfaceVariant,
-        borderRadius: const BorderRadius.vertical(
-          bottom: Radius.circular(LumaRadii.extraLarge),
-        ),
-        border: Border(
-          bottom: BorderSide(
-            color: theme.colorScheme.outlineVariant.withValues(alpha: 0.45),
+    final scheme = Theme.of(context).colorScheme;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final inset = HomeLayout.sideInset(constraints.maxWidth);
+        return Padding(
+          padding: EdgeInsets.fromLTRB(
+            inset,
+            LumaSpacing.sm,
+            inset,
+            LumaSpacing.xs,
           ),
-        ),
-      ),
-      child: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(
-            maxWidth: LumaLayout.contentMaxWidth,
-          ),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(
-              LumaLayout.pagePaddingH,
-              LumaSpacing.md,
-              LumaLayout.pagePaddingH,
-              LumaSpacing.xl,
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    GestureDetector(
-                      behavior: HitTestBehavior.translucent,
-                      onDoubleTap: onScrollToTop,
-                      child: SizedBox.square(
-                        dimension: 56,
-                        child: Center(
-                          child: Theme(
-                            data: theme,
-                            child: const BrandMark(
-                              variant: BrandMarkVariant.symbol,
-                              height: 52,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: LumaSpacing.md),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            '${greetingForHour(DateTime.now().hour)}，欢迎回来',
-                            style: theme.textTheme.headlineLarge?.copyWith(
-                              color: luma.onBrandSurface,
-                            ),
-                          ),
-                          const SizedBox(height: LumaSpacing.xxs),
-                          Text(
-                            '在熟悉的影像里，继续今天的片刻。',
-                            style: theme.textTheme.bodyLarge?.copyWith(
-                              color: luma.onBrandSurfaceMuted,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: LumaSpacing.lg),
-                _HomeSearchButton(onPressed: onOpenSearch),
-                const SizedBox(height: LumaSpacing.sm),
-                const ScanStatusCard(),
-              ],
-            ),
-          ),
-        ),
-      ),
+          child: _bar(scheme),
+        );
+      },
     );
   }
-}
 
-class _HomeSearchButton extends StatelessWidget {
-  const _HomeSearchButton({required this.onPressed});
-
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colors = theme.colorScheme;
-    final radius = BorderRadius.circular(LumaRadii.medium);
-    return Semantics(
-      button: true,
-      label: '搜索媒体',
-      child: Material(
-        color: colors.surfaceContainer,
-        elevation: 1,
-        shadowColor: colors.shadow.withValues(alpha: 0.08),
-        shape: RoundedRectangleBorder(
-          borderRadius: radius,
-          side: BorderSide(
-            color: colors.outlineVariant.withValues(alpha: 0.52),
-          ),
-        ),
-        child: InkWell(
-          onTap: onPressed,
-          borderRadius: radius,
-          child: SizedBox(
-            height: LumaLayout.inputHeight,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: LumaSpacing.md),
-              child: Row(
-                children: [
-                  Icon(
-                    Icons.search_rounded,
-                    color: colors.primary,
-                    size: LumaIconSize.action,
-                  ),
-                  const SizedBox(width: LumaSpacing.sm),
-                  Text(
-                    '搜索你的媒体',
-                    style: theme.textTheme.bodyLarge?.copyWith(
-                      color: colors.onSurfaceVariant,
-                    ),
-                  ),
-                  const Spacer(),
-                  Icon(
-                    Icons.tune_rounded,
-                    color: colors.onSurfaceVariant,
-                    size: LumaIconSize.inline,
-                  ),
-                ],
+  Widget _bar(ColorScheme scheme) {
+    return Row(
+      children: [
+        Semantics(
+          button: true,
+          label: '回到顶部',
+          child: GestureDetector(
+            behavior: HitTestBehavior.translucent,
+            onDoubleTap: onScrollToTop,
+            child: const SizedBox(
+              height: 48,
+              child: Center(
+                child: BrandMark(
+                  variant: BrandMarkVariant.horizontal,
+                  height: 28,
+                ),
               ),
             ),
           ),
         ),
-      ),
+        const Spacer(),
+        IconButton(
+          tooltip: '搜索',
+          onPressed: onOpenSearch,
+          icon: Icon(Icons.search_rounded, color: scheme.onSurfaceVariant),
+        ),
+      ],
     );
   }
-}
-
-/// 按设备本地时间提供自然问候，方便测试且不依赖服务端时区。
-String greetingForHour(int hour) {
-  if (hour >= 5 && hour < 12) return '早上好';
-  if (hour >= 12 && hour < 18) return '下午好';
-  return '晚上好';
 }

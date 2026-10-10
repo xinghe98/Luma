@@ -13,15 +13,12 @@ ThemeData applyLumaComponentThemes({
   return base.copyWith(
     textTheme: textTheme,
     cardTheme: CardThemeData(
-      elevation: 0.5,
-      shadowColor: scheme.shadow.withValues(alpha: 0.08),
+      elevation: 0,
       margin: EdgeInsets.zero,
       color: scheme.surfaceContainer,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(LumaRadii.large),
-        side: BorderSide(
-          color: scheme.outlineVariant.withValues(alpha: 0.44),
-        ),
+        side: BorderSide(color: scheme.outlineVariant.withValues(alpha: 0.6)),
       ),
     ),
     appBarTheme: AppBarTheme(
@@ -42,8 +39,10 @@ ThemeData applyLumaComponentThemes({
     ),
     snackBarTheme: SnackBarThemeData(
       behavior: SnackBarBehavior.floating,
-      backgroundColor: scheme.surfaceContainerHigh,
-      contentTextStyle: textTheme.bodyMedium?.copyWith(color: scheme.onSurface),
+      backgroundColor: scheme.inverseSurface,
+      contentTextStyle: textTheme.bodyMedium?.copyWith(
+        color: scheme.onInverseSurface,
+      ),
       shape: RoundedRectangleBorder(borderRadius: radiusMd),
     ),
     progressIndicatorTheme: ProgressIndicatorThemeData(
@@ -72,7 +71,9 @@ ThemeData applyLumaComponentThemes({
       ),
       enabledBorder: OutlineInputBorder(
         borderRadius: radiusMd,
-        borderSide: BorderSide(color: scheme.outlineVariant.withAlpha(100)),
+        borderSide: BorderSide(
+          color: scheme.outlineVariant.withValues(alpha: 0.6),
+        ),
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: radiusMd,
@@ -87,20 +88,20 @@ ThemeData applyLumaComponentThemes({
       ),
       focusedErrorBorder: OutlineInputBorder(
         borderRadius: radiusMd,
-        borderSide: BorderSide(
-          color: scheme.error,
-          width: LumaStroke.focused,
-        ),
+        borderSide: BorderSide(color: scheme.error, width: LumaStroke.focused),
       ),
     ),
+    // 按钮外观收到 40 高、图标 18，显得秀气；padded 让触控区仍补足 48，
+    // 手机与 Windows 触屏都点得准。TV 主题会把高度重新放大到 56。
     filledButtonTheme: FilledButtonThemeData(
       style: FilledButton.styleFrom(
         minimumSize: const Size(0, LumaLayout.buttonHeight),
         padding: const EdgeInsets.symmetric(horizontal: LumaSpacing.md),
         visualDensity: VisualDensity.standard,
-        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        tapTargetSize: MaterialTapTargetSize.padded,
         shape: buttonShape,
         textStyle: textTheme.labelLarge,
+        iconSize: LumaIconSize.status,
       ),
     ),
     outlinedButtonTheme: OutlinedButtonThemeData(
@@ -108,34 +109,39 @@ ThemeData applyLumaComponentThemes({
         minimumSize: const Size(0, LumaLayout.buttonHeight),
         padding: const EdgeInsets.symmetric(horizontal: LumaSpacing.md),
         visualDensity: VisualDensity.standard,
-        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        tapTargetSize: MaterialTapTargetSize.padded,
         shape: buttonShape,
         textStyle: textTheme.labelLarge,
+        iconSize: LumaIconSize.status,
       ),
     ),
     textButtonTheme: TextButtonThemeData(
       style: TextButton.styleFrom(
-        minimumSize: const Size(0, LumaLayout.compactControlHeight),
+        minimumSize: const Size(0, LumaLayout.buttonHeight),
         padding: const EdgeInsets.symmetric(horizontal: LumaSpacing.sm),
         visualDensity: VisualDensity.standard,
-        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        tapTargetSize: MaterialTapTargetSize.padded,
         shape: buttonShape,
         textStyle: textTheme.labelLarge,
+        iconSize: LumaIconSize.status,
       ),
     ),
     iconButtonTheme: IconButtonThemeData(
       style: IconButton.styleFrom(
         minimumSize: const Size(
-          LumaLayout.minTapTarget,
-          LumaLayout.minTapTarget,
+          LumaLayout.buttonHeight,
+          LumaLayout.buttonHeight,
         ),
+        tapTargetSize: MaterialTapTargetSize.padded,
         shape: RoundedRectangleBorder(borderRadius: radiusMd),
-        iconSize: LumaIconSize.action,
+        iconSize: LumaIconSize.compact,
       ),
     ),
     chipTheme: ChipThemeData(
-      shape: RoundedRectangleBorder(borderRadius: radiusMd),
-      side: BorderSide(color: scheme.outlineVariant.withAlpha(80)),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(LumaRadii.small),
+      ),
+      side: BorderSide(color: scheme.outlineVariant),
       selectedColor: scheme.primaryContainer,
       labelStyle: textTheme.labelLarge,
       padding: const EdgeInsets.symmetric(horizontal: LumaSpacing.xs),
@@ -173,10 +179,10 @@ ThemeData applyLumaComponentThemes({
       constraints: const BoxConstraints(minHeight: LumaLayout.inputHeight),
     ),
     dialogTheme: DialogThemeData(
-      backgroundColor: scheme.surface,
-      elevation: 1,
+      backgroundColor: scheme.surfaceContainer,
+      elevation: 0,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(LumaRadii.large),
+        borderRadius: BorderRadius.circular(LumaRadii.extraLarge),
       ),
       titleTextStyle: textTheme.titleLarge?.copyWith(color: scheme.onSurface),
       contentTextStyle: textTheme.bodyMedium?.copyWith(
@@ -184,7 +190,7 @@ ThemeData applyLumaComponentThemes({
       ),
     ),
     bottomSheetTheme: BottomSheetThemeData(
-      backgroundColor: scheme.surface,
+      backgroundColor: scheme.surfaceContainer,
       elevation: 0,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(
@@ -194,31 +200,10 @@ ThemeData applyLumaComponentThemes({
       showDragHandle: true,
       dragHandleColor: scheme.outlineVariant,
     ),
-    navigationBarTheme: NavigationBarThemeData(
-      height: LumaLayout.navigationBarHeight,
-      backgroundColor: scheme.surface,
-      elevation: 0,
-      indicatorColor: scheme.primaryContainer.withAlpha(160),
-      labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-      labelTextStyle: WidgetStateProperty.resolveWith((states) {
-        final selected = states.contains(WidgetState.selected);
-        return textTheme.labelMedium?.copyWith(
-          fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
-          color: selected ? scheme.onSurface : scheme.onSurfaceVariant,
-        );
-      }),
-      iconTheme: WidgetStateProperty.resolveWith((states) {
-        final selected = states.contains(WidgetState.selected);
-        return IconThemeData(
-          size: 24,
-          color: selected ? scheme.onPrimaryContainer : scheme.onSurfaceVariant,
-        );
-      }),
-    ),
     navigationRailTheme: NavigationRailThemeData(
       backgroundColor: scheme.surface,
       elevation: 0,
-      indicatorColor: scheme.primaryContainer.withAlpha(160),
+      indicatorColor: scheme.primaryContainer,
       selectedIconTheme: IconThemeData(color: scheme.onPrimaryContainer),
       unselectedIconTheme: IconThemeData(color: scheme.onSurfaceVariant),
       selectedLabelTextStyle: textTheme.labelLarge?.copyWith(
@@ -247,10 +232,10 @@ ThemeData applyLumaComponentThemes({
       inactiveTrackColor: scheme.onSurface.withValues(alpha: 0.24),
       thumbColor: scheme.primary,
       overlayColor: scheme.primary.withValues(alpha: 0.12),
-      trackHeight: 3,
+      trackHeight: 4,
     ),
     dividerTheme: DividerThemeData(
-      color: scheme.outlineVariant.withAlpha(90),
+      color: scheme.outlineVariant,
       space: 1,
       thickness: 1,
     ),

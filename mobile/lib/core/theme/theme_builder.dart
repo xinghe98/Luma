@@ -12,59 +12,86 @@ final class LumaThemeBuilder {
     final scheme = ColorScheme(
       brightness: brightness,
       primary: isDark ? LumaColors.darkPrimary : LumaColors.lightPrimary,
-      onPrimary: isDark ? LumaColors.deepBlue : LumaColors.paper,
+      onPrimary: isDark ? LumaColors.darkOnPrimary : LumaColors.lightOnPrimary,
       primaryContainer: isDark
           ? LumaColors.darkPrimaryContainer
           : LumaColors.lightPrimaryContainer,
-      onPrimaryContainer: isDark ? LumaColors.onInk : LumaColors.ink,
-      secondary: isDark ? LumaColors.accentBlue : LumaColors.lightSecondary,
-      onSecondary: isDark ? LumaColors.deepBlue : LumaColors.paper,
+      onPrimaryContainer: isDark
+          ? LumaColors.darkOnPrimaryContainer
+          : LumaColors.lightOnPrimaryContainer,
+      secondary: isDark ? LumaColors.darkSecondary : LumaColors.lightSecondary,
+      onSecondary: isDark
+          ? LumaColors.darkOnSecondary
+          : LumaColors.lightOnSecondary,
       secondaryContainer: isDark
           ? LumaColors.darkSecondaryContainer
           : LumaColors.lightSecondaryContainer,
-      onSecondaryContainer: isDark ? LumaColors.onInk : LumaColors.ink,
+      onSecondaryContainer: isDark
+          ? LumaColors.darkOnSecondaryContainer
+          : LumaColors.lightOnSecondaryContainer,
       tertiary: isDark ? LumaColors.darkTertiary : LumaColors.lightTertiary,
-      onTertiary: isDark ? LumaColors.deepBlue : LumaColors.paper,
+      onTertiary: isDark
+          ? LumaColors.darkOnTertiary
+          : LumaColors.lightOnTertiary,
       tertiaryContainer: isDark
           ? LumaColors.darkTertiaryContainer
           : LumaColors.lightTertiaryContainer,
-      onTertiaryContainer: isDark ? LumaColors.onInk : LumaColors.ink,
-      error: LumaColors.error,
-      onError: LumaColors.onError,
+      onTertiaryContainer: isDark
+          ? LumaColors.darkOnTertiaryContainer
+          : LumaColors.lightOnTertiaryContainer,
+      error: isDark ? LumaColors.darkError : LumaColors.lightError,
+      onError: isDark ? LumaColors.darkOnError : LumaColors.lightOnError,
       errorContainer: isDark
           ? LumaColors.darkErrorContainer
           : LumaColors.lightErrorContainer,
       onErrorContainer: isDark
           ? LumaColors.darkOnErrorContainer
           : LumaColors.lightOnErrorContainer,
-      surface: isDark ? LumaColors.deepBlue : LumaColors.paper,
-      onSurface: isDark ? LumaColors.onInk : LumaColors.ink,
-      surfaceDim: isDark ? LumaColors.ink : LumaColors.lightSurfaceDim,
-      surfaceBright: isDark ? LumaColors.darkSurfaceBright : LumaColors.paper,
-      surfaceContainerLowest: isDark ? LumaColors.ink : LumaColors.paper,
-      surfaceContainerLow: isDark ? LumaColors.deepBlue : LumaColors.paper,
+      surface: isDark ? LumaColors.darkSurface : LumaColors.lightSurface,
+      onSurface: isDark ? LumaColors.darkOnSurface : LumaColors.lightOnSurface,
+      onSurfaceVariant: isDark
+          ? LumaColors.darkOnSurfaceVariant
+          : LumaColors.lightOnSurfaceVariant,
+      surfaceDim: isDark
+          ? LumaColors.darkSurfaceDim
+          : LumaColors.lightSurfaceDim,
+      surfaceBright: isDark
+          ? LumaColors.darkSurfaceBright
+          : LumaColors.lightSurfaceBright,
+      surfaceContainerLowest: isDark
+          ? LumaColors.darkSurfaceContainerLowest
+          : LumaColors.lightSurfaceContainerLowest,
+      surfaceContainerLow: isDark
+          ? LumaColors.darkSurfaceContainerLow
+          : LumaColors.lightSurfaceContainerLow,
       surfaceContainer: isDark
-          ? LumaColors.surface
+          ? LumaColors.darkSurfaceContainer
           : LumaColors.lightSurfaceContainer,
       surfaceContainerHigh: isDark
-          ? LumaColors.elevated
+          ? LumaColors.darkSurfaceContainerHigh
           : LumaColors.lightSurfaceContainerHigh,
       surfaceContainerHighest: isDark
-          ? LumaColors.elevated
-          : LumaColors.lightSurfaceContainerHigh,
+          ? LumaColors.darkSurfaceContainerHighest
+          : LumaColors.lightSurfaceContainerHighest,
       outline: isDark ? LumaColors.darkOutline : LumaColors.lightOutline,
       outlineVariant: isDark
           ? LumaColors.darkOutlineVariant
           : LumaColors.lightOutlineVariant,
-      shadow: LumaColors.ink,
-      scrim: LumaColors.ink,
-      inverseSurface: isDark ? LumaColors.paper : LumaColors.ink,
-      onInverseSurface: isDark ? LumaColors.ink : LumaColors.onInk,
-      inversePrimary: isDark ? LumaColors.lightPrimary : LumaColors.darkPrimary,
+      shadow: LumaColors.shadow,
+      scrim: LumaColors.scrim,
+      inverseSurface: isDark
+          ? LumaColors.darkInverseSurface
+          : LumaColors.lightInverseSurface,
+      onInverseSurface: isDark
+          ? LumaColors.darkOnInverseSurface
+          : LumaColors.lightOnInverseSurface,
+      inversePrimary: isDark
+          ? LumaColors.darkInversePrimary
+          : LumaColors.lightInversePrimary,
       surfaceTint: isDark ? LumaColors.darkPrimary : LumaColors.lightPrimary,
     );
 
-    final scaffold = isDark ? LumaColors.deepBlue : LumaColors.paper;
+    final scaffold = isDark ? LumaColors.darkSurface : LumaColors.lightSurface;
     final extras = isDark ? LumaExtras.dark : LumaExtras.light;
     final radiusMd = BorderRadius.circular(LumaRadii.medium);
     final buttonShape = RoundedRectangleBorder(borderRadius: radiusMd);

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../../core/theme.dart';
@@ -5,6 +7,7 @@ import '../player_controller.dart';
 import 'player_bottom_toolbar.dart';
 import 'player_center_controls.dart';
 import 'player_timeline.dart';
+import 'player_ended_overlay.dart';
 import 'player_top_bar.dart';
 
 class PlayerControls extends StatelessWidget {
@@ -52,7 +55,13 @@ class PlayerControls extends StatelessWidget {
           onMinimize: onMinimize,
         ),
         const Spacer(),
-        PlayerCenterControls(controller: controller),
+        // 播完时用结束态替换中央控制；返回与重播由页面级回调处理。
+        controller.completed
+            ? PlayerEndedOverlay(
+                controller: controller,
+                onExit: () => unawaited(Navigator.of(context).maybePop()),
+              )
+            : PlayerCenterControls(controller: controller),
         const Spacer(),
         Padding(
           padding: const EdgeInsets.fromLTRB(

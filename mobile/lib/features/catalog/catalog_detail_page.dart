@@ -16,7 +16,6 @@ import '../../shared/states/error_state.dart';
 import '../../shared/states/skeleton.dart';
 import 'catalog_store.dart';
 import 'widgets/catalog_detail_content.dart';
-import 'widgets/catalog_detail_theme.dart';
 
 /// 展示电影或电视剧详情，并在可选的路由过渡结束后刷新完整资料。
 class CatalogDetailPage extends StatefulWidget {
@@ -240,7 +239,7 @@ class _CatalogDetailPageState extends State<CatalogDetailPage> {
         final page = Scaffold(
           backgroundColor: item == null || isTelevision
               ? null
-              : CatalogDetailPalette.background,
+              : Theme.of(context).colorScheme.surface,
           // TV 焦点揭示以实际内容视口为边界，避免列表首行被工具栏遮住。
           extendBodyBehindAppBar: item != null && !isTelevision,
           appBar: AppBar(
@@ -261,10 +260,12 @@ class _CatalogDetailPageState extends State<CatalogDetailPage> {
                       maximumSize: const Size.square(48),
                       backgroundColor: isTelevision
                           ? Theme.of(context).colorScheme.surfaceContainerHigh
-                          : CatalogDetailPalette.text,
-                      foregroundColor: isTelevision
-                          ? Theme.of(context).colorScheme.onSurface
-                          : CatalogDetailPalette.background,
+                          : Theme.of(
+                              context,
+                            ).colorScheme.surfaceContainerHigh.withValues(
+                              alpha: 0.9,
+                            ),
+                      foregroundColor: Theme.of(context).colorScheme.onSurface,
                       shape: const CircleBorder(),
                     ),
                     icon: const Icon(Icons.arrow_back_rounded),
@@ -277,10 +278,12 @@ class _CatalogDetailPageState extends State<CatalogDetailPage> {
             surfaceTintColor: Colors.transparent,
             foregroundColor: item == null || isTelevision
                 ? null
-                : CatalogDetailPalette.text,
+                : Theme.of(context).colorScheme.onSurface,
             systemOverlayStyle: item == null || isTelevision
                 ? null
-                : SystemUiOverlayStyle.light,
+                : Theme.of(context).brightness == Brightness.dark
+                ? SystemUiOverlayStyle.light
+                : SystemUiOverlayStyle.dark,
             actions: [
               if (item != null && !isTelevision)
                 IconButton(

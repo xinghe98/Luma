@@ -51,23 +51,28 @@ class AdaptiveAppNavigation extends StatelessWidget {
         }
         final extended =
             constraints.maxWidth >= LumaLayout.extendedRailBreakpoint;
+        // 槽位序号与主目的地序号之间的换算：search 分支没有槽位，选中序号为 null。
+        final primaryDestinations = AppDestination.primaryDestinations;
+        final primaryIndex = AppDestination.primaryIndexOf(selectedIndex);
         return Scaffold(
           body: SafeArea(
             child: Row(
               children: [
                 NavigationRail(
                   extended: extended,
-                  selectedIndex: selectedIndex,
-                  onDestinationSelected: onSelect,
+                  selectedIndex: primaryIndex,
+                  onDestinationSelected: (index) =>
+                      onSelect(primaryDestinations[index].index),
+                  // 搜索入口由各页顶栏的搜索图标和 Ctrl+F 提供，Rail 只放品牌标识。
                   leading: const Padding(
-                    padding: EdgeInsets.only(bottom: LumaSpacing.lg),
+                    padding: EdgeInsets.only(bottom: LumaSpacing.sm),
                     child: BrandMark(
                       variant: BrandMarkVariant.symbol,
                       compact: true,
-                      height: 36,
+                      height: 32,
                     ),
                   ),
-                  destinations: AppDestination.values
+                  destinations: primaryDestinations
                       .map((item) => item.toNavigationRailDestination())
                       .toList(),
                 ),
@@ -141,111 +146,83 @@ class _LumaBottomNavigationState extends State<_LumaBottomNavigation> {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final textTheme = Theme.of(context).textTheme;
     final duration = LumaMotion.forContext(context, LumaMotion.navigation);
-    final compact = MediaQuery.sizeOf(context).width < 360;
-    final horizontalMargin = compact ? LumaSpacing.xs : LumaSpacing.md;
+    // 搜索是隐藏分支：没有槽位，不画指示器，全部槽位按未选中显示。
+    final visualSlot = AppDestination.primaryIndexOf(_visualIndex);
+    final semanticSlot = AppDestination.primaryIndexOf(widget.selectedIndex);
     return ColoredBox(
-      color: Theme.of(context).scaffoldBackgroundColor,
+      color: colors.surfaceContainer,
       child: SafeArea(
         top: false,
-        minimum: EdgeInsets.fromLTRB(
-          horizontalMargin,
-          LumaSpacing.xxs,
-          horizontalMargin,
-          LumaSpacing.xs,
-        ),
-        child: Align(
-          alignment: Alignment.bottomCenter,
-          heightFactor: 1,
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 520),
-            child: RepaintBoundary(
-              child: DecoratedBox(
-                key: const ValueKey('bottom-navigation-surface'),
-                decoration: BoxDecoration(
-                  color: isDark
-                      ? colors.surfaceContainerHigh
-                      : colors.surfaceContainerHighest,
-                  borderRadius: BorderRadius.circular(LumaRadii.extraLarge),
-                  border: Border.all(
-                    color: colors.outlineVariant.withValues(
-                      alpha: isDark ? 0.58 : 0.52,
-                    ),
-                  ),
-                ),
-                child: SizedBox(
-                  height: 64,
-                  child: LayoutBuilder(
-                    builder: (context, constraints) {
-                      final destinationCount = AppDestination.values.length;
-                      const trackInset = LumaSpacing.xs;
-                      final trackWidth = constraints.maxWidth - trackInset * 2;
-                      final slotWidth = trackWidth / destinationCount;
-                      final indicatorWidth = (slotWidth + LumaSpacing.xs)
-                          .clamp(64.0, 88.0)
-                          .toDouble();
-                      return Stack(
-                        children: [
-                          Positioned(
-                            left: trackInset + (slotWidth - indicatorWidth) / 2,
-                            top: 10,
-                            width: indicatorWidth,
-                            height: 44,
-                            child: TweenAnimationBuilder<double>(
-                              key: const ValueKey(
-                                'bottom-navigation-indicator-animation',
+        child: DecoratedBox(
+          key: const ValueKey('bottom-navigation-surface'),
+          decoration: BoxDecoration(
+            border: Border(top: BorderSide(color: colors.outlineVariant)),
+          ),
+          child: SizedBox(
+            height: LumaLayout.navigationBarHeight,
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final primaryDestinations = AppDestination.primaryDestinations;
+                final slotWidth =
+                    constraints.maxWidth / primaryDestinations.length;
+                return Stack(
+                  children: [
+                    // 顶部指示器按槽位横向滑动；隐藏分支上停用时全部移除。
+                    if (visualSlot != null)
+                      Positioned(
+                        left: (slotWidth - _bottomNavIndicatorWidth) / 2,
+                        top: 0,
+                        width: _bottomNavIndicatorWidth,
+                        height: _bottomNavIndicatorHeight,
+                        child: TweenAnimationBuilder<double>(
+                          key: const ValueKey(
+                            'bottom-navigation-indicator-animation',
+                          ),
+                          tween: Tween(end: visualSlot.toDouble()),
+                          duration: duration,
+                          curve: Curves.easeOutCubic,
+                          builder: (context, value, child) =>
+                              Transform.translate(
+                                key: const ValueKey(
+                                  'bottom-navigation-indicator',
+                                ),
+                                offset: Offset(value * slotWidth, 0),
+                                child: child,
                               ),
-                              tween: Tween(end: _visualIndex.toDouble()),
-                              duration: duration,
-                              curve: Curves.easeOutCubic,
-                              builder: (context, value, child) =>
-                                  Transform.translate(
-                                    key: const ValueKey(
-                                      'bottom-navigation-indicator',
-                                    ),
-                                    offset: Offset(value * slotWidth, 0),
-                                    child: child,
-                                  ),
-                              child: RepaintBoundary(
-                                child: DecoratedBox(
-                                  decoration: BoxDecoration(
-                                    color: colors.primary,
-                                    borderRadius: BorderRadius.circular(
-                                      LumaRadii.extraLarge,
-                                    ),
-                                  ),
+                          child: RepaintBoundary(
+                            child: DecoratedBox(
+                              decoration: BoxDecoration(
+                                color: colors.primary,
+                                borderRadius: BorderRadius.circular(
+                                  LumaRadii.badge,
                                 ),
                               ),
                             ),
                           ),
-                          for (final entry in AppDestination.values.indexed)
-                            Positioned(
-                              key: ValueKey(
-                                'bottom-nav-slot-${entry.$2.routeName}',
-                              ),
-                              left: trackInset + entry.$1 * slotWidth,
-                              top: LumaSpacing.xxs,
-                              width: slotWidth,
-                              height: 56,
-                              child: _BottomDestination(
-                                destination: entry.$2,
-                                selected: entry.$1 == _visualIndex,
-                                semanticallySelected:
-                                    entry.$1 == widget.selectedIndex,
-                                activeColor: colors.onPrimary,
-                                inactiveColor: colors.onSurfaceVariant,
-                                duration: duration,
-                                selectedContentWidth: indicatorWidth,
-                                onTap: () => _handleSelect(entry.$1),
-                              ),
-                            ),
-                        ],
-                      );
-                    },
-                  ),
-                ),
-              ),
+                        ),
+                      ),
+                    for (final entry in primaryDestinations.indexed)
+                      Positioned(
+                        key: ValueKey('bottom-nav-slot-${entry.$2.routeName}'),
+                        left: entry.$1 * slotWidth,
+                        top: 0,
+                        bottom: 0,
+                        width: slotWidth,
+                        child: _BottomDestination(
+                          destination: entry.$2,
+                          selected: entry.$1 == visualSlot,
+                          semanticallySelected: entry.$1 == semanticSlot,
+                          activeColor: colors.primary,
+                          inactiveColor: colors.onSurfaceVariant,
+                          textTheme: textTheme,
+                          onTap: () => _handleSelect(entry.$2.index),
+                        ),
+                      ),
+                  ],
+                );
+              },
             ),
           ),
         ),
@@ -254,6 +231,11 @@ class _LumaBottomNavigationState extends State<_LumaBottomNavigation> {
   }
 }
 
+// 底栏指示器：位于槽位顶部的胶囊横条。
+const _bottomNavIndicatorWidth = 24.0;
+const _bottomNavIndicatorHeight = 3.0;
+
+/// 底栏单个槽位：图标在上、标签在下，始终同时显示。
 class _BottomDestination extends StatelessWidget {
   const _BottomDestination({
     required this.destination,
@@ -261,8 +243,7 @@ class _BottomDestination extends StatelessWidget {
     required this.semanticallySelected,
     required this.activeColor,
     required this.inactiveColor,
-    required this.duration,
-    required this.selectedContentWidth,
+    required this.textTheme,
     required this.onTap,
   });
 
@@ -271,18 +252,16 @@ class _BottomDestination extends StatelessWidget {
   final bool semanticallySelected;
   final Color activeColor;
   final Color inactiveColor;
-  final Duration duration;
-  final double selectedContentWidth;
+  final TextTheme textTheme;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final color = selected ? activeColor : inactiveColor;
-    final textStyle = Theme.of(context).textTheme.labelMedium?.copyWith(
+    final textStyle = textTheme.labelMedium?.copyWith(
       color: color,
-      fontSize: 13,
-      fontWeight: FontWeight.w600,
-      height: 1,
+      fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+      height: 1.2,
     );
     return Semantics(
       key: ValueKey('bottom-nav-${destination.routeName}'),
@@ -291,78 +270,25 @@ class _BottomDestination extends StatelessWidget {
       label: destination.label,
       child: Material(
         type: MaterialType.transparency,
-        child: Center(
-          child: InkWell(
-            borderRadius: BorderRadius.circular(LumaRadii.extraLarge),
-            splashFactory: NoSplash.splashFactory,
-            overlayColor: const WidgetStatePropertyAll(Colors.transparent),
-            onTap: onTap,
-            child: SizedBox(
-              width: double.infinity,
-              height: 56,
-              child: Center(
-                child: OverflowBox(
-                  maxWidth: selectedContentWidth,
-                  child: AnimatedSwitcher(
-                    duration: duration,
-                    switchInCurve: Curves.linear,
-                    switchOutCurve: Curves.linear,
-                    layoutBuilder: (currentChild, previousChildren) => Stack(
-                      alignment: Alignment.center,
-                      children: [?currentChild],
-                    ),
-                    transitionBuilder: (child, animation) {
-                      final entrance = CurvedAnimation(
-                        parent: animation,
-                        curve: const Interval(
-                          0.15,
-                          1,
-                          curve: Curves.easeOutCubic,
-                        ),
-                      );
-                      return FadeTransition(
-                        opacity: entrance,
-                        child: SlideTransition(
-                          position: Tween<Offset>(
-                            begin: const Offset(0.06, 0),
-                            end: Offset.zero,
-                          ).animate(entrance),
-                          child: child,
-                        ),
-                      );
-                    },
-                    child: selected
-                        ? Row(
-                            key: ValueKey(
-                              'bottom-nav-selected-content-${destination.routeName}',
-                            ),
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                destination.selectedIcon,
-                                color: color,
-                                size: LumaIconSize.inline,
-                              ),
-                              const SizedBox(width: LumaSpacing.xxs),
-                              Text(
-                                destination.label,
-                                maxLines: 1,
-                                overflow: TextOverflow.fade,
-                                softWrap: false,
-                                style: textStyle,
-                              ),
-                            ],
-                          )
-                        : Icon(
-                            destination.icon,
-                            key: const ValueKey('unselected'),
-                            color: color,
-                            size: LumaIconSize.inline,
-                          ),
-                  ),
-                ),
+        child: InkWell(
+          onTap: onTap,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                selected ? destination.selectedIcon : destination.icon,
+                color: color,
+                size: LumaIconSize.action,
               ),
-            ),
+              const SizedBox(height: LumaSpacing.xxs),
+              Text(
+                destination.label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                softWrap: false,
+                style: textStyle,
+              ),
+            ],
           ),
         ),
       ),

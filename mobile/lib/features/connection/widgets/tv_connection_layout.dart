@@ -27,21 +27,17 @@ class TvConnectionLayout extends StatelessWidget {
             const SizedBox(height: LumaSpacing.xl),
             Text(
               '你的影库，\n在大屏相见',
-              style: theme.textTheme.headlineLarge?.copyWith(
-                fontSize: 36,
-                height: 1.2,
-              ),
+              style: theme.textTheme.headlineLarge,
             ),
             const SizedBox(height: LumaSpacing.lg),
             Text(
               '连接轻影服务器',
-              style: theme.textTheme.titleLarge?.copyWith(fontSize: 24),
+              style: theme.textTheme.headlineSmall,
             ),
             const SizedBox(height: LumaSpacing.sm),
             Text(
               '输入服务器的局域网地址和账号。连接后，即可浏览和播放你的影库。',
               style: theme.textTheme.bodyLarge?.copyWith(
-                fontSize: 18,
                 color: theme.colorScheme.onSurfaceVariant,
               ),
             ),
@@ -49,7 +45,6 @@ class TvConnectionLayout extends StatelessWidget {
             Text(
               '方向键选择 · 确认键输入 · 返回键结束编辑',
               style: theme.textTheme.bodyMedium?.copyWith(
-                fontSize: 16,
                 color: theme.colorScheme.onSurfaceVariant,
               ),
             ),
@@ -66,7 +61,7 @@ class TvConnectionLayout extends StatelessWidget {
                   Expanded(
                     child: Text(
                       '服务器登录',
-                      style: theme.textTheme.titleLarge?.copyWith(fontSize: 24),
+                      style: theme.textTheme.headlineSmall,
                     ),
                   ),
                   ?proxyAction,

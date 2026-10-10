@@ -46,27 +46,21 @@ class TvMediaDetailContent extends StatelessWidget {
               Positioned.fill(
                 child: DecoratedBox(
                   decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [
-                        theme.colorScheme.surface,
-                        theme.colorScheme.surface,
-                        theme.colorScheme.surface.withValues(alpha: 0.4),
-                        theme.colorScheme.surface.withValues(alpha: 0),
-                        theme.colorScheme.surface.withValues(alpha: 0.35),
-                      ],
-                      stops: const [0, 0.24, 0.46, 0.7, 1],
-                    ),
+                    gradient: LumaGradients.sideFade(theme.colorScheme.surface),
                   ),
                 ),
               ),
               Padding(
                 padding: const EdgeInsets.all(LumaSpacing.lg),
                 child: ConstrainedBox(
-                  constraints: const BoxConstraints(minHeight: 288),
+                  constraints: const BoxConstraints(
+                    minHeight: LumaTvLayout.heroMinHeight,
+                  ),
                   child: Align(
                     alignment: Alignment.centerLeft,
                     child: SizedBox(
-                      width: constraints.maxWidth >= 900
+                      width:
+                          constraints.maxWidth >= LumaTvLayout.detailSplitWidth
                           ? constraints.maxWidth * 0.58
                           : constraints.maxWidth,
                       child: Column(

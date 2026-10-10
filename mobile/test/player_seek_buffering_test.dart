@@ -3,7 +3,6 @@
 // 同时覆盖回环路由失败诊断：错误消息脱敏去凭据、诊断随重试切换、
 // 初始化期间的终态打开失败不被完成路径清空，普通告警不中断初始化。
 import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -23,6 +22,61 @@ import 'package:luma/features/player/widgets/player_timeline.dart';
 import 'package:media_kit/media_kit.dart';
 
 void main() {
+  test('播放结束后控制层常亮，重播回到零点并恢复播放', () async {
+    final harness = _SeekHarness.create(
+      autoHideDelay: const Duration(milliseconds: 20),
+    );
+    addTearDown(harness.dispose);
+    await harness.start();
+
+    harness.fake.emitCompleted(true);
+    await pumpEventQueue();
+    expect(harness.player.completed, isTrue);
+    expect(harness.player.controlsVisible, isTrue);
+    harness.player.scheduleHide();
+    await Future<void>.delayed(const Duration(milliseconds: 60));
+    expect(harness.player.controlsVisible, isTrue);
+
+    final playsBefore = harness.fake.playCount;
+    harness.player.replay();
+    expect(harness.player.completed, isFalse);
+    await pumpEventQueue();
+    expect(harness.fake.seeks.last, Duration.zero);
+    harness.fake.nativePosition = Duration.zero;
+    harness.controller.pushSeeking(false);
+    await pumpEventQueue();
+    expect(harness.fake.playCount, greaterThan(playsBefore));
+  });
+
+  test('音轨字幕剔除 auto/no 占位，关闭字幕下发 no', () async {
+    final harness = _SeekHarness.create();
+    addTearDown(harness.dispose);
+    await harness.start();
+
+    harness.fake.emitTracks(
+      const Tracks(
+        audio: [
+          AudioTrack('auto', null, null),
+          AudioTrack('no', null, null),
+          AudioTrack('1', '国语', 'chi'),
+          AudioTrack('2', null, 'eng'),
+        ],
+        subtitle: [
+          SubtitleTrack('auto', null, null),
+          SubtitleTrack('no', null, null),
+          SubtitleTrack('1', '简体', 'chi'),
+        ],
+      ),
+    );
+    await pumpEventQueue();
+    expect(harness.player.audioTracks, hasLength(2));
+    expect(harness.player.subtitleTracks, hasLength(1));
+
+    harness.player.selectSubtitleTrack(SubtitleTrack.no());
+    await pumpEventQueue();
+    expect(harness.fake.subtitleSelections, ['no']);
+  });
+
   test('快进等待期间立即显示缓冲，旧位置不会把滑块拉回', () async {
     final harness = _SeekHarness.create();
     addTearDown(harness.dispose);
@@ -898,6 +952,21 @@ class _FakePlatformPlayer extends PlatformPlayer {
   void emitBuffering(bool value) => bufferingController.add(value);
 
   void emitCompleted(bool value) => completedController.add(value);
+
+  /// 原生上报的轨道列表；同步写入 state 供控制器读取。
+  void emitTracks(Tracks tracks) {
+    state = state.copyWith(tracks: tracks);
+    tracksController.add(tracks);
+  }
+
+  /// 记录每次字幕切换下发的轨道 id。
+  final List<String> subtitleSelections = [];
+
+  @override
+  Future<void> setSubtitleTrack(SubtitleTrack track) async {
+    subtitleSelections.add(track.id);
+    state = state.copyWith(track: state.track.copyWith(subtitle: track));
+  }
 }
 
 /// 测试控制器：注入假平台播放器与原生定位状态，不启动原生解码器。
@@ -908,6 +977,7 @@ class _SeekTestController extends PlayerController {
     required List<_FakePlatformPlayer> fakes,
     super.mediaRequestRouter,
     super.bufferingTimeout,
+    super.autoHideDelay,
     bool holdPlay = false,
   }) : _fakes = fakes,
        super(
@@ -984,6 +1054,7 @@ class _SeekHarness {
     MediaRequestRouter? router,
     bool holdPlay = false,
     Duration bufferingTimeout = const Duration(seconds: 45),
+    Duration autoHideDelay = const Duration(seconds: 4),
   }) {
     final repository = _CountingMediaRepository();
     final media = MediaController(repository);
@@ -1000,6 +1071,7 @@ class _SeekHarness {
       fakes: fakes,
       mediaRequestRouter: router,
       bufferingTimeout: bufferingTimeout,
+      autoHideDelay: autoHideDelay,
       holdPlay: holdPlay,
     );
     return _SeekHarness._(repository, media, player, fakes);

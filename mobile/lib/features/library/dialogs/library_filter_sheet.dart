@@ -68,15 +68,30 @@ Future<LibraryFilters?> showLibraryFilterSheet(
               onChanged: (value) => setSheetState(() => favoritesOnly = value),
             ),
             const SizedBox(height: LumaSpacing.sm),
-            AdaptiveActionWidth(
-              maxWidth: 240,
-              child: FilledButton(
-                onPressed: () => Navigator.pop(
-                  dialogContext,
-                  LibraryFilters(status: status, favoritesOnly: favoritesOnly),
+            Row(
+              children: [
+                TextButton(
+                  onPressed: () => setSheetState(() {
+                    status = null;
+                    favoritesOnly = false;
+                  }),
+                  child: const Text('重置'),
                 ),
-                child: const Text('应用筛选'),
-              ),
+                const Spacer(),
+                AdaptiveActionWidth(
+                  maxWidth: LumaLayout.shortActionMaxWidth,
+                  child: FilledButton(
+                    onPressed: () => Navigator.pop(
+                      dialogContext,
+                      LibraryFilters(
+                        status: status,
+                        favoritesOnly: favoritesOnly,
+                      ),
+                    ),
+                    child: const Text('应用筛选'),
+                  ),
+                ),
+              ],
             ),
           ],
         ),
