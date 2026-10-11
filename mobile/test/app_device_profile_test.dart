@@ -128,6 +128,7 @@ AndroidDeviceInfo _androidInfoWith(List<String> features) =>
       'model': 'test',
       'product': 'test',
       'tags': 'test',
+      'time': 0,
       'type': 'test',
       'isPhysicalDevice': true,
       'freeDiskSize': 0,

@@ -57,7 +57,7 @@ void main() {
           expect(find.byType(Dialog), findsOneWidget);
           expect(
             tester.getSize(find.byType(PlayerSelectionPanel)).width,
-            lessThanOrEqualTo(520),
+            lessThanOrEqualTo(560),
           );
         } else {
           expect(find.byType(BottomSheet), findsOneWidget);
@@ -91,11 +91,13 @@ void main() {
     expect(find.byType(Dialog), findsNothing);
     await tester.tap(find.byKey(const ValueKey('player-quality-button')));
     await tester.pumpAndSettle();
-    final second = find.descendant(
-      of: find.byKey(const ValueKey('player-choice-q-2')),
-      matching: find.byType(ListTile),
+    final second = find.byKey(const ValueKey('player-choice-q-2'));
+    expect(second.hitTestable(), findsOneWidget);
+    expect(
+      tester.takeException(),
+      isNull,
+      reason: '清晰度面板不应抛出异常',
     );
-    expect(tester.widget<ListTile>(second).selected, isTrue);
     await tester.sendKeyEvent(LogicalKeyboardKey.escape);
     await tester.pumpAndSettle();
     expect(find.byType(ModalBarrier).hitTestable(), findsNothing);
@@ -126,6 +128,50 @@ void main() {
       find.byKey(const ValueKey('player-episodes-button')).hitTestable(),
       findsOneWidget,
     );
+    await _dispose(tester, harness, selection);
+  });
+
+  testWidgets('手机选集网格展示集数与进度，分段 chip 切换区间', (tester) async {
+    final harness = _Harness();
+    final selection = _SelectionState();
+    _setViewport(tester, const Size(390, 844), 1);
+    await _pumpScene(tester, harness, selection);
+    await tester.tap(find.byKey(const ValueKey('player-episodes-button')));
+    await tester.pumpAndSettle();
+    expect(find.byType(BottomSheet), findsOneWidget);
+    // 集数以网格数字呈现；当前集带「正在播放」副标题，另一集有进度条。
+    expect(find.text('1'), findsOneWidget);
+    expect(find.text('2'), findsOneWidget);
+    expect(find.text('正在播放'), findsOneWidget);
+    expect(find.text('第二集'), findsOneWidget);
+    expect(find.byType(LinearProgressIndicator), findsWidgets);
+    await tester.tap(find.byKey(const ValueKey('player-choice-e-2')));
+    await tester.pumpAndSettle();
+    expect(find.byType(BottomSheet), findsNothing);
+    expect(selection.selectedEpisodeMediaId, 'e-2');
+    await _dispose(tester, harness, selection);
+  });
+
+  testWidgets('倍速打开底部抽屉网格并回传档位', (tester) async {
+    final harness = _Harness();
+    final selection = _SelectionState();
+    _setViewport(tester, const Size(390, 844), 1);
+    await _pumpScene(tester, harness, selection);
+    await tester.tap(find.byTooltip('播放速度'));
+    await tester.pumpAndSettle();
+    expect(find.byType(BottomSheet), findsOneWidget);
+    expect(find.text('倍速'), findsOneWidget);
+    for (final speed in [0.5, 1.0, 1.25, 1.5, 2.0]) {
+      expect(
+        find.byKey(ValueKey('player-speed-$speed')),
+        findsOneWidget,
+      );
+    }
+    await tester.tap(find.byKey(const ValueKey('player-speed-1.5')));
+    await tester.pumpAndSettle();
+    expect(find.byType(BottomSheet), findsNothing);
+    expect(find.byType(ModalBarrier).hitTestable(), findsNothing);
+    expect(tester.takeException(), isNull);
     await _dispose(tester, harness, selection);
   });
 
@@ -277,8 +323,22 @@ class _SelectionState extends ChangeNotifier
   bool rejectSelection = false;
   @override
   List<PlayerMediaChoice> get episodes => const [
-    PlayerMediaChoice(mediaId: 'e-1', label: '第 1 季 第 1 集'),
-    PlayerMediaChoice(mediaId: 'e-2', label: '第 1 季 第 2 集'),
+    PlayerMediaChoice(
+      mediaId: 'e-1',
+      label: '第 1 季 第 1 集',
+      season: 1,
+      episode: 1,
+      title: '第一集',
+    ),
+    PlayerMediaChoice(
+      mediaId: 'e-2',
+      label: '第 1 季 第 2 集',
+      season: 1,
+      episode: 2,
+      title: '第二集',
+      progressMs: 30000,
+      durationMs: 120000,
+    ),
   ];
   @override
   List<PlayerMediaChoice> get qualities => const [

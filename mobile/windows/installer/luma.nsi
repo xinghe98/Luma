@@ -76,13 +76,7 @@ Section "Install"
     "$INSTDIR\${EXE_NAME}" "" "$INSTDIR\luma.ico" 0 SW_SHOWNORMAL \
     "" "${PRODUCT_NAME}"
 
-  ; 当前用户桌面也可能残留旧快捷方式（历史安装或手动复制）。
-  SetShellVarContext current
-  Delete "$DESKTOP\${PRODUCT_NAME}.lnk"
-  CreateShortCut "$DESKTOP\${PRODUCT_NAME}.lnk" \
-    "$INSTDIR\${EXE_NAME}" "" "$INSTDIR\luma.ico" 0 SW_SHOWNORMAL \
-    "" "${PRODUCT_NAME}"
-  SetShellVarContext all
+  ; 快捷方式只写公共桌面；当前用户桌面由 all 分支覆盖，避免管理员装出双份。
 
   WriteRegStr HKLM "Software\${PRODUCT_REG_KEY}" "InstallLocation" "$INSTDIR"
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_REG_KEY}" \

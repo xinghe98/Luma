@@ -13,14 +13,33 @@ import 'player_controller.dart';
 @immutable
 class PlayerMediaChoice {
   /// 用媒体 ID 标识选择，描述用于区分季、集或同清晰度的文件版本。
+  /// 结构化字段供选集网格与清晰度分段复用，缺失时回退到纯 label 展示。
   const PlayerMediaChoice({
     required this.mediaId,
     required this.label,
     this.description,
+    this.season,
+    this.episode,
+    this.title,
+    this.progressMs,
+    this.durationMs,
+    this.completed = false,
   });
   final String mediaId;
   final String label;
   final String? description;
+
+  /// 选集网格的分段与格内主标题；清晰度/电影版本为 null。
+  final int? season;
+  final int? episode;
+
+  /// 网格副标题；电视剧为刮削集名，清晰度为版本说明。
+  final String? title;
+
+  /// 续播进度与标记，用于在选集格上画底部进度条。
+  final int? progressMs;
+  final int? durationMs;
+  final bool completed;
 }
 
 /// 管理当前播放文件的选集、清晰度及加载错误，生命周期由播放页持有。
@@ -256,6 +275,12 @@ class PlayerSelectionController extends ChangeNotifier {
           description: representative.title.isEmpty
               ? null
               : representative.title,
+          season: key.$1,
+          episode: key.$2,
+          title: representative.title.isEmpty ? null : representative.title,
+          progressMs: representative.progressMs,
+          durationMs: representative.durationMs,
+          completed: representative.completed,
         ),
       );
       if (!containsCurrent) continue;

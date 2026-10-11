@@ -14,7 +14,6 @@ import '../player_selection_controller.dart';
 import '../player_track_labels.dart';
 import 'player_control_button.dart';
 import 'player_selection_sheet.dart';
-import 'tv_player_controls.dart' show kTvPlaybackSpeeds;
 
 /// 桌面端音量滑块的固定宽度。
 const double _volumeSliderWidth = 132;
@@ -218,40 +217,58 @@ class PlayerBottomToolbar extends StatelessWidget {
   }
 }
 
-/// 倍速入口：图标加当前倍速标签，弹出档位菜单。
+/// 倍速入口：图标加当前倍速标签，点击弹出与选集一致的抽屉/对话框面板。
 class _PlaybackSpeedMenu extends StatelessWidget {
   const _PlaybackSpeedMenu({required this.controller});
 
   final PlayerController controller;
+
+  /// 弹出倍速网格；选择或取消后按播放状态恢复自动隐藏计时。
+  Future<void> _chooseSpeed(BuildContext context) async {
+    controller.pauseAutoHide();
+    final selected = await showPlayerSpeedSheet(
+      context,
+      controller: controller,
+    );
+    if (selected != null) controller.setSpeed(selected);
+    if (controller.playing && controller.error == null) {
+      controller.scheduleHide();
+    } else {
+      controller.pauseAutoHide();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final extras = context.luma;
     final speed = controller.speed;
     final speedLabel = speed == 1 ? '1.0×' : '$speed×';
-    return PopupMenuButton<double>(
-      tooltip: '播放速度',
-      initialValue: speed,
-      onSelected: controller.setSpeed,
-      itemBuilder: (_) => kTvPlaybackSpeeds
-          .map((value) => PopupMenuItem(value: value, child: Text('$value×')))
-          .toList(),
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: LumaSpacing.sm),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.speed_rounded, size: 20, color: extras.onPlayerInk),
-              const SizedBox(width: LumaSpacing.xxs),
-              Text(
-                speedLabel,
-                style: Theme.of(
-                  context,
-                ).textTheme.labelLarge?.copyWith(color: extras.onPlayerInk),
-              ),
-            ],
+    return Tooltip(
+      message: '播放速度',
+      child: InkWell(
+        borderRadius: BorderRadius.circular(LumaRadii.badge),
+        onTap: () => unawaited(_chooseSpeed(context)),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: LumaSpacing.sm),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.speed_rounded,
+                  size: 20,
+                  color: extras.onPlayerInk,
+                ),
+                const SizedBox(width: LumaSpacing.xxs),
+                Text(
+                  speedLabel,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.labelLarge?.copyWith(color: extras.onPlayerInk),
+                ),
+              ],
+            ),
           ),
         ),
       ),

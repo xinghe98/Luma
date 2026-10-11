@@ -59,12 +59,9 @@ final class NativeLocalImagePicker implements LocalImagePicker {
       dialogTitle: '选择上传图片',
       type: FileType.custom,
       allowedExtensions: kUploadImageExtensions.toList(growable: false),
-      allowMultiple: true,
-      withData: false,
-      withReadStream: false,
     );
-    if (selected == null || selected.files.isEmpty) return null;
-    return [for (final file in selected.files) _localImage(file)];
+    if (selected.isEmpty) return null;
+    return [for (final file in selected) _localImage(file)];
   }
 
   LocalImage _localImage(PlatformFile selected) {
@@ -76,7 +73,7 @@ final class NativeLocalImagePicker implements LocalImagePicker {
     return LocalImage(
       path: path,
       filename: selected.name,
-      contentLength: selected.size,
+      contentLength: selected.lengthSync() ?? 0,
       openRead: file.openRead,
     );
   }

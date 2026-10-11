@@ -99,20 +99,9 @@ class _TvPlayerControlsState extends State<TvPlayerControls> {
     final controller = widget.controller;
     widget.onSpeedDialogChanged?.call(true);
     controller.pauseAutoHide();
-    final selected = await showSingleChoiceSheet<double>(
+    final selected = await showPlayerSpeedSheet(
       context,
-      title: '播放速度',
-      supportingText: '选择适合观看的播放速度',
-      selectedValue: controller.speed,
-      choices: kTvPlaybackSpeeds
-          .map(
-            (speed) => BottomSheetChoice<double>(
-              value: speed,
-              label: '${speed}x',
-              icon: Icons.speed_rounded,
-            ),
-          )
-          .toList(),
+      controller: controller,
     );
     if (!mounted) return;
     widget.onSpeedDialogChanged?.call(false);
