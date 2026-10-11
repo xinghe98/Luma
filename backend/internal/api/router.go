@@ -41,7 +41,8 @@ type RouterParams struct {
 	Access *handler.AccessHandler
 	// Auth 处理公开登录和受保护登出接口。
 	Auth *handler.AuthHandler
-	// Authenticator 验证 API Bearer 会话。
+	// Uploads 处理已授权媒体源根目录的图片上传。
+	Uploads       *handler.UploadHandler
 	Authenticator middleware.BearerAuthenticator
 }
 
@@ -50,7 +51,7 @@ func NewRouter(params RouterParams) (http.Handler, error) {
 	if params.Logger == nil {
 		return nil, errors.New("logger is required")
 	}
-	if params.Health == nil || params.System == nil || params.Sources == nil || params.Scans == nil || params.Media == nil || params.Stream == nil || params.UserData == nil || params.Tags == nil || params.Catalog == nil || params.Access == nil || params.Auth == nil {
+	if params.Health == nil || params.System == nil || params.Sources == nil || params.Scans == nil || params.Media == nil || params.Stream == nil || params.UserData == nil || params.Tags == nil || params.Catalog == nil || params.Access == nil || params.Auth == nil || params.Uploads == nil {
 		return nil, errors.New("HTTP Handler 依赖不能为空")
 	}
 	if params.Authenticator == nil {
@@ -104,6 +105,7 @@ func NewRouter(params RouterParams) (http.Handler, error) {
 	protected.POST("/tags", params.Tags.Create)
 	protected.PATCH("/tags/:id", params.Tags.Update)
 	protected.DELETE("/tags/:id", params.Tags.Delete)
+	protected.POST("/sources/:id/images", params.Uploads.Create)
 
 	admin := protected.Group("")
 	admin.Use(middleware.RequireAdmin())

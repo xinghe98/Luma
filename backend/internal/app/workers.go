@@ -13,23 +13,23 @@ import (
 )
 
 func (b *bootstrap) buildWorkers(database *sql.DB, sources *dbrepo.SourceRepository, scans *dbrepo.ScanRepository,
-	localFactory *storage.LocalFactory, ids platform.SecureIDGenerator, clock platform.RealClock, catalogSignal *jobs.CatalogSyncSignal) (*jobs.Group, *jobs.Signal, error) {
+	localFactory *storage.LocalFactory, ids platform.SecureIDGenerator, clock platform.RealClock, catalogSignal *jobs.CatalogSyncSignal) (*jobs.Group, *jobs.Signal, *jobs.Signal, error) {
 	processing, err := dbrepo.NewProcessingRepository(database)
 	if err != nil {
-		return nil, nil, fmt.Errorf("创建媒体处理 Repository: %w", err)
+		return nil, nil, nil, fmt.Errorf("创建媒体处理 Repository: %w", err)
 	}
 	localScanner, err := scanner.NewLocalScanner(b.config.Media.ScanExtensions)
 	if err != nil {
-		return nil, nil, fmt.Errorf("创建本地扫描器: %w", err)
+		return nil, nil, nil, fmt.Errorf("创建本地扫描器: %w", err)
 	}
 	prober, err := media.NewFFprobeProber(b.config.Media.FFprobePath)
 	if err != nil {
-		return nil, nil, fmt.Errorf("创建媒体探测器: %w", err)
+		return nil, nil, nil, fmt.Errorf("创建媒体探测器: %w", err)
 	}
 	thumbnailer, err := media.NewFFmpegThumbnailer(b.config.Media.FFmpegPath,
 		b.config.Storage.ThumbnailDir, b.config.Media.ThumbnailWidth)
 	if err != nil {
-		return nil, nil, fmt.Errorf("创建缩略图生成器: %w", err)
+		return nil, nil, nil, fmt.Errorf("创建缩略图生成器: %w", err)
 	}
 	scanSignal, probeSignal, thumbnailSignal := jobs.NewSignal(), jobs.NewSignal(), jobs.NewSignal()
 	toolTimeout := b.config.Workers.LockTimeout
@@ -38,7 +38,7 @@ func (b *bootstrap) buildWorkers(database *sql.DB, sources *dbrepo.SourceReposit
 		scanWorker, err := jobs.NewScanWorker(sources, scans, processing, localFactory, localScanner,
 			scanner.SHA256QuickHasher{}, ids, clock, scanSignal, probeSignal, catalogSignal, b.logger)
 		if err != nil {
-			return nil, nil, fmt.Errorf("创建扫描 Worker: %w", err)
+			return nil, nil, nil, fmt.Errorf("创建扫描 Worker: %w", err)
 		}
 		runners = append(runners, scanWorker)
 	}
@@ -46,22 +46,22 @@ func (b *bootstrap) buildWorkers(database *sql.DB, sources *dbrepo.SourceReposit
 		worker, err := jobs.NewProbeWorker(processing, prober, ids, clock, probeSignal,
 			thumbnailSignal, b.logger, b.config.Media.ThumbnailWidth, toolTimeout)
 		if err != nil {
-			return nil, nil, fmt.Errorf("创建媒体探测 Worker: %w", err)
+			return nil, nil, nil, fmt.Errorf("创建媒体探测 Worker: %w", err)
 		}
 		runners = append(runners, worker)
 	}
 	for range b.config.Workers.Thumbnail {
 		worker, err := jobs.NewThumbnailWorker(processing, thumbnailer, ids, clock, thumbnailSignal, b.logger, toolTimeout)
 		if err != nil {
-			return nil, nil, fmt.Errorf("创建缩略图 Worker: %w", err)
+			return nil, nil, nil, fmt.Errorf("创建缩略图 Worker: %w", err)
 		}
 		runners = append(runners, worker)
 	}
 	recovery, err := jobs.NewProcessingRecovery(processing, ids, clock, probeSignal, thumbnailSignal, b.logger,
 		b.config.Media.ThumbnailWidth, b.config.Workers.LockTimeout)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	group, err := jobs.NewGroup(scans, clock, recovery, runners...)
-	return group, scanSignal, err
+	return group, scanSignal, probeSignal, err
 }

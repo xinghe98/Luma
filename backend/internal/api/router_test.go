@@ -96,6 +96,14 @@ func (fakeAuthenticationUseCase) Login(context.Context, string, string, string, 
 	return domain.IssuedSession{}, nil
 }
 func (fakeAuthenticationUseCase) Logout(context.Context, string) error { return nil }
+// fakeUploadUseCase 为 Router 测试提供空上传业务能力。
+type fakeUploadUseCase struct{}
+
+// Upload 模拟成功上传；Router 测试只关心路由与认证包壳。
+func (fakeUploadUseCase) Upload(context.Context, string, string, domain.UploadedImage) (domain.UploadResult, error) {
+	return domain.UploadResult{MediaID: "media_upload_test", Filename: "photo.jpg"}, nil
+}
+
 
 func (fakeCatalogUseCase) List(context.Context, domain.CatalogListRequest, string) ([]domain.CatalogItem, error) {
 	return []domain.CatalogItem{}, nil
@@ -277,10 +285,15 @@ func testRouter(t *testing.T, streamUseCase ...handler.StreamUseCase) http.Handl
 	if err != nil {
 		t.Fatal(err)
 	}
+	uploads, err := handler.NewUploadHandler(fakeUploadUseCase{})
+	if err != nil {
+		t.Fatal(err)
+	}
 	router, err := NewRouter(RouterParams{
 		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
 		Health: health, System: system, Sources: sources, Scans: scans, Media: media, Stream: stream,
 		UserData: userData, Tags: tags, Catalog: catalogHandler, Access: accessHandler, Auth: authHandler,
+		Uploads: uploads,
 		Authenticator: fakeSessionAuthenticator{},
 	})
 	if err != nil {

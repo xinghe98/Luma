@@ -7,6 +7,7 @@ import 'library_sort_button.dart';
 
 /// 用局部宽度重排标题操作，筛选始终保持可横向遥控的单行。
 class TvLibraryHeader extends StatelessWidget {
+  /// 构建媒体库操作区；上传入口仅在图片页提供回调时展示。
   const TvLibraryHeader({
     super.key,
     required this.title,
@@ -21,6 +22,7 @@ class TvLibraryHeader extends StatelessWidget {
     required this.onSort,
     required this.onClear,
     this.onSearch,
+    this.onUpload,
   });
 
   final String title;
@@ -30,6 +32,9 @@ class TvLibraryHeader extends StatelessWidget {
   final bool favoritesOnly;
   final MediaSort sort;
   final VoidCallback? onSearch;
+
+  /// 进入图片上传页；由调用方负责选择、上传及返回后的刷新。
+  final VoidCallback? onUpload;
   final VoidCallback onRefresh;
   final VoidCallback onFilters;
   final ValueChanged<bool> onFavorites;
@@ -50,6 +55,12 @@ class TvLibraryHeader extends StatelessWidget {
       spacing: LumaSpacing.sm,
       runSpacing: LumaSpacing.xs,
       children: [
+        if (!isVideo && onUpload != null)
+          TextButton.icon(
+            onPressed: onUpload,
+            icon: const Icon(Icons.upload_rounded),
+            label: const Text('上传图片'),
+          ),
         if (onSearch != null)
           Tooltip(
             message: '搜索',

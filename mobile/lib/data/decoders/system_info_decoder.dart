@@ -10,6 +10,7 @@ final class SystemInfoDecoder {
       platform: requiredValue(json, 'platform'),
       architecture: requiredValue(json, 'architecture'),
       database: requiredValue(json, 'database'),
+      userId: (json['user'] as Map<String, dynamic>?)?['id'] as String?,
       userRole:
           (json['user'] as Map<String, dynamic>?)?['role'] as String? ??
           'admin',

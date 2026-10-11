@@ -22,13 +22,13 @@ security:
     - '\\NAS\Videos'
 
 # 数据库、管理员密码文件和衍生数据建议放在服务账户可写的 ProgramData 目录。
-# 安装脚本默认使用 NT SERVICE\LumaServer；媒体目录需另行向该身份授予读取权限。
+# 媒体目录需向实际服务账户授予读取及创建上传文件的权限。
 database:
   path: 'C:\ProgramData\Luma\media.db'
   busy_timeout_ms: 5000
   wal: true
 
-# 衍生数据不得写入只读媒体源或网络共享。
+# 衍生数据不得写入媒体源或网络共享。
 storage:
   thumbnail_dir: 'C:\ProgramData\Luma\thumbnails'
   cache_dir: 'C:\ProgramData\Luma\cache'

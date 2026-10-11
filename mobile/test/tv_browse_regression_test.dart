@@ -317,10 +317,13 @@ void main() {
     await tester.pumpWidget(LumaApp(dependencies: dependencies));
     await tester.pump(const Duration(milliseconds: 2700));
     await tester.pumpAndSettle();
-    for (var i = 0; i < 3; i++) {
-      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
-      await tester.pumpAndSettle();
-    }
+    // 直接聚焦本用例的搜索入口，不依赖电视冷启动当前选中的栏目。
+    final searchNavigation = find.byWidgetPredicate(
+      (widget) =>
+          widget is Focus && widget.focusNode?.debugLabel == 'tv-nav-search',
+    );
+    tester.widget<Focus>(searchNavigation).focusNode!.requestFocus();
+    await tester.pumpAndSettle();
     await tester.sendKeyEvent(LogicalKeyboardKey.select);
     await tester.pumpAndSettle();
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);

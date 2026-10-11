@@ -121,6 +121,7 @@ void main() {
             matching: find.text('查看全部'),
           );
           await tester.ensureVisible(openAll);
+          await tester.pumpAndSettle();
           await tester.tap(openAll);
           await tester.pumpAndSettle();
           expect(_location(harness.router), category.path);

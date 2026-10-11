@@ -19,6 +19,44 @@ import 'package:luma/data/storage/credential_store.dart';
 import 'package:luma/data/storage/server_alias_store.dart';
 
 void main() {
+  test('排队中的上传不能使用切换后的账号发送图片', () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    addTearDown(() => server.close(force: true));
+    var receivedUploads = 0;
+    server.listen((request) async {
+      receivedUploads++;
+      await request.drain<void>();
+      await _json(request.response, {
+        'media_id': 'unexpected',
+        'filename': 'photo.png',
+      });
+    });
+    final session = ApiSession(
+      origin: 'http://${server.address.host}:${server.port}',
+      token: 'old-account',
+    );
+    final dio = Dio()..interceptors.add(ApiSessionInterceptor(session));
+    addTearDown(dio.close);
+    final upload = ApiClient(dio).uploadImage(
+      sourceId: 'old-source',
+      filename: 'photo.png',
+      stream: Stream.value([1, 2, 3]),
+      contentLength: 3,
+    );
+    session.update(origin: session.origin, token: 'new-account');
+    await expectLater(
+      upload,
+      throwsA(
+        isA<ApiException>().having(
+          (error) => error.code,
+          'code',
+          'SESSION_CHANGED',
+        ),
+      ),
+    );
+    expect(receivedUploads, 0, reason: '图片不能先发给新账号再丢弃响应');
+  });
+
   test('resource access only authenticates same-origin URLs', () {
     final session = ApiSession(
       origin: 'https://media.example.com/luma/',

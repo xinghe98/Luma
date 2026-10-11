@@ -13,9 +13,11 @@ import '../data/repositories/api_access_repository.dart';
 import '../data/repositories/api_media_repository.dart';
 import '../data/repositories/api_catalog_repository.dart';
 import '../data/repositories/api_scan_repository.dart';
+import '../data/repositories/api_image_upload_repository.dart';
 import '../data/repositories/api_source_repository.dart';
 import '../data/repositories/media_repository.dart';
 import '../data/repositories/catalog_repository.dart';
+import '../data/repositories/image_upload_repository.dart';
 import '../data/repositories/source_repository.dart';
 import '../data/proxy/loopback_media_relay.dart';
 import '../data/proxy/proxy_profile_store.dart';
@@ -29,15 +31,19 @@ import '../data/storage/credential_store.dart';
 import '../data/storage/secure_credential_store.dart';
 import '../data/storage/secure_server_alias_store.dart';
 import '../data/storage/server_alias_store.dart';
+import '../data/storage/secure_upload_target_store.dart';
+import '../data/storage/theme_preference_store.dart';
 import '../data/storage/connection_form_store.dart';
 import '../data/storage/secure_connection_form_store.dart';
 import '../data/storage/secure_theme_preference_store.dart';
-import '../data/storage/theme_preference_store.dart';
+import '../data/storage/upload_target_store.dart';
 import '../features/search/search_request.dart';
 import '../features/connection/connection_controller.dart';
 import '../features/catalog/catalog_store.dart';
 import '../features/player/player_session_controller.dart';
 import '../features/shell/media_branch_prewarmer.dart';
+import '../features/uploads/image_upload_controller.dart';
+import '../features/uploads/local_image_picker.dart';
 import 'app_device_profile.dart';
 import 'controllers/media_controller.dart';
 import 'controllers/session_controller.dart';
@@ -58,6 +64,9 @@ class AppDependencies {
     CatalogRepository? catalogRepository,
     SourceRepository? sourceRepository,
     AccessRepository? accessRepository,
+    ImageUploadRepository? imageUploadRepository,
+    UploadTargetStore? uploadTargetStore,
+    LocalImagePicker? localImagePicker,
     VmessProxyController? proxyController,
     this.proxyRoute,
     ProxyHttpOverrides? proxyOverrides,
@@ -80,6 +89,9 @@ class AppDependencies {
        access = accessRepository ?? const UnavailableAccessRepository(),
        sources = sourceRepository,
        proxy = proxyController,
+       _imageUploadRepository = imageUploadRepository,
+       _uploadTargetStore = uploadTargetStore,
+       _localImagePicker = localImagePicker,
        _proxyOverrides = proxyOverrides,
        _mediaRequestRouter =
            mediaRequestRouter ?? mediaRelay ?? const DirectMediaRequestRouter(),
@@ -180,6 +192,9 @@ class AppDependencies {
       catalogRepository: ApiCatalogRepository(client),
       sourceRepository: sources,
       accessRepository: ApiAccessRepository(client),
+      imageUploadRepository: ApiImageUploadRepository(client),
+      uploadTargetStore: SecureUploadTargetStore(secureStorage),
+      localImagePicker: const NativeLocalImagePicker(),
       proxyController: proxyController,
       proxyRoute: proxyRoute,
       proxyOverrides: proxyOverrides,
@@ -208,6 +223,9 @@ class AppDependencies {
   late final MediaBranchPrewarmer mediaBranchPrewarmer;
   final AccessRepository access;
   final SourceRepository? sources;
+  final ImageUploadRepository? _imageUploadRepository;
+  final UploadTargetStore? _uploadTargetStore;
+  final LocalImagePicker? _localImagePicker;
   final ConnectionService _connectionService;
   final CredentialStore? _credentialStore;
   final ConnectionFormStore? _connectionFormStore;
@@ -403,6 +421,36 @@ class AppDependencies {
       if (_disposed) return;
       session.rename(alias);
     }
+  }
+
+  /// 为当前登录身份构建上传会话控制器。
+  /// 依赖缺失、未登录或服务端未报告 user.id 时返回 null；
+  /// 记忆 key 严格绑定 `服务器地址|userId`，拒绝匿名共享身份。
+  ImageUploadController? createImageUploadController() {
+    if (_disposed) return null;
+    final server = session.server;
+    final uploads = _imageUploadRepository;
+    final targets = _uploadTargetStore;
+    final picker = _localImagePicker;
+    final sourceRepository = sources;
+    final userId = server?.userId;
+    if (server == null ||
+        userId == null ||
+        userId.isEmpty ||
+        uploads == null ||
+        targets == null ||
+        picker == null ||
+        sourceRepository == null) {
+      return null;
+    }
+    return ImageUploadController(
+      sources: sourceRepository,
+      uploads: uploads,
+      picker: picker,
+      targets: targets,
+      identityKey: '${server.address}|$userId',
+      apiEpochProvider: () => apiSession.epoch,
+    );
   }
 
   /// 释放应用级控制器、共享 store 与生产环境网络客户端。

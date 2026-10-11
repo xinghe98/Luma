@@ -73,6 +73,10 @@ func FromError(c *gin.Context, err error) {
 		Error(c, http.StatusConflict, "REVISION_CONFLICT", "数据已被其他请求修改", nil)
 	case errors.Is(err, domain.ErrMediaDurationUnavailable):
 		Error(c, http.StatusConflict, "MEDIA_DURATION_UNAVAILABLE", "媒体时长暂不可用", nil)
+	case errors.Is(err, domain.ErrUploadTooLarge):
+		Error(c, http.StatusRequestEntityTooLarge, "UPLOAD_TOO_LARGE", "上传图片超过64MiB上限", nil)
+	case errors.Is(err, domain.ErrUploadUnsupportedImage):
+		Error(c, http.StatusBadRequest, "UNSUPPORTED_IMAGE", "上传内容不是受支持的图片", nil)
 	case errors.Is(err, domain.ErrMediaNotPlayable):
 		Error(c, http.StatusUnprocessableEntity, "MEDIA_NOT_PLAYABLE", "媒体不支持播放进度", nil)
 	case errors.Is(err, domain.ErrCatalogNotFound):

@@ -13,7 +13,10 @@ import '../../features/catalog/catalog_page.dart';
 import '../../features/details/media_detail_page.dart';
 import '../../features/library/library_page.dart';
 import '../../features/player/player_page.dart';
+import '../../features/uploads/image_upload_page.dart';
+import '../../features/uploads/image_upload_controller.dart';
 import '../../features/shell/app_destination.dart';
+import '../../shared/states/empty_state.dart';
 import '../app_dependencies.dart';
 import '../app_navigation.dart';
 import '../app_route.dart';
@@ -143,6 +146,15 @@ List<RouteBase> buildMediaRoutes(
         startFromBeginning: routeData.startFromBeginning,
       );
     },
+  ),
+  GoRoute(
+    parentNavigatorKey: rootNavigatorKey,
+    name: AppRoute.imageUpload,
+    path: '/upload/images',
+    pageBuilder: (context, state) => MaterialPage<bool>(
+      key: state.pageKey,
+      child: _ImageUploadRoutePage(dependencies: dependencies),
+    ),
   ),
 ];
 
@@ -317,3 +329,49 @@ Widget _detailFade(
   ),
   child: child,
 );
+
+
+/// 按当前认证身份创建一次上传会话，具体加载与释放交给上传页。
+class _ImageUploadRoutePage extends StatefulWidget {
+  const _ImageUploadRoutePage({required this.dependencies});
+
+  final AppDependencies dependencies;
+
+  @override
+  State<_ImageUploadRoutePage> createState() => _ImageUploadRoutePageState();
+}
+
+class _ImageUploadRoutePageState extends State<_ImageUploadRoutePage> {
+  late final ImageUploadController? _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = widget.dependencies.createImageUploadController();
+  }
+
+
+  @override
+  Widget build(BuildContext context) {
+    final controller = _controller;
+    if (controller == null) {
+      return DetailBackScope(
+        builder: (onBack) => Scaffold(
+          appBar: AppBar(
+            title: const Text('上传图片'),
+            leading: BackButton(onPressed: onBack),
+          ),
+          body: SingleChildScrollView(
+            child: EmptyState(
+              title: '上传暂不可用',
+              message: '请确认已登录并重新进入本页。',
+              icon: Icons.cloud_off_outlined,
+              action: OutlinedButton(onPressed: onBack, child: const Text('返回')),
+            ),
+          ),
+        ),
+      );
+    }
+    return ImageUploadPage(controller: controller);
+  }
+}

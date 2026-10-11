@@ -9,6 +9,7 @@ class ServerProfile {
     this.platform,
     this.architecture,
     this.database,
+    this.userId,
     this.userRole = 'admin',
     this.capabilities = const [],
   });
@@ -25,6 +26,10 @@ class ServerProfile {
   final String userRole;
   final List<String> capabilities;
 
+  /// 已认证账号的服务端用户 id；由 /system/info 或登录响应带出，
+  /// 会话恢复后同样有效。为 null 时不得用作身份/记忆键。
+  final String? userId;
+
   bool can(String capability) =>
       capabilities.isEmpty || capabilities.contains(capability);
 
@@ -38,6 +43,7 @@ class ServerProfile {
     platform: platform,
     architecture: architecture,
     database: database,
+    userId: userId,
     userRole: userRole,
     capabilities: capabilities,
   );

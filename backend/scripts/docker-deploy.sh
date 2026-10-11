@@ -115,9 +115,9 @@ while IFS= read -r entry || [ -n "$entry" ]; do
     yaml_quote "$container_path" >> "$ROOTS_FILE"
     printf '\n' >> "$ROOTS_FILE"
     printf '      - ' >> "$GENERATED_COMPOSE"
-    yaml_quote "$host_path:$container_path:ro" >> "$GENERATED_COMPOSE"
+    yaml_quote "$host_path:$container_path:rw" >> "$GENERATED_COMPOSE"
     printf '\n' >> "$GENERATED_COMPOSE"
-    printf '  %s -> %s (read-only)\n' "$host_path" "$container_path" >&2
+    printf '  %s -> %s (read-write)\n' "$host_path" "$container_path" >&2
 done < "$MEDIA_ENTRIES_FILE"
 [ "$media_count" -gt 0 ] || fail 'LUMA_MEDIA_DIRS must contain at least one directory'
 

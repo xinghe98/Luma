@@ -119,7 +119,22 @@ class _SingleChoiceSheetState<T> extends State<_SingleChoiceSheet<T>> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(widget.title, style: theme.textTheme.titleLarge),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    widget.title,
+                    style: theme.textTheme.titleLarge,
+                  ),
+                ),
+                // 所有调用方共用同一关闭动作；触控 48dp 与 Back/Escape 等价。
+                IconButton(
+                  tooltip: '关闭',
+                  onPressed: () => Navigator.of(context).pop(),
+                  icon: const Icon(Icons.close_rounded),
+                ),
+              ],
+            ),
             const SizedBox(height: LumaSpacing.xs),
             Text(
               widget.supportingText,

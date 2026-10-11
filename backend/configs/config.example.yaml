@@ -20,7 +20,7 @@ security:
   allowed_roots:
     - ../data/media
 
-# SQLite 数据必须位于只读媒体目录之外。
+# SQLite 数据必须位于媒体目录之外；上传只向媒体源新增图片。
 database:
   path: ../data/media.db
   busy_timeout_ms: 5000

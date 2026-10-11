@@ -7,6 +7,7 @@ import 'api_session_interceptor.dart';
 part 'endpoints/access.dart';
 part 'endpoints/auth.dart';
 part 'endpoints/catalog.dart';
+part 'endpoints/images.dart';
 part 'endpoints/media.dart';
 part 'endpoints/system_sources.dart';
 part 'endpoints/user_data.dart';
@@ -14,6 +15,7 @@ part 'endpoints/user_data.dart';
 final class ApiClient extends _ApiTransport
     with
         _SystemSourceEndpoints,
+        _ImageUploadEndpoints,
         _MediaEndpoints,
         _CatalogEndpoints,
         _AccessEndpoints,

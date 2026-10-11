@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -10,16 +11,21 @@ import '../../../core/theme.dart';
 import '../../../data/models/media_item.dart';
 import '../../../shared/interaction/tv_key_bindings.dart';
 import '../../../shared/media/authenticated_media_image.dart';
+import '../../../shared/media/image_gallery_controller.dart';
+import '../widgets/image_preview_navigation.dart';
 
 /// 图片预览关闭后交还给调用方的后续动作。
 enum ImagePreviewAction { openDetails }
 
-/// 打开不透明的全屏图片预览，支持缩放、还原和进入详情。
+/// 打开不透明的全屏图片预览，支持缩放、还原、进入详情和画廊切换。
 /// 有 [heroTag] 时从来源缩略图原地放大；无来源时退化为短淡入。
+/// 传入 [gallery] 后预览跟随控制器显示当前图片，可切换上一张/下一张；
+/// 控制器生命周期由调用方负责，预览不销毁它。
 Future<ImagePreviewAction?> showImagePreviewDialog(
   BuildContext context,
   MediaItem item, {
   String? heroTag,
+  ImageGalleryController? gallery,
 }) async {
   final route = PageRouteBuilder<ImagePreviewAction>(
     opaque: true,
@@ -28,7 +34,7 @@ Future<ImagePreviewAction?> showImagePreviewDialog(
     transitionDuration: LumaMotion.forContext(context, LumaMotion.slow),
     reverseTransitionDuration: LumaMotion.forContext(context, LumaMotion.slow),
     pageBuilder: (context, animation, secondaryAnimation) {
-      return ImagePreviewDialog(item: item, heroTag: heroTag);
+      return ImagePreviewDialog(item: item, heroTag: heroTag, gallery: gallery);
     },
   );
   final result = await Navigator.of(
@@ -55,10 +61,19 @@ Future<ImagePreviewAction?> showImagePreviewDialog(
 
 class ImagePreviewDialog extends StatefulWidget {
   /// 构建全屏图片预览；[heroTag] 为空时使用无共享元素的降级动效。
-  const ImagePreviewDialog({super.key, required this.item, this.heroTag});
+  /// 传入 [gallery] 后显示控制器当前图片并允许切换；画廊状态由调用方持有。
+  const ImagePreviewDialog({
+    super.key,
+    required this.item,
+    this.heroTag,
+    this.gallery,
+  });
 
   final MediaItem item;
   final String? heroTag;
+
+  /// 画廊控制器；为空时为单图预览，不出现切换入口。
+  final ImageGalleryController? gallery;
 
   @override
   State<ImagePreviewDialog> createState() => _ImagePreviewDialogState();
@@ -75,14 +90,71 @@ class _ImagePreviewDialogState extends State<ImagePreviewDialog> {
   final _imageFocus = FocusNode(debugLabel: 'tv-preview-image');
   final _toolbarFocus = FocusNode(debugLabel: 'tv-preview-toolbar');
 
+  /// TV：画廊上一张/下一张按钮焦点，纳入遥控器焦点顺序。
+  final _prevFocus = FocusNode(debugLabel: 'tv-preview-prev');
+  final _nextFocus = FocusNode(debugLabel: 'tv-preview-next');
+
+  // 原始触摸事件只记录滑动，不与 InteractiveViewer 争抢缩放和平移手势。
+  Offset _swipeDelta = Offset.zero;
+  int _activeTouchPointers = 0;
+  bool _multitouchGesture = false;
+  bool _swipeStartedUnscaled = false;
+
+  /// 已用于布局图片子树的 ID，识别真实切图与加载状态通知。
+  String? _shownItemId;
+
   static const _minScale = 1.0;
   static const _maxScale = 4.0;
   static const _doubleTapScale = 2.5;
+
+  /// 未缩放时横向滑动超过该距离才切图，避免误触与点击冲突。
+  static const _swipeSwitchDistance = 64.0;
 
   bool get _isTelevision =>
       AppScope.maybeOf(context)?.deviceProfile.isTelevision ?? false;
 
   double get _currentScale => _transform.value.getMaxScaleOnAxis();
+
+  ImageGalleryController? get _gallery => widget.gallery;
+
+  /// 画廊模式下跟随控制器当前图片；单图模式恒为入口图片。
+  MediaItem get _displayedItem => _gallery?.currentItem ?? widget.item;
+
+  /// 只有仍在显示最初入口图片时才允许 Hero 回到来源卡片，
+  /// 否则反向飞行会带着别的图片缩回错误的缩略图。
+  bool get _heroShowsSource =>
+      widget.heroTag != null && _displayedItem.id == widget.item.id;
+
+  @override
+  void initState() {
+    super.initState();
+    _shownItemId = _displayedItem.id;
+    widget.gallery?.addListener(_onGalleryChanged);
+  }
+
+  @override
+  void didUpdateWidget(ImagePreviewDialog oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.gallery != widget.gallery) {
+      oldWidget.gallery?.removeListener(_onGalleryChanged);
+      widget.gallery?.addListener(_onGalleryChanged);
+    }
+    if (_shownItemId != _displayedItem.id) {
+      _shownItemId = _displayedItem.id;
+      _transform.value = Matrix4.identity();
+    }
+  }
+
+  /// 画廊通知：只有当前图片 ID 变化才重置缩放并重建图片子树，
+  /// 远端分页的加载/失败通知不打断当前浏览。
+  void _onGalleryChanged() {
+    if (!mounted) return;
+    final id = _displayedItem.id;
+    if (id == _shownItemId) return;
+    _shownItemId = id;
+    _transform.value = Matrix4.identity();
+    setState(() {});
+  }
 
   @override
   void didChangeDependencies() {
@@ -100,9 +172,13 @@ class _ImagePreviewDialogState extends State<ImagePreviewDialog> {
 
   @override
   void dispose() {
+    // 画廊控制器由调用方持有，这里只退订不销毁。
+    widget.gallery?.removeListener(_onGalleryChanged);
     _transform.dispose();
     _imageFocus.dispose();
     _toolbarFocus.dispose();
+    _prevFocus.dispose();
+    _nextFocus.dispose();
     super.dispose();
   }
 
@@ -153,9 +229,64 @@ class _ImagePreviewDialogState extends State<ImagePreviewDialog> {
     _transform.value = _clampTransform(next, size);
   }
 
+  /// 记录单指滑动的起点状态；一旦加入第二根手指，本轮只处理缩放和平移。
+  void _onPointerDown(PointerDownEvent event) {
+    if (event.kind != PointerDeviceKind.touch) return;
+    if (_activeTouchPointers == 0) {
+      _swipeDelta = Offset.zero;
+      _multitouchGesture = false;
+      _swipeStartedUnscaled = _currentScale <= 1.05;
+    }
+    _activeTouchPointers++;
+    if (_activeTouchPointers > 1) _multitouchGesture = true;
+  }
+
+  void _onPointerMove(PointerMoveEvent event) {
+    if (event.kind == PointerDeviceKind.touch &&
+        _activeTouchPointers == 1 &&
+        !_multitouchGesture &&
+        _swipeStartedUnscaled) {
+      _swipeDelta += event.delta;
+    }
+  }
+
+  /// 松手后仅切一张；取消、纵向滑动、捏合和放大状态均不切图。
+  void _onPointerUp(PointerEvent event) {
+    if (event.kind != PointerDeviceKind.touch || _activeTouchPointers == 0) {
+      return;
+    }
+    if (event is PointerCancelEvent) _multitouchGesture = true;
+    _activeTouchPointers--;
+    if (_activeTouchPointers != 0) return;
+    final delta = _swipeDelta;
+    final canSwipe =
+        !_multitouchGesture &&
+        _swipeStartedUnscaled &&
+        _currentScale <= 1.05 &&
+        delta.dx.abs() >= _swipeSwitchDistance &&
+        delta.dx.abs() > delta.dy.abs() * 1.5;
+    _swipeDelta = Offset.zero;
+    _multitouchGesture = false;
+    _swipeStartedUnscaled = false;
+    if (canSwipe) _navigateGallery(delta.dx < 0);
+  }
+
+  /// 键盘与 TV 共用的切图入口；忙碌时控制器内部串行/忽略，失败保留当前图。
+  void _navigateGallery(bool forward) {
+    final gallery = _gallery;
+    if (gallery == null || _closing) return;
+    if (forward) {
+      if (!gallery.canNext) return;
+      unawaited(gallery.next());
+    } else {
+      if (!gallery.canPrevious) return;
+      gallery.previous();
+    }
+  }
+
   /// 原地约束变换：超出视口的轴不露边，未铺满的轴保持居中。
   Matrix4 _clampTransform(Matrix4 next, Size size) {
-    final display = _containedSize(size, widget.item.aspectRatio);
+    final display = _containedSize(size, _displayedItem.aspectRatio);
     final origin = Offset(
       (size.width - display.width) / 2,
       (size.height - display.height) / 2,
@@ -196,7 +327,7 @@ class _ImagePreviewDialogState extends State<ImagePreviewDialog> {
     unawaited(_close());
   }
 
-  /// TV 图片区按键：方向平移、OK 回工具栏。
+  /// TV 图片区按键：放大时方向键平移，未放大时左右切换、OK 先到导航条。
   KeyEventResult _onImageKeyEvent(FocusNode node, KeyEvent event) {
     if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
       return KeyEventResult.ignored;
@@ -212,11 +343,21 @@ class _ImagePreviewDialogState extends State<ImagePreviewDialog> {
     }
     final size = MediaQuery.sizeOf(context);
     final step = Offset(size.width * 0.1, size.height * 0.1);
+    final zoomed = _currentScale > 1.05;
     switch (event.logicalKey) {
       case LogicalKeyboardKey.arrowLeft:
-        _panPreview(Offset(-step.dx, 0));
+        // 放大时平移，未放大时向左切上一张。
+        if (zoomed) {
+          _panPreview(Offset(-step.dx, 0));
+        } else {
+          _navigateGallery(false);
+        }
       case LogicalKeyboardKey.arrowRight:
-        _panPreview(Offset(step.dx, 0));
+        if (zoomed) {
+          _panPreview(Offset(step.dx, 0));
+        } else {
+          _navigateGallery(true);
+        }
       case LogicalKeyboardKey.arrowUp:
         _panPreview(Offset(0, -step.dy));
       case LogicalKeyboardKey.arrowDown:
@@ -224,8 +365,12 @@ class _ImagePreviewDialogState extends State<ImagePreviewDialog> {
       case LogicalKeyboardKey.select:
       case LogicalKeyboardKey.enter:
       case LogicalKeyboardKey.numpadEnter:
-        // OK 回工具栏。
-        _toolbarFocus.requestFocus();
+        // OK：画廊模式优先把焦点落到下一张按钮，再向下进入工具栏。
+        if (_gallery != null) {
+          _nextFocus.requestFocus();
+        } else {
+          _toolbarFocus.requestFocus();
+        }
       case LogicalKeyboardKey.escape:
       case LogicalKeyboardKey.goBack:
         _handleTvBack();
@@ -246,7 +391,8 @@ class _ImagePreviewDialogState extends State<ImagePreviewDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final item = widget.item;
+    // 画廊模式下跟随控制器当前图片；单图模式恒为入口图片。
+    final item = _displayedItem;
     final routeAnimation = ModalRoute.of(context)?.animation;
     final dpr = MediaQuery.devicePixelRatioOf(context);
     final size = MediaQuery.sizeOf(context);
@@ -280,7 +426,8 @@ class _ImagePreviewDialogState extends State<ImagePreviewDialog> {
         ? item.originalUrl!
         : item.thumbnailUrl;
     final thumbPath = item.thumbnailUrl;
-    // 缩略图始终垫底并参与 Hero，原图只在转场完成后叠加，退出前先移除。
+    // 缩略图始终垫底，原图只在转场完成后叠加，退出前先移除。
+    // 整棵图片子树按当前 ID 换 key，上一张的解码/淡入状态不会渗入下一张。
     final thumbnail = Material(
       type: MaterialType.transparency,
       child: thumbPath.isEmpty
@@ -294,15 +441,18 @@ class _ImagePreviewDialogState extends State<ImagePreviewDialog> {
               fallback: const SizedBox.expand(),
             ),
     );
-    final heroThumbnail = widget.heroTag == null
-        ? thumbnail
-        : Hero(
+    // 只有仍显示入口图片时才允许 Hero；切到其他图后不再携带来源标签，
+    // 关闭时也就不会带着别的图片飞回最初的缩略图。
+    final heroThumbnail = _heroShowsSource
+        ? Hero(
             tag: widget.heroTag!,
             createRectTween: _straightRectTween,
             flightShuttleBuilder: _thumbnailFlightShuttle,
             child: thumbnail,
-          );
+          )
+        : thumbnail;
     final image = SizedBox(
+      key: ValueKey('preview-image-${item.id}'),
       width: displaySize.width,
       height: displaySize.height,
       child: Stack(
@@ -311,6 +461,7 @@ class _ImagePreviewDialogState extends State<ImagePreviewDialog> {
           heroThumbnail,
           if (_originalLoadAllowed && !_closing && originalPath.isNotEmpty)
             AuthenticatedMediaImage(
+              key: ValueKey('original-${item.id}'),
               path: originalPath,
               fit: BoxFit.contain,
               fullResolution: true,
@@ -324,7 +475,8 @@ class _ImagePreviewDialogState extends State<ImagePreviewDialog> {
       ),
     );
 
-    final preview = widget.heroTag == null && routeAnimation != null
+    // 无 Hero（无来源标签或已切到其他图）时保留短淡入降级动效。
+    final preview = !_heroShowsSource && routeAnimation != null
         ? FadeTransition(
             opacity: CurvedAnimation(
               parent: routeAnimation,
@@ -377,22 +529,46 @@ class _ImagePreviewDialogState extends State<ImagePreviewDialog> {
           : chromeContent,
     );
 
+    // 画廊导航条：独立底部区域，与顶部缩放工具互不挤压；
+    // TV 上抬到底部工具栏之上，保持遥控器可达且不重叠。
+    final gallery = _gallery;
+    final navigation = gallery == null
+        ? null
+        : Positioned(
+            left: isTv ? size.width * 0.05 : 0,
+            right: isTv ? size.width * 0.05 : 0,
+            bottom: isTv ? size.height * 0.05 + 96 : 0,
+            child: ImagePreviewNavigationBar(
+              gallery: gallery,
+              television: isTv,
+              previousFocusNode: _prevFocus,
+              nextFocusNode: _nextFocus,
+            ),
+          );
     final backdrop = ColoredBox(color: context.luma.playerInk);
-    final content = CallbackShortcuts(
-      bindings: <ShortcutActivator, VoidCallback>{
-        // TV：Back/Esc 先还原放大状态再一次关闭；普通端直接关闭。
-        const SingleActivator(LogicalKeyboardKey.escape): isTv
-            ? _handleTvBack
-            : () => unawaited(_close()),
-        const SingleActivator(LogicalKeyboardKey.equal, shift: true): () =>
-            _zoomBy(1.25),
-        const SingleActivator(LogicalKeyboardKey.numpadAdd): () =>
-            _zoomBy(1.25),
-        const SingleActivator(LogicalKeyboardKey.minus): () => _zoomBy(0.8),
-        const SingleActivator(LogicalKeyboardKey.numpadSubtract): () =>
-            _zoomBy(0.8),
-        const SingleActivator(LogicalKeyboardKey.digit0): _resetZoom,
+    // Windows/桌面键盘左右切换；TV 上焦点在按钮上时左右键负责移动焦点，
+    // 图片区的方向切图由 _onImageKeyEvent 处理，不挂全局快捷键。
+    final bindings = <ShortcutActivator, VoidCallback>{
+      // TV：Back/Esc 先还原放大状态再一次关闭；普通端直接关闭。
+      const SingleActivator(LogicalKeyboardKey.escape): isTv
+          ? _handleTvBack
+          : () => unawaited(_close()),
+      const SingleActivator(LogicalKeyboardKey.equal, shift: true): () =>
+          _zoomBy(1.25),
+      const SingleActivator(LogicalKeyboardKey.numpadAdd): () => _zoomBy(1.25),
+      const SingleActivator(LogicalKeyboardKey.minus): () => _zoomBy(0.8),
+      const SingleActivator(LogicalKeyboardKey.numpadSubtract): () =>
+          _zoomBy(0.8),
+      const SingleActivator(LogicalKeyboardKey.digit0): _resetZoom,
+      if (!isTv) ...{
+        const SingleActivator(LogicalKeyboardKey.arrowLeft): () =>
+            _navigateGallery(false),
+        const SingleActivator(LogicalKeyboardKey.arrowRight): () =>
+            _navigateGallery(true),
       },
+    };
+    final content = CallbackShortcuts(
+      bindings: bindings,
       child: Focus(
         autofocus: !isTv,
         skipTraversal: isTv,
@@ -428,7 +604,9 @@ class _ImagePreviewDialogState extends State<ImagePreviewDialog> {
                   Semantics(
                     image: true,
                     label: '图片预览：${item.title}',
-                    hint: isTv ? '方向键缩放平移，OK 回到工具栏' : '可双指或滚轮缩放，双击放大，按 0 还原',
+                    hint: isTv
+                        ? '方向键缩放平移或切图，OK 进入导航与工具栏'
+                        : '可双指或滚轮缩放，双击放大，左右滑动或方向键切换，按 0 还原',
                     child: isTv
                         ? Focus(
                             focusNode: _imageFocus,
@@ -451,22 +629,30 @@ class _ImagePreviewDialogState extends State<ImagePreviewDialog> {
                               ),
                             ),
                           )
-                        : GestureDetector(
+                        : Listener(
                             behavior: HitTestBehavior.opaque,
-                            onDoubleTapDown: (details) =>
-                                _doubleTapDetails = details,
-                            onDoubleTap: _onDoubleTap,
-                            child: Center(
-                              child: InteractiveViewer(
-                                transformationController: _transform,
-                                minScale: _minScale,
-                                maxScale: _maxScale,
-                                clipBehavior: Clip.none,
-                                child: preview,
+                            onPointerDown: _onPointerDown,
+                            onPointerMove: _onPointerMove,
+                            onPointerUp: _onPointerUp,
+                            onPointerCancel: _onPointerUp,
+                            child: GestureDetector(
+                              behavior: HitTestBehavior.opaque,
+                              onDoubleTapDown: (details) =>
+                                  _doubleTapDetails = details,
+                              onDoubleTap: _onDoubleTap,
+                              child: Center(
+                                child: InteractiveViewer(
+                                  transformationController: _transform,
+                                  minScale: _minScale,
+                                  maxScale: _maxScale,
+                                  clipBehavior: Clip.none,
+                                  child: preview,
+                                ),
                               ),
                             ),
                           ),
                   ),
+                  ?navigation,
                   chrome,
                 ],
               ),

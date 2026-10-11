@@ -136,6 +136,7 @@ final class ApiConnectionService implements ConnectionService {
         platform: system.platform,
         architecture: system.architecture,
         database: system.database,
+        userId: system.userId,
         userRole: system.userRole,
         capabilities: system.capabilities,
       );

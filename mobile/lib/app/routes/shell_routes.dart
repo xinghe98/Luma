@@ -61,6 +61,14 @@ StatefulShellRoute buildShellRoutes() => StatefulShellRoute(
             inShell: true,
             type: MediaType.image,
             pageSize: 18,
+            onUploadImages: () async =>
+                await context.pushNamed<bool>(AppRoute.imageUpload) ?? false,
+            onOpenImageGallery: (gallery, {heroTag}) =>
+                context.openImagePreview(
+                  gallery.currentItem,
+                  heroTag: heroTag,
+                  gallery: gallery,
+                ),
             onOpenMedia: (item, {heroTag}) =>
                 context.openImagePreview(item, heroTag: heroTag),
             onLongPressMedia: (item, {heroTag}) =>

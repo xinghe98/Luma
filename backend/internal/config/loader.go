@@ -132,7 +132,7 @@ func resolvePaths(cfg *Config, base string) error {
 	return nil
 }
 
-// Validate 校验配置字段、目录状态和只读媒体边界。
+// Validate 校验配置字段、目录状态和媒体数据隔离边界。
 func Validate(cfg Config) error {
 	var problems []string
 	if strings.TrimSpace(cfg.Server.Host) == "" {
@@ -213,7 +213,7 @@ func Validate(cfg Config) error {
 	return nil
 }
 
-// validateDataPathIsolation 以最终路径比较可写数据与只读媒体目录，并拒绝链接类数据路径。
+// validateDataPathIsolation 以最终路径隔离运行数据与媒体目录，并拒绝链接类数据路径。
 func validateDataPathIsolation(cfg Config) []string {
 	canonicalRoots := make([]string, 0, len(cfg.Security.AllowedRoots))
 	for _, root := range cfg.Security.AllowedRoots {
@@ -245,7 +245,7 @@ func validateDataPathIsolation(cfg Config) []string {
 		}
 		for _, root := range canonicalRoots {
 			if pathIsWithin(root, canonicalDataPath) {
-				problems = append(problems, fmt.Sprintf("%s must be outside read-only media root %q", dataPath.name, root))
+				problems = append(problems, fmt.Sprintf("%s must be outside media root %q", dataPath.name, root))
 			}
 		}
 	}

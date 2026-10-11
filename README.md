@@ -15,7 +15,7 @@ TV/漫长的季节/Season 01/漫长的季节.S01E01.mkv
 
 电影优先使用上级目录作为作品名，并清理常见发布站点、年份、分辨率、编码和语言标记；目录或文件名中的 `[tmdbid-123]` 可作为明确身份。电视剧识别 `SxxExx`、`E03`、`EP03`、`第3集`、受约束的纯数字集号，以及 `Season 02`、`S02`、`第2季`、`Specials` 等季目录。无法可靠识别、重复版本、重复集数或相互冲突的标记会进入待整理。首版仍采用 Direct Play，不包含字幕选择和实时转码。
 
-目录识别后，后端会异步读取标准 `movie.nfo`、同名电影 NFO 或 `tvshow.nfo`，并可选连接 TMDb 获取简介、类型、评分、演职员、海报和背景图。高置信结果自动确认；人工锁定不是刮削前置条件，只在候选不确定或匹配错误时使用。原始 SMB/本地媒体和 NFO 始终只读，下载图片只写入 `storage.cache_dir`。
+目录识别后，后端会异步读取标准 `movie.nfo`、同名电影 NFO 或 `tvshow.nfo`，并可选连接 TMDb 获取简介、类型、评分、演职员、海报和背景图。高置信结果自动确认；人工锁定不是刮削前置条件，只在候选不确定或匹配错误时使用。刮削只读原始 SMB/本地媒体和 NFO，下载的刮削图片只写入 `storage.cache_dir`；用户主动上传的图片另存到已授权媒体源根目录。
 
 ## 配置影视刮削
 
@@ -145,7 +145,7 @@ LUMA_PORT=8080
 LUMA_MEDIA_DIRS=/mnt/TV=tv,/mnt/Movies=movies,/mnt/Photos=photos
 ```
 
-`LUMA_MEDIA_DIRS` 的每项格式为“宿主机绝对路径=容器目录名”，以英文逗号分隔。部署脚本会将它们只读挂载到 `/media/<容器目录名>`，并自动生成与之匹配的 `security.allowed_roots`；例如上面的目录在 App 中分别填写 `/media/tv`、`/media/movies` 和 `/media/photos`。宿主机必须允许容器中的非特权用户读取媒体文件。
+`LUMA_MEDIA_DIRS` 的每项格式为“宿主机绝对路径=容器目录名”，以英文逗号分隔。部署脚本会将它们读写挂载到 `/media/<容器目录名>`，并自动生成与之匹配的 `security.allowed_roots`；例如上面的目录在 App 中分别填写 `/media/tv`、`/media/movies` 和 `/media/photos`。宿主机必须允许容器中的非特权用户读取媒体并创建上传文件；旧部署需重新运行 `./scripts/docker-deploy.sh up -d` 更新挂载。配置文件仍只读挂载，脚本不修改宿主机目录权限。
 
 `LUMA_VERSION` 是唯一的 Docker 版本入口：Compose 将它传给 Docker 构建参数，Docker 再用 Go 链接参数注入最终的 `luma-server` 二进制。
 

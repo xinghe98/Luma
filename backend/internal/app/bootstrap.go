@@ -147,7 +147,7 @@ func (b *bootstrap) build(ctx context.Context) (*App, error) {
 	}
 	catalogSignal := jobs.NewCatalogSyncSignal()
 	metadataSignal := jobs.NewSignal()
-	workerGroup, scanSignal, err := b.buildWorkers(database, sourceRepository, scanRepository, localFactory, ids, clock, catalogSignal)
+	workerGroup, scanSignal, probeSignal, err := b.buildWorkers(database, sourceRepository, scanRepository, localFactory, ids, clock, catalogSignal)
 	if err != nil {
 		return nil, err
 	}
@@ -179,6 +179,12 @@ func (b *bootstrap) build(ctx context.Context) (*App, error) {
 	)
 	if err != nil {
 		return nil, fmt.Errorf("create source service: %w", err)
+	}
+	uploadService, err := service.NewUploadService(
+		sourceRepository, localFactory, scanRepository, probeSignal, ids, clock,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("创建图片上传服务: %w", err)
 	}
 	scanService, err := service.NewScanService(sourceRepository, scanRepository, ids, clock, scanSignal)
 	if err != nil {
@@ -284,12 +290,16 @@ func (b *bootstrap) build(ctx context.Context) (*App, error) {
 	if err != nil {
 		return nil, fmt.Errorf("创建标签 Handler: %w", err)
 	}
+	uploadHandler, err := handler.NewUploadHandler(uploadService)
+	if err != nil {
+		return nil, fmt.Errorf("创建图片上传 Handler: %w", err)
+	}
 	router, err := api.NewRouter(api.RouterParams{
 		Logger: b.logger, AllowedOrigins: b.config.Security.AllowedOrigins,
 		Health: healthHandler, System: systemHandler, Sources: sourceHandler,
 		Scans: scanHandler, Media: mediaHandler, Stream: streamHandler,
 		UserData: userDataHandler, Tags: tagHandler, Catalog: catalogHandler, Access: accessHandler, Auth: authHandler,
-		Authenticator: authenticator,
+		Uploads: uploadHandler, Authenticator: authenticator,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("create router: %w", err)

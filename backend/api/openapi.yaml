@@ -158,6 +158,67 @@ paths:
       responses:
         "204": { description: 媒体源已禁用 }
         "404": { $ref: "#/components/responses/NotFound" }
+  /api/v1/sources/{id}/images:
+    parameters:
+      - $ref: "#/components/parameters/SourceID"
+    post:
+      summary: 上传一张图片到已授权媒体源根目录
+      description: |-
+        multipart/form-data 的单个 file 部件携带一张图片，保存到来源根目录。
+        同名文件保留两份，服务端自动追加安全后缀并以 201 返回实际使用的文件名。
+        支持 jpg/jpeg/png/gif/webp/bmp，单文件最大 64 MiB；内容字节按魔数判定，
+        扩展名只做粗筛。上传成功后文件同步进入媒体索引并进入既有 probe 链。
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        "201":
+          description: 图片已保存并完成索引
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [media_id, filename]
+                properties:
+                  media_id: { type: string }
+                  filename: { type: string }
+        "400":
+          description: 请求无效或图片字节不受支持。multipart/文件名/扩展名问题为 INVALID_REQUEST；内容不是 jpg/jpeg/png/gif/webp/bmp 时为 UNSUPPORTED_IMAGE
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              examples:
+                invalid_request:
+                  value:
+                    error: { code: INVALID_REQUEST, message: 缺少 file 上传部件, details: null }
+                unsupported_image:
+                  value:
+                    error: { code: UNSUPPORTED_IMAGE, message: 上传内容不是受支持的图片, details: null }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "413":
+          description: 上传图片超过 64 MiB 上限，error.code 为 UPLOAD_TOO_LARGE
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              example:
+                error: { code: UPLOAD_TOO_LARGE, message: 上传图片超过64MiB上限, details: null }
+        "503":
+          description: 媒体源已禁用或当前不可写，error.code 为 SOURCE_OFFLINE
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              example:
+                error: { code: SOURCE_OFFLINE, message: 媒体源当前不可访问, details: null }
   /api/v1/sources/{id}/scan:
     parameters:
       - $ref: "#/components/parameters/SourceID"

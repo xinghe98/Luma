@@ -8,6 +8,7 @@ import '../data/models/api_catalog.dart';
 import '../data/models/media_item.dart';
 import '../data/models/media_types.dart';
 import '../features/details/dialogs/image_preview_dialog.dart';
+import '../shared/media/image_gallery_controller.dart';
 import '../features/shell/app_destination.dart';
 import 'app_route.dart';
 import 'app_scope.dart';
@@ -58,7 +59,12 @@ extension AppNavigation on BuildContext {
   }
 
   /// 打开图片预览；有来源标签时从当前缩略图原地放大并在关闭时缩回。
-  Future<void> openImagePreview(MediaItem item, {String? heroTag}) async {
+  /// [gallery] 提供时预览可左右翻看同一来源顺序，其生命周期归调用方。
+  Future<void> openImagePreview(
+    MediaItem item, {
+    String? heroTag,
+    ImageGalleryController? gallery,
+  }) async {
     AppScope.of(this).media.remember(item, notify: false);
     // TV 预览不走 Hero，退化为短淡入并保留转场等待逻辑。
     final isTelevision = AppScope.of(this).deviceProfile.isTelevision;
@@ -66,9 +72,11 @@ extension AppNavigation on BuildContext {
       this,
       item,
       heroTag: isTelevision ? null : heroTag,
+      gallery: gallery,
     );
     if (!mounted || action != ImagePreviewAction.openDetails) return;
-    openMediaDetails(item);
+    // 预览里翻页后以停留的那张为准进入详情，单图回退到原条目。
+    openMediaDetails(gallery?.currentItem ?? item);
   }
 
   /// 打开电影或电视剧详情，首帧复用来源卡片数据，并可让海报独占路由动效。

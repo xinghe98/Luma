@@ -41,6 +41,47 @@ func (r *ScanRepository) NeedsQuickHash(ctx context.Context, sourceID string, fi
 	return count > 0, nil
 }
 
+// IndexUpload 把上传已落盘的文件同步登记到 media_items，并在需要重新探测时入队 probe。
+// 整个登记与入队在同一个事务内提交：任何一步失败都不会留下孤儿索引或缺失任务。
+// last_seen_scan_id 取事务内查到的当前运行中扫描 ID；没有运行中扫描时为 NULL。
+// 这样上传落在扫描进行中时不会被本轮 CompleteJob 误标 missing，而扫描结束后的
+// 文件删除会由下一轮完整扫描按既有水位规则正常标记 missing。
+func (r *ScanRepository) IndexUpload(
+	ctx context.Context,
+	sourceID string,
+	newMediaID string,
+	file domain.DiscoveredFile,
+	now time.Time,
+	probeJobID string,
+) (domain.ReconcileResult, error) {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return domain.ReconcileResult{}, err
+	}
+	defer tx.Rollback()
+	// 在同一事务内读取该来源当前运行中的扫描任务；SQLite 串行化写事务，
+	// 若 CompleteJob 已先提交则读不到 running，上传行走正常扫描水位。
+	var scanID sql.NullString
+	if err := tx.QueryRowContext(ctx, `SELECT id FROM jobs
+		WHERE job_type = 'scan_source' AND entity_id = ? AND status = 'running' ORDER BY created_at_ms DESC LIMIT 1`,
+		sourceID).Scan(&scanID); err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return domain.ReconcileResult{}, err
+	}
+	result, err := reconcileFileTx(ctx, tx, scanID, sourceID, newMediaID, file, now)
+	if err != nil {
+		return domain.ReconcileResult{}, err
+	}
+	if result.NeedsProbe {
+		if err := enqueueProbeTx(ctx, tx, probeJobID, result.MediaID, now); err != nil {
+			return domain.ReconcileResult{}, err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return domain.ReconcileResult{}, err
+	}
+	return result, nil
+}
+
 // ReconcileFile 按文档规定的身份优先级新增或更新媒体索引。
 func (r *ScanRepository) ReconcileFile(
 	ctx context.Context,
@@ -55,6 +96,27 @@ func (r *ScanRepository) ReconcileFile(
 		return domain.ReconcileResult{}, err
 	}
 	defer tx.Rollback()
+	result, err := reconcileFileTx(ctx, tx, sql.NullString{String: scanID, Valid: scanID != ""}, sourceID, newMediaID, file, now)
+	if err != nil {
+		return domain.ReconcileResult{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return domain.ReconcileResult{}, err
+	}
+	return result, nil
+}
+
+// reconcileFileTx 在给定事务内执行媒体索引 reconcile；last_seen_scan_id 取入参，
+// 为空时写入 NULL，表示尚无完整扫描见证该文件。
+func reconcileFileTx(
+	ctx context.Context,
+	tx *sql.Tx,
+	scanID sql.NullString,
+	sourceID string,
+	newMediaID string,
+	file domain.DiscoveredFile,
+	now time.Time,
+) (domain.ReconcileResult, error) {
 	existing, found, ambiguous, err := findExistingMedia(ctx, tx, sourceID, file, now)
 	if err != nil {
 		return domain.ReconcileResult{}, err
@@ -68,13 +130,10 @@ func (r *ScanRepository) ReconcileFile(
             file_id, quick_hash, status, last_seen_scan_id, discovered_at_ms, created_at_ms, updated_at_ms
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'discovered', ?, ?, ?, ?)`,
 			newMediaID, sourceID, file.RelativePath, file.Filename, file.MediaType, file.Size,
-			file.ModifiedAt.UnixMilli(), nullableTimeMS(file.CreatedAt), nullableText(file.FileID), nullableText(file.QuickHash), scanID,
-			now.UnixMilli(), now.UnixMilli(), now.UnixMilli())
+			file.ModifiedAt.UnixMilli(), nullableTimeMS(file.CreatedAt), nullableText(file.FileID), nullableText(file.QuickHash),
+			scanID, now.UnixMilli(), now.UnixMilli(), now.UnixMilli())
 		if err != nil {
 			return domain.ReconcileResult{}, fmt.Errorf("创建媒体索引: %w", err)
-		}
-		if err := tx.Commit(); err != nil {
-			return domain.ReconcileResult{}, err
 		}
 		return domain.ReconcileResult{MediaID: newMediaID, Change: "created", NeedsProbe: true}, nil
 	}
@@ -140,8 +199,19 @@ func (r *ScanRepository) ReconcileFile(
 	if err != nil {
 		return domain.ReconcileResult{}, fmt.Errorf("更新媒体索引: %w", err)
 	}
-	if err := tx.Commit(); err != nil {
-		return domain.ReconcileResult{}, err
-	}
 	return domain.ReconcileResult{MediaID: existing.ID, Change: change, NeedsProbe: needsProbe}, nil
+}
+
+// enqueueProbeTx 在给定事务内创建最多执行两次的探测任务。
+// 与 ProcessingRepository.EnqueueProbe 保持一致的 INSERT 语义；
+// 独立成事务版本供上传索引与入队原子提交。
+func enqueueProbeTx(ctx context.Context, tx *sql.Tx, jobID, mediaID string, now time.Time) error {
+	_, err := tx.ExecContext(ctx, `INSERT INTO jobs(
+        id, job_type, entity_id, status, max_attempts, available_at_ms, created_at_ms, updated_at_ms
+    ) VALUES (?, 'probe_media', ?, 'pending', 2, ?, ?, ?)
+    ON CONFLICT DO NOTHING`, jobID, mediaID, now.UnixMilli(), now.UnixMilli(), now.UnixMilli())
+	if err != nil {
+		return fmt.Errorf("创建媒体探测任务: %w", err)
+	}
+	return nil
 }

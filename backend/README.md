@@ -23,7 +23,7 @@ Copy-Item configs/config.example.yaml configs/config.yaml
 
 开发脚本优先使用 `PATH` 中已安装的 `air`；如果本机尚未安装，则自动通过 `go run github.com/air-verse/air@v1.62.0` 使用固定版本。修改 `cmd`、`internal`、`configs`、`migrations` 或 `api` 下的 Go、YAML、SQL 文件后，Air 会重新构建并重启 API 服务。临时二进制和 Air 日志位于 `.cache/air`，退出时自动清理。生产环境仍直接运行构建后的 `luma-server`，不使用 Air。
 
-服务首次启动会创建 `data/secrets/admin_password`，其中保存一次性的本地管理员初始密码。`GET /health` 无需认证；客户端通过用户名和密码登录，随后以服务端签发的会话访问 API。本地示例媒体目录是 `data/media`，服务端只读它；SQLite 和衍生数据写入独立的 `data` 子目录。
+服务首次启动会创建 `data/secrets/admin_password`，其中保存一次性的本地管理员初始密码。`GET /health` 无需认证；客户端通过用户名和密码登录，随后以服务端签发的会话访问 API。本地示例媒体目录是 `data/media`，图片上传会向已授权来源的根目录新增文件，已有原文件不会被覆盖；SQLite 和衍生数据写入独立的 `data` 子目录。
 
 ### 多用户、登录会话与媒体源授权
 
@@ -67,7 +67,7 @@ media:
 说明：
 
 - 同一媒体源若已有 `pending`/`running` 扫描，自动触发会被合并（与 API `SCAN_ALREADY_RUNNING` 同一约束）。
-- Docker 只读挂载、SMB/NAS 上 inotify 类事件经常不可靠，请依赖 `hybrid`/`poll` 的定时兜底，或把服务跑在能直接看到磁盘事件的主机上。
+- Docker 挂载、SMB/NAS 上 inotify 类事件经常不可靠，请依赖 `hybrid`/`poll` 的定时兜底，或把服务跑在能直接看到磁盘事件的主机上。
 - App 无需改动；库内容更新后客户端下次刷新列表即可看到。手动「扫描」按钮仍然可用。
 
 常用命令：
@@ -119,6 +119,20 @@ type Provider interface {
 在线实现必须使用 Luma 注入的 `http.Client`，从而统一接受请求超时、代理和 `requests_per_second` 限速；图片引用必须保持不透明，由鉴权后的 `/api/v1/catalog/artwork/{id}` 代理读取。Provider 错误使用 `scraper.ProviderError` 分类为未授权、不存在、限流、临时失败、无效响应或不支持，后台任务据此决定安全重试。
 
 人工锁定不是普通刮削的前置步骤。系统以标题、年份和目录共识评分，高置信时自动确认；低置信结果保存在 `catalog_match_candidates`。管理员选择候选后只锁定 Provider 身份，身份锁不会阻止该记录按 `refresh_interval` 更新。
+
+### 图片上传
+
+`POST /api/v1/sources/{source_id}/images` 接受带会话的 `multipart/form-data` 请求，且只能包含一个名为 `file` 的文件部件。管理员和成员均需对目标来源拥有访问授权；`allowed_roots` 只限制来源可配置的路径范围，不作为普通用户直接选择或提交的上传路径。
+
+```bash
+curl -X POST http://127.0.0.1:8080/api/v1/sources/{source_id}/images \
+  -H "Authorization: Bearer ${SESSION_TOKEN}" \
+  -F 'file=@photo.jpg'
+```
+
+支持 JPG/JPEG、PNG、GIF、WebP、BMP，单文件最多 64 MiB；服务端检查扩展名和文件头。文件流先写入目标来源根目录内的隐藏暂存文件，完整校验后原子发布；同名时追加 ` (2)` 等后缀，绝不覆盖已有文件。成功返回 `201 {"media_id":"…","filename":"…"}`，媒体索引与探测任务在同一事务提交，后续缩略图继续使用既有处理链。
+
+未授权或不存在的来源返回 `404 SOURCE_NOT_FOUND`；离线、禁用或没有写入权限返回 `503 SOURCE_OFFLINE`；超限返回 `413 UPLOAD_TOO_LARGE`；格式不支持返回 `400 UNSUPPORTED_IMAGE`。服务账户必须能在来源根目录创建文件。Docker 媒体挂载改为读写，旧部署运行 `./scripts/docker-deploy.sh up -d` 重新生成挂载；读取、扫描和播放原有目录仍按既有授权执行。
 
 ### 本地扫描闭环
 
@@ -284,7 +298,7 @@ Config / Logger
 * 多服务器聚合
 * Web 管理后台
 
-媒体目录必须以只读方式使用，服务端不得修改原文件。
+扫描、播放和刮削不修改原始文件；图片上传仅向当前用户有权访问的媒体源根目录新增文件，同名时另存，不覆盖已有文件。
 
 ---
 
@@ -1114,7 +1128,7 @@ C:\ProgramData\Luma\
 └── secrets\
 ```
 
-数据库、WAL、缓存和缩略图不能放在只读媒体目录或网络共享中。管理员初始密码文件需要限制为运行服务的账户和管理员可读；不能假设 `chmod 0600` 在 Windows 上等同于完整 ACL 控制。
+数据库、WAL、缓存和缩略图不能放在媒体目录或网络共享中。管理员初始密码文件需要限制为运行服务的账户和管理员可读；不能假设 `chmod 0600` 在 Windows 上等同于完整 ACL 控制。
 
 #### 构建、运行和服务
 
@@ -1433,7 +1447,7 @@ PRAGMA journal_mode = WAL;
 PRAGMA busy_timeout = 5000;
 ```
 
-SQLite 数据库、WAL 文件和任务队列必须放在可靠的本地数据卷中，不得放在 SMB 媒体挂载目录。媒体目录只读，数据库和衍生资产目录可写且与媒体目录隔离。
+SQLite 数据库、WAL 文件和任务队列必须放在可靠的本地数据卷中，不得放在 SMB 媒体挂载目录。媒体目录需要允许服务账户创建上传文件，数据库和衍生资产目录仍与媒体目录隔离。
 
 第一版至少创建以下索引：
 
@@ -1840,7 +1854,7 @@ cp .env.example .env
 ./scripts/docker-deploy.sh up -d --build
 ```
 
-Docker 部署的唯一用户配置入口是 `.env`。`LUMA_MEDIA_DIRS` 使用 `/host/path=container-name` 的逗号分隔格式；脚本会生成只读挂载与匹配的 `security.allowed_roots`，容器内路径为 `/media/<container-name>`。`LUMA_VERSION` 由 Compose 传入 Docker 构建参数，再由 Go 链接参数写入服务二进制。`docker-compose.yml` 使用命名卷 `luma-data` 持久化 `/data`；容器以非特权用户运行，宿主机媒体目录必须允许该用户读取。Compose 的停止宽限期为 40 秒，应始终长于配置中的 30 秒优雅关闭时间。
+Docker 部署的唯一用户配置入口是 `.env`。`LUMA_MEDIA_DIRS` 使用 `/host/path=container-name` 的逗号分隔格式；脚本会生成读写挂载与匹配的 `security.allowed_roots`，容器内路径为 `/media/<container-name>`，配置文件挂载仍为只读。`LUMA_VERSION` 由 Compose 传入 Docker 构建参数，再由 Go 链接参数写入服务二进制。`docker-compose.yml` 使用命名卷 `luma-data` 持久化 `/data`；容器以非特权用户运行，宿主机媒体目录必须允许该用户读取媒体并创建上传文件。已有部署需重新运行 `./scripts/docker-deploy.sh up -d` 更新挂载，脚本不会自动扩大宿主机权限。Compose 的停止宽限期为 40 秒，应始终长于配置中的 30 秒优雅关闭时间。
 
 目录规划：
 
@@ -1886,7 +1900,7 @@ luma-server-windows-amd64.zip
 
 * 数据目录读写权限
 * 管理员初始密码文件读取权限
-* 本地或 UNC 媒体目录只读权限
+* 本地或 UNC 媒体目录读取及创建上传文件的权限
 * ffmpeg 和 ffprobe 执行权限
 
 安装脚本必须可重复执行并明确显示服务账户、配置文件和数据目录，不得静默授予整个磁盘的宽泛权限。卸载服务默认保留数据库、缩略图和配置，删除数据必须是单独且显式的操作。
