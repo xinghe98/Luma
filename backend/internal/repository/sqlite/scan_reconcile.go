@@ -67,7 +67,7 @@ func (r *ScanRepository) IndexUpload(
 		sourceID).Scan(&scanID); err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return domain.ReconcileResult{}, err
 	}
-	result, err := reconcileFileTx(ctx, tx, scanID, sourceID, newMediaID, file, now)
+	result, err := reconcileFileTx(ctx, tx, scanID, sourceID, newMediaID, file, now, false)
 	if err != nil {
 		return domain.ReconcileResult{}, err
 	}
@@ -96,7 +96,7 @@ func (r *ScanRepository) ReconcileFile(
 		return domain.ReconcileResult{}, err
 	}
 	defer tx.Rollback()
-	result, err := reconcileFileTx(ctx, tx, sql.NullString{String: scanID, Valid: scanID != ""}, sourceID, newMediaID, file, now)
+	result, err := reconcileFileTx(ctx, tx, sql.NullString{String: scanID, Valid: scanID != ""}, sourceID, newMediaID, file, now, true)
 	if err != nil {
 		return domain.ReconcileResult{}, err
 	}
@@ -108,6 +108,9 @@ func (r *ScanRepository) ReconcileFile(
 
 // reconcileFileTx 在给定事务内执行媒体索引 reconcile；last_seen_scan_id 取入参，
 // 为空时写入 NULL，表示尚无完整扫描见证该文件。
+// forScan 为 true 时（扫描回调路径）先核对删除墓碑：删除发生前已启动的
+// 扫描对同路径的过期快照一律拒绝，防止已删文件复活；上传索引入队传 false，
+// 已发布的新文件不受旧扫描水位限制，也不清除墓碑。
 func reconcileFileTx(
 	ctx context.Context,
 	tx *sql.Tx,
@@ -116,7 +119,19 @@ func reconcileFileTx(
 	newMediaID string,
 	file domain.DiscoveredFile,
 	now time.Time,
+	forScan bool,
 ) (domain.ReconcileResult, error) {
+	if forScan {
+		stale, err := isStaleDeletedFile(ctx, tx, scanID, sourceID, file)
+		if err != nil {
+			return domain.ReconcileResult{}, err
+		}
+		if stale {
+			// 过期快照：媒体已被用户删除，本次发现直接忽略，
+			// 不创建索引行、不投递 probe，墓碑保留以防后续快照再次复活。
+			return domain.ReconcileResult{Change: "unchanged"}, nil
+		}
+	}
 	existing, found, ambiguous, err := findExistingMedia(ctx, tx, sourceID, file, now)
 	if err != nil {
 		return domain.ReconcileResult{}, err
@@ -200,6 +215,48 @@ func reconcileFileTx(
 		return domain.ReconcileResult{}, fmt.Errorf("更新媒体索引: %w", err)
 	}
 	return domain.ReconcileResult{MediaID: existing.ID, Change: change, NeedsProbe: needsProbe}, nil
+}
+
+// isStaleDeletedFile 判定当前扫描对同路径的发现是否属于已删文件的过期快照。
+// 判定以删除时刻为水位：墓碑记录 deleted_at_ms，当前扫描任务的
+// scan_jobs.created_at_ms 不晚于该时刻，说明扫描在删除前已启动，
+// 其枚举快照不可信，拒绝复活；创建时间更晚的扫描是删除后新启动的，
+// 即使发现 mtime/size 完全相同的文件也正常入库，并顺带清掉墓碑。
+// 每源同一时刻只有一个活跃扫描，后启动的扫描执行时旧扫描必然已结束，
+// 因此晚水位清理墓碑不会让旧扫描的迟到回包有机可乘。
+func isStaleDeletedFile(ctx context.Context, tx *sql.Tx, scanID sql.NullString, sourceID string, file domain.DiscoveredFile) (bool, error) {
+	if !scanID.Valid || scanID.String == "" {
+		return false, nil
+	}
+	var deletedAtMS int64
+	err := tx.QueryRowContext(ctx, `SELECT deleted_at_ms FROM media_delete_tombstones
+        WHERE source_id = ? AND relative_path = ?`, sourceID, file.RelativePath).Scan(&deletedAtMS)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("查询删除墓碑: %w", err)
+	}
+	var scanCreatedMS int64
+	err = tx.QueryRowContext(ctx, `SELECT created_at_ms FROM scan_jobs WHERE id = ?`, scanID.String).Scan(&scanCreatedMS)
+	if errors.Is(err, sql.ErrNoRows) {
+		// 找不到扫描记录时不按过期处理，交给既有 reconcile 语义收敛。
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("查询扫描任务创建时间: %w", err)
+	}
+	if scanCreatedMS <= deletedAtMS {
+		// 扫描早于删除启动，枚举到的是已删文件的过期快照。
+		return true, nil
+	}
+	// 删除后新启动的扫描：墓碑使命结束，顺手清理；
+	// 每源串行扫描保证旧扫描不会再有迟到回包。
+	if _, err := tx.ExecContext(ctx, `DELETE FROM media_delete_tombstones
+        WHERE source_id = ? AND relative_path = ?`, sourceID, file.RelativePath); err != nil {
+		return false, fmt.Errorf("清理删除墓碑: %w", err)
+	}
+	return false, nil
 }
 
 // enqueueProbeTx 在给定事务内创建最多执行两次的探测任务。

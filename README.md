@@ -147,6 +147,15 @@ LUMA_MEDIA_DIRS=/mnt/TV=tv,/mnt/Movies=movies,/mnt/Photos=photos
 
 `LUMA_MEDIA_DIRS` 的每项格式为“宿主机绝对路径=容器目录名”，以英文逗号分隔。部署脚本会将它们读写挂载到 `/media/<容器目录名>`，并自动生成与之匹配的 `security.allowed_roots`；例如上面的目录在 App 中分别填写 `/media/tv`、`/media/movies` 和 `/media/photos`。宿主机必须允许容器中的非特权用户读取媒体并创建上传文件；旧部署需重新运行 `./scripts/docker-deploy.sh up -d` 更新挂载。配置文件仍只读挂载，脚本不修改宿主机目录权限。
 
+若目录来自 CIFS/NAS，`rw` 挂载不代表容器用户有写权限。先用 `stat -c '%u:%g %a' /mnt/TV` 确认宿主机挂载身份；例如目录属于 `1000:1000` 且权限为 `755`，在 `.env` 中设置：
+
+```env
+LUMA_UID=1000
+LUMA_GID=1000
+```
+
+两项留空时沿用镜像内的 `luma` 用户，非空时必须为非零数字 ID。首次使用该配置需运行 `./scripts/docker-deploy.sh up -d --build`，使镜像包含新的身份切换入口；之后仅调整 ID 可用 `up -d` 重建容器。身份变化时入口会迁移专属 `/data` 卷及运行配置的所有权，数据库和缓存内容保留，媒体目录所有权和权限不变。NAS 共享账号本身也必须有写权限。
+
 `LUMA_VERSION` 是唯一的 Docker 版本入口：Compose 将它传给 Docker 构建参数，Docker 再用 Go 链接参数注入最终的 `luma-server` 二进制。
 
 ### 2. 构建并启动

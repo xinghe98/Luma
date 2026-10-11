@@ -186,6 +186,18 @@ type MediaPage struct {
 	NextCursor string
 }
 
+// DeleteImageTarget 是授权且通过安全检查的待删除图片定位信息，仅服务端内部使用。
+type DeleteImageTarget struct {
+	// MediaID 是即将被删除的 media_items.id。
+	MediaID string
+	// SourceID 是媒体所属来源标识。
+	SourceID string
+	// RootPath 是 sources.root_path 的真实根目录，仅供服务端拼路径、不对外暴露。
+	RootPath string
+	// RelativePath 是 media_items.relative_path，相对来源根目录的安全路径。
+	RelativePath string
+}
+
 // ThumbnailAsset 表示当前默认缩略图的安全存储元数据。
 type ThumbnailAsset struct {
 	// ID 是缩略图资产唯一标识。

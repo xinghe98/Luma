@@ -16,6 +16,8 @@ class MasonryMediaSliver extends StatelessWidget {
     this.onLongPress,
     this.onFavorite,
     this.spacing = LumaSpacing.xs,
+    this.selectionMode = false,
+    this.selectedIds = const {},
   });
 
   final List<MediaItem> items;
@@ -23,6 +25,12 @@ class MasonryMediaSliver extends StatelessWidget {
   final MediaOpenCallback? onLongPress;
   final ValueChanged<MediaItem>? onFavorite;
   final double spacing;
+
+  /// 图片库批量选择态：为每个瓷砖渲染勾选标记；默认关闭。
+  final bool selectionMode;
+
+  /// 当前已选中的媒体 id 集合；仅在 [selectionMode] 为 true 时生效。
+  final Set<String> selectedIds;
 
   @override
   Widget build(BuildContext context) {
@@ -43,6 +51,8 @@ class MasonryMediaSliver extends StatelessWidget {
                 ? null
                 : () => onLongPress!(item, heroTag: heroTag),
             onFavorite: onFavorite == null ? null : () => onFavorite!(item),
+            selectionMode: selectionMode,
+            selected: selectedIds.contains(item.id),
           );
         },
         childCount: items.length,

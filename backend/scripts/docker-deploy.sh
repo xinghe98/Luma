@@ -18,6 +18,15 @@ yaml_quote() {
     printf "'"
 }
 
+# 只接受非零数字身份，避免把服务意外切换到 root 或依赖容器外的用户名。
+validate_runtime_id() {
+    case "$2" in
+        '' | *[!0-9]*) fail "$1 must be a numeric ID greater than zero" ;;
+    esac
+    [ "$2" -gt 0 ] && [ "$2" -le 2147483647 ] ||
+        fail "$1 must be between 1 and 2147483647"
+}
+
 # 容器启动时复制只读配置、校验运行依赖，再降权运行服务。
 run_container() {
     source_config=/run/luma-config-source.yaml
@@ -26,14 +35,23 @@ run_container() {
 
     [ -r "$source_config" ] || fail "missing readable configuration at $source_config"
     [ "$#" -gt 0 ] || fail 'missing container command'
+    runtime_uid=${LUMA_UID:-$(id -u luma)}
+    runtime_gid=${LUMA_GID:-$(id -g luma)}
+    validate_runtime_id LUMA_UID "$runtime_uid"
+    validate_runtime_id LUMA_GID "$runtime_gid"
+
+    # 只在身份变化时迁移专属数据卷；不跟随符号链接，也不触碰媒体挂载。
+    if [ "$(stat -c '%u:%g' /data)" != "$runtime_uid:$runtime_gid" ]; then
+        chown -Rh "$runtime_uid:$runtime_gid" /data
+    fi
 
     mkdir -p /run/luma
     cp "$source_config" "$runtime_config"
-    chown luma:luma "$runtime_config"
+    chown "$runtime_uid:$runtime_gid" "$runtime_config"
     chmod 600 "$runtime_config"
 
-    su-exec luma:luma luma-server -config "$runtime_config" -check-config
-    exec su-exec luma:luma "$@"
+    su-exec "$runtime_uid:$runtime_gid" luma-server -config "$runtime_config" -check-config
+    exec su-exec "$runtime_uid:$runtime_gid" "$@"
 }
 
 if [ "${1:-}" = 'container-entrypoint' ]; then
@@ -61,6 +79,9 @@ set +a
 : "${LUMA_MEDIA_DIRS:?set LUMA_MEDIA_DIRS in .env}"
 : "${LUMA_TMDB_ENABLED:=false}"
 : "${LUMA_TMDB_ACCESS_TOKEN:=}"
+
+[ -z "${LUMA_UID:-}" ] || validate_runtime_id LUMA_UID "$LUMA_UID"
+[ -z "${LUMA_GID:-}" ] || validate_runtime_id LUMA_GID "$LUMA_GID"
 
 case "$LUMA_TMDB_ENABLED" in
     true | false) ;;

@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -13,8 +14,10 @@ import (
 )
 
 type recordingMediaUseCase struct {
-	request domain.MediaListRequest
-	count   int
+	request   domain.MediaListRequest
+	count     int
+	deleteErr error
+	deletedID string
 }
 
 func (u *recordingMediaUseCase) Count(_ context.Context, request domain.MediaListRequest, _ string) (int, error) {
@@ -33,6 +36,11 @@ func (*recordingMediaUseCase) Get(context.Context, string, string) (domain.Media
 
 func (*recordingMediaUseCase) Thumbnail(context.Context, string, string, string, string) (domain.ThumbnailContent, error) {
 	return domain.ThumbnailContent{}, nil
+}
+
+func (u *recordingMediaUseCase) DeleteImage(_ context.Context, id, _ string) error {
+	u.deletedID = id
+	return u.deleteErr
 }
 
 func TestMediaSummaryExposesTypeSpecificContentURL(t *testing.T) {
@@ -126,5 +134,54 @@ func TestMediaCountPassesFiltersWithoutPagination(t *testing.T) {
 	engine.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/media/count?type=image&favorite=true", nil))
 	if recorder.Code != http.StatusOK || useCase.request.MediaType != domain.MediaTypeImage || useCase.request.Favorite == nil || !*useCase.request.Favorite || recorder.Body.String() != "{\"count\":7}" {
 		t.Fatalf("status=%d request=%#v body=%s", recorder.Code, useCase.request, recorder.Body.String())
+	}
+}
+
+// TestMediaDeleteReturnsNoContent 验证授权删除返回 204 且透传媒体 ID。
+func TestMediaDeleteReturnsNoContent(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	useCase := &recordingMediaUseCase{}
+	handler, err := NewMediaHandler(useCase)
+	if err != nil {
+		t.Fatal(err)
+	}
+	engine := gin.New()
+	engine.Use(func(c *gin.Context) { c.Set("user_id", "user_local") })
+	engine.DELETE("/media/:id", handler.Delete)
+	recorder := httptest.NewRecorder()
+	engine.ServeHTTP(recorder, httptest.NewRequest(http.MethodDelete, "/media/img1", nil))
+	if recorder.Code != http.StatusNoContent || useCase.deletedID != "img1" {
+		t.Fatalf("status=%d deletedID=%q", recorder.Code, useCase.deletedID)
+	}
+}
+
+// TestMediaDeletePropagatesErrors 验证业务错误按统一错误包返回。
+func TestMediaDeletePropagatesErrors(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, test := range []struct {
+		err    error
+		status int
+		code   string
+	}{
+		{domain.ErrMediaNotFound, http.StatusNotFound, "MEDIA_NOT_FOUND"},
+		{domain.ErrMediaInUse, http.StatusServiceUnavailable, "MEDIA_IN_USE"},
+		{domain.ErrSourceOffline, http.StatusServiceUnavailable, "SOURCE_OFFLINE"},
+		{domain.ErrInvalidRequest, http.StatusBadRequest, "INVALID_REQUEST"},
+	} {
+		t.Run(test.code, func(t *testing.T) {
+			useCase := &recordingMediaUseCase{deleteErr: test.err}
+			handler, err := NewMediaHandler(useCase)
+			if err != nil {
+				t.Fatal(err)
+			}
+			engine := gin.New()
+			engine.Use(func(c *gin.Context) { c.Set("user_id", "user_local") })
+			engine.DELETE("/media/:id", handler.Delete)
+			recorder := httptest.NewRecorder()
+			engine.ServeHTTP(recorder, httptest.NewRequest(http.MethodDelete, "/media/img1", nil))
+			if recorder.Code != test.status || !strings.Contains(recorder.Body.String(), `"code":"`+test.code+`"`) {
+				t.Fatalf("status=%d body=%s", recorder.Code, recorder.Body.String())
+			}
+		})
 	}
 }

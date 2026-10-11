@@ -201,6 +201,9 @@ func (fakeMediaUseCase) Thumbnail(_ context.Context, _, _, ifNoneMatch, _ string
 	return domain.ThumbnailContent{Data: []byte("jpeg"), MIMEType: "image/jpeg", ETag: etag}, nil
 }
 
+// DeleteImage 模拟成功删除图片；Router 测试只关心路由与认证包壳。
+func (fakeMediaUseCase) DeleteImage(context.Context, string, string) error { return nil }
+
 // Start 返回待执行测试扫描任务。
 func (fakeScanUseCase) Start(_ context.Context, sourceID string) (domain.ScanJob, error) {
 	return domain.ScanJob{ID: "scan_test", SourceID: sourceID}, nil

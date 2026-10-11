@@ -11,6 +11,7 @@ import 'cover_progress_bar.dart';
 import 'luma_favorite_button.dart';
 import 'media_artwork.dart';
 import 'media_badge.dart';
+import 'media_selection_marker.dart';
 
 /// 视频和图片网格共用的信息卡片，封面、标题与元信息保持稳定的交互轮廓内距。
 class MediaCard extends StatelessWidget {
@@ -27,6 +28,9 @@ class MediaCard extends StatelessWidget {
     this.focusId,
     this.focusBorderWidth = 2,
     this.artworkFit,
+    this.selectionMode = false,
+    this.selected = false,
+    this.onLongPress,
   });
 
   final MediaItem item;
@@ -48,6 +52,15 @@ class MediaCard extends StatelessWidget {
 
   /// 封面适配方式；为空保持默认 cover，TV 图片网格传 contain 统一画框。
   final BoxFit? artworkFit;
+
+  /// 图片库批量选择态：封面左上角渲染勾选标记；默认关闭不影响既有调用。
+  final bool selectionMode;
+
+  /// 当前项是否已选中；仅在 [selectionMode] 为 true 时生效。
+  final bool selected;
+
+  /// 长按回调（如选择态下进入详情）；普通端封面长按转发给 InkWell。
+  final VoidCallback? onLongPress;
 
   /// 按实际字体与文字缩放测量行高；容器每次构建测量一次，供全部卡片复用。
   static double textDetailsHeight(
@@ -115,6 +128,7 @@ class MediaCard extends StatelessWidget {
     return LumaFocusableSurface(
       label: item.title,
       onActivate: onTap,
+      onLongPress: onLongPress,
       borderRadius: BorderRadius.circular(coverRadius),
       contentPadding: EdgeInsets.all(interactionInset),
       focusNode: focusNode,
@@ -160,6 +174,12 @@ class MediaCard extends StatelessWidget {
                       right: 0,
                       bottom: 0,
                       child: CoverProgressBar(progress: item.progress),
+                    ),
+                  if (selectionMode)
+                    Positioned(
+                      left: LumaSpacing.xxs,
+                      top: LumaSpacing.xxs,
+                      child: MediaSelectionMarker(selected: selected),
                     ),
                 ],
               ),

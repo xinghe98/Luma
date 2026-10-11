@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'media_selection_marker.dart';
 
 import '../../core/theme.dart';
 import '../../data/models/media_item.dart';
@@ -15,6 +16,8 @@ class MasonryMediaTile extends StatelessWidget {
     this.onLongPress,
     this.onFavorite,
     this.heroTag,
+    this.selectionMode = false,
+    this.selected = false,
   });
 
   final MediaItem item;
@@ -22,6 +25,12 @@ class MasonryMediaTile extends StatelessWidget {
   final VoidCallback? onLongPress;
   final VoidCallback? onFavorite;
   final String? heroTag;
+
+  /// 图片库批量选择态：左上角渲染勾选标记；默认关闭保持原交互。
+  final bool selectionMode;
+
+  /// 当前项是否已选中；仅在 [selectionMode] 为 true 时生效。
+  final bool selected;
 
   @override
   Widget build(BuildContext context) {
@@ -66,6 +75,12 @@ class MasonryMediaTile extends StatelessWidget {
                           onPressed: onFavorite,
                           overlay: true,
                         ),
+                      ),
+                    if (selectionMode)
+                      Positioned(
+                        left: LumaSpacing.xxs,
+                        top: LumaSpacing.xxs,
+                        child: MediaSelectionMarker(selected: selected),
                       ),
                   ],
                 ),

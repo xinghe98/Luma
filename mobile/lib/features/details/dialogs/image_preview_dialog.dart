@@ -8,10 +8,13 @@ import 'package:flutter/services.dart';
 import '../../../app/app_scope.dart';
 import '../../../app/route_transition.dart';
 import '../../../core/theme.dart';
+import '../../../data/api/api_exception.dart';
 import '../../../data/models/media_item.dart';
 import '../../../shared/interaction/tv_key_bindings.dart';
 import '../../../shared/media/authenticated_media_image.dart';
+import '../../../shared/media/image_delete_dialog.dart';
 import '../../../shared/media/image_gallery_controller.dart';
+import '../widgets/image_preview_chrome.dart';
 import '../widgets/image_preview_navigation.dart';
 
 /// 图片预览关闭后交还给调用方的后续动作。
@@ -86,6 +89,13 @@ class _ImagePreviewDialogState extends State<ImagePreviewDialog> {
   bool _transitionWaitStarted = false;
   bool _closing = false;
 
+  /// 删除进行中：冻结切图、详情与返回，避免误删已切换的图片。
+  bool _deleting = false;
+
+  /// 删除网络请求进行中：chrome 上显示进度圈（确认框阶段不显示）。
+  bool _deleteRequestActive = false;
+  String? _deleteError;
+
   /// TV：图片区焦点与工具栏首按钮焦点。
   final _imageFocus = FocusNode(debugLabel: 'tv-preview-image');
   final _toolbarFocus = FocusNode(debugLabel: 'tv-preview-toolbar');
@@ -118,17 +128,20 @@ class _ImagePreviewDialogState extends State<ImagePreviewDialog> {
   ImageGalleryController? get _gallery => widget.gallery;
 
   /// 画廊模式下跟随控制器当前图片；单图模式恒为入口图片。
-  MediaItem get _displayedItem => _gallery?.currentItem ?? widget.item;
+  /// 画廊被删空时返回 null（不回落到入口图，避免闪回已删除图片），
+  /// 由 [_onGalleryChanged] 触发安全关闭。
+  MediaItem? get _displayedItem =>
+      _gallery == null ? widget.item : _gallery!.currentItem;
 
   /// 只有仍在显示最初入口图片时才允许 Hero 回到来源卡片，
   /// 否则反向飞行会带着别的图片缩回错误的缩略图。
   bool get _heroShowsSource =>
-      widget.heroTag != null && _displayedItem.id == widget.item.id;
+      widget.heroTag != null && _displayedItem?.id == widget.item.id;
 
   @override
   void initState() {
     super.initState();
-    _shownItemId = _displayedItem.id;
+    _shownItemId = _displayedItem?.id;
     widget.gallery?.addListener(_onGalleryChanged);
   }
 
@@ -139,19 +152,26 @@ class _ImagePreviewDialogState extends State<ImagePreviewDialog> {
       oldWidget.gallery?.removeListener(_onGalleryChanged);
       widget.gallery?.addListener(_onGalleryChanged);
     }
-    if (_shownItemId != _displayedItem.id) {
-      _shownItemId = _displayedItem.id;
+    if (_shownItemId != _displayedItem?.id) {
+      _shownItemId = _displayedItem?.id;
+      _deleteError = null;
       _transform.value = Matrix4.identity();
     }
   }
 
   /// 画廊通知：只有当前图片 ID 变化才重置缩放并重建图片子树，
-  /// 远端分页的加载/失败通知不打断当前浏览。
+  /// 远端分页的加载/失败通知不打断当前浏览；会话被删空时直接关闭预览。
   void _onGalleryChanged() {
     if (!mounted) return;
-    final id = _displayedItem.id;
+    final item = _displayedItem;
+    if (item == null) {
+      unawaited(_close());
+      return;
+    }
+    final id = item.id;
     if (id == _shownItemId) return;
     _shownItemId = id;
+    _deleteError = null;
     _transform.value = Matrix4.identity();
     setState(() {});
   }
@@ -199,6 +219,8 @@ class _ImagePreviewDialogState extends State<ImagePreviewDialog> {
 
   /// 围绕预览中心缩放，并约束图片边缘；缩回原尺寸时恢复居中。
   void _zoomBy(double factor) {
+    final item = _displayedItem;
+    if (item == null) return;
     final current = _transform.value.getMaxScaleOnAxis();
     final next = (current * factor).clamp(_minScale, _maxScale).toDouble();
     final viewport = MediaQuery.sizeOf(context);
@@ -208,7 +230,7 @@ class _ImagePreviewDialogState extends State<ImagePreviewDialog> {
       ..translateByDouble(center.dx, center.dy, 0, 1)
       ..scaleByDouble(next, next, 1, 1)
       ..translateByDouble(-sceneCenter.dx, -sceneCenter.dy, 0, 1);
-    _transform.value = _clampTransform(nextTransform, viewport);
+    _transform.value = _clampTransform(nextTransform, viewport, item);
   }
 
   /// 还原图片位置与缩放，不触发重新加载。
@@ -216,7 +238,8 @@ class _ImagePreviewDialogState extends State<ImagePreviewDialog> {
 
   /// TV：缩放大于 1 时按视口 10% 平移并钳制边缘；未放大时不平移。
   void _panPreview(Offset delta) {
-    if (_currentScale <= 1.05) return;
+    final item = _displayedItem;
+    if (item == null || _currentScale <= 1.05) return;
     final size = MediaQuery.sizeOf(context);
     final center = Offset(size.width / 2, size.height / 2);
     final scale = _currentScale;
@@ -226,7 +249,7 @@ class _ImagePreviewDialogState extends State<ImagePreviewDialog> {
       ..translateByDouble(center.dx, center.dy, 0, 1)
       ..scaleByDouble(scale, scale, 1, 1)
       ..translateByDouble(-anchor.dx, -anchor.dy, 0, 1);
-    _transform.value = _clampTransform(next, size);
+    _transform.value = _clampTransform(next, size, item);
   }
 
   /// 记录单指滑动的起点状态；一旦加入第二根手指，本轮只处理缩放和平移。
@@ -271,10 +294,10 @@ class _ImagePreviewDialogState extends State<ImagePreviewDialog> {
     if (canSwipe) _navigateGallery(delta.dx < 0);
   }
 
-  /// 键盘与 TV 共用的切图入口；忙碌时控制器内部串行/忽略，失败保留当前图。
+  /// 键盘与 TV 共用的切图入口；删除或翻页进行中忽略，失败保留当前图。
   void _navigateGallery(bool forward) {
     final gallery = _gallery;
-    if (gallery == null || _closing) return;
+    if (gallery == null || _closing || _deleting) return;
     if (forward) {
       if (!gallery.canNext) return;
       unawaited(gallery.next());
@@ -284,9 +307,66 @@ class _ImagePreviewDialogState extends State<ImagePreviewDialog> {
     }
   }
 
+  /// 预览工具栏删除入口：先弹永久删除确认，再调用共享控制器删除目标图。
+  /// 确认前捕获会话代数与当前图片并冻结导航与关闭，确保删除的就是
+  /// 用户确认时看到的那张；换服、预览已切图或翻页进行中时放弃整个操作。
+  Future<void> _requestDelete() async {
+    if (_deleting || _closing) return;
+    final gallery = _gallery;
+    // 翻页/分页进行中不开始删除：目标可能随新页落定而漂移。
+    if (gallery != null && gallery.isBusy) return;
+    final media = AppScope.maybeOf(context)?.media;
+    final target = _displayedItem;
+    if (media == null || target == null) return;
+    final generation = media.sessionGeneration;
+    setState(() {
+      _deleting = true;
+      _deleteError = null;
+    });
+    try {
+      final confirmed = await confirmImageDeletion(context, count: 1);
+      // 取消、会话切换（重连/换服）或确认期间图片已切换时放弃，
+      // 旧会话的删除请求不能带入新会话。
+      if (!mounted ||
+          !confirmed ||
+          generation != media.sessionGeneration ||
+          _displayedItem?.id != target.id) {
+        return;
+      }
+      // 确认后才显示进度圈：确认框期间冻结但不占用按钮图标。
+      setState(() => _deleteRequestActive = true);
+      await media.deleteImage(target.id);
+      if (!mounted || generation != media.sessionGeneration) return;
+      if (gallery == null) {
+        // 单图预览删除成功即结束；返回 null 表示没有后续详情动作。
+        await _closeAfterDelete();
+        return;
+      }
+      // 按确认时锁定的 id 移除，防止翻页落定后误删新当前图。
+      await gallery.removeById(target.id);
+      // 补页等待期间会话仍可能切换；同时校验目标确实已离开会话，
+      // 删除成功但会话移除失败时不继续展示已删图片。
+      if (!mounted || generation != media.sessionGeneration) return;
+      if (gallery.isEmpty || gallery.containsId(target.id)) {
+        await _closeAfterDelete();
+      }
+    } on Object catch (error) {
+      if (!mounted || generation != media.sessionGeneration) return;
+      final message = error is ApiException ? error.message : '请检查连接或稍后重试';
+      setState(() => _deleteError = '删除失败：$message');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _deleting = false;
+          _deleteRequestActive = false;
+        });
+      }
+    }
+  }
+
   /// 原地约束变换：超出视口的轴不露边，未铺满的轴保持居中。
-  Matrix4 _clampTransform(Matrix4 next, Size size) {
-    final display = _containedSize(size, _displayedItem.aspectRatio);
+  Matrix4 _clampTransform(Matrix4 next, Size size, MediaItem item) {
+    final display = _containedSize(size, item.aspectRatio);
     final origin = Offset(
       (size.width - display.width) / 2,
       (size.height - display.height) / 2,
@@ -318,8 +398,9 @@ class _ImagePreviewDialogState extends State<ImagePreviewDialog> {
     return next;
   }
 
-  /// TV 统一返回意图：先还原放大状态，再一次 Back 才关闭。
+  /// TV 统一返回意图：先还原放大状态，再一次 Back 才关闭；删除进行中忽略。
   void _handleTvBack() {
+    if (_deleting) return;
     if (_currentScale > 1.05) {
       _resetZoom();
       return;
@@ -381,18 +462,28 @@ class _ImagePreviewDialogState extends State<ImagePreviewDialog> {
   }
 
   /// 先还原缩放并隐藏原图，再触发反向 Hero，确保图片准确缩回来源卡片。
+  /// 删除进行中不允许关闭，避免请求落到已经切换的图片上。
   Future<void> _close([ImagePreviewAction? action]) async {
-    if (_closing) return;
+    if (_closing || _deleting) return;
     setState(() => _closing = true);
     _transform.value = Matrix4.identity();
     await WidgetsBinding.instance.endOfFrame;
     if (mounted) Navigator.pop(context, action);
   }
 
+  /// 删除成功后关闭预览：跳过 [_close] 的删除闸，用于单图与删空场景。
+  Future<void> _closeAfterDelete() async {
+    _deleting = false;
+    await _close();
+  }
+
   @override
   Widget build(BuildContext context) {
-    // 画廊模式下跟随控制器当前图片；单图模式恒为入口图片。
+    // 画廊被删空时不再布局图片区；关闭动作由 _onGalleryChanged 触发。
     final item = _displayedItem;
+    if (item == null) {
+      return const SizedBox.shrink();
+    }
     final routeAnimation = ModalRoute.of(context)?.animation;
     final dpr = MediaQuery.devicePixelRatioOf(context);
     final size = MediaQuery.sizeOf(context);
@@ -488,9 +579,15 @@ class _ImagePreviewDialogState extends State<ImagePreviewDialog> {
         : image;
 
     final isTv = _isTelevision;
-    final chromeWidget = _PreviewChrome(
-      onDetails: () => unawaited(_close(ImagePreviewAction.openDetails)),
-      onClose: () => unawaited(_close()),
+    final chromeWidget = ImagePreviewChrome(
+      deleteError: _deleteError,
+      // 删除进行中禁用详情/关闭，防止请求结束后落到错误路由或图片。
+      onDetails: _deleting
+          ? null
+          : () => unawaited(_close(ImagePreviewAction.openDetails)),
+      onClose: _deleting ? null : () => unawaited(_close()),
+      onDelete: _deleting ? null : _requestDelete,
+      deleteInProgress: _deleteRequestActive,
       // TV：显式缩放工具与首按钮焦点；普通端也提供同一组缩放动作。
       television: isTv,
       zoomIn: () => _zoomBy(1.25),
@@ -538,11 +635,16 @@ class _ImagePreviewDialogState extends State<ImagePreviewDialog> {
             left: isTv ? size.width * 0.05 : 0,
             right: isTv ? size.width * 0.05 : 0,
             bottom: isTv ? size.height * 0.05 + 96 : 0,
-            child: ImagePreviewNavigationBar(
-              gallery: gallery,
-              television: isTv,
-              previousFocusNode: _prevFocus,
-              nextFocusNode: _nextFocus,
+            // 删除确认/请求期间整块吞掉点击与遥控器按钮，
+            // 键盘方向键由 _navigateGallery 的 _deleting 闸拦截。
+            child: AbsorbPointer(
+              absorbing: _deleting,
+              child: ImagePreviewNavigationBar(
+                gallery: gallery,
+                television: isTv,
+                previousFocusNode: _prevFocus,
+                nextFocusNode: _nextFocus,
+              ),
             ),
           );
     final backdrop = ColoredBox(color: context.luma.playerInk);
@@ -550,9 +652,12 @@ class _ImagePreviewDialogState extends State<ImagePreviewDialog> {
     // 图片区的方向切图由 _onImageKeyEvent 处理，不挂全局快捷键。
     final bindings = <ShortcutActivator, VoidCallback>{
       // TV：Back/Esc 先还原放大状态再一次关闭；普通端直接关闭。
+      // 删除进行中忽略返回键，避免请求落到错误目标。
       const SingleActivator(LogicalKeyboardKey.escape): isTv
           ? _handleTvBack
-          : () => unawaited(_close()),
+          : () {
+              if (!_deleting) unawaited(_close());
+            },
       const SingleActivator(LogicalKeyboardKey.equal, shift: true): () =>
           _zoomBy(1.25),
       const SingleActivator(LogicalKeyboardKey.numpadAdd): () => _zoomBy(1.25),
@@ -573,9 +678,9 @@ class _ImagePreviewDialogState extends State<ImagePreviewDialog> {
         autofocus: !isTv,
         skipTraversal: isTv,
         child: PopScope(
-          canPop: _closing,
+          canPop: _closing && !_deleting,
           onPopInvokedWithResult: (didPop, _) {
-            if (didPop) return;
+            if (didPop || _deleting) return;
             // TV 先还原放大状态再一次关闭；普通端直接关闭。
             if (isTv) {
               _handleTvBack();
@@ -688,181 +793,4 @@ Widget _thumbnailFlightShuttle(
       ? fromHeroContext.widget as Hero
       : toHeroContext.widget as Hero;
   return endpoint.child;
-}
-
-class _PreviewChrome extends StatelessWidget {
-  const _PreviewChrome({
-    required this.onDetails,
-    required this.onClose,
-    this.television = false,
-    this.zoomIn,
-    this.zoomOut,
-    this.onReset,
-    this.toolbarFocusNode,
-  });
-
-  final VoidCallback onDetails;
-  final VoidCallback onClose;
-
-  /// TV：放大/缩小/还原与详情、关闭都成为可见可聚焦动作，首按钮持焦点。
-  final bool television;
-  final VoidCallback? zoomIn;
-  final VoidCallback? zoomOut;
-  final VoidCallback? onReset;
-  final FocusNode? toolbarFocusNode;
-
-  @override
-  Widget build(BuildContext context) {
-    final extras = context.luma;
-    var chromeStyle = IconButton.styleFrom(
-      backgroundColor: extras.badgeScrim,
-      foregroundColor: extras.onPlayerInk,
-    );
-    if (television) {
-      // TV 控件最小 56dp，保证观看距离可点中。
-      chromeStyle = chromeStyle.copyWith(
-        minimumSize: const WidgetStatePropertyAll(
-          Size(LumaTvLayout.controlMinHeight, LumaTvLayout.controlMinHeight),
-        ),
-      );
-    }
-    final detailsButton = IconButton.filledTonal(
-      tooltip: '详情',
-      style: chromeStyle,
-      onPressed: onDetails,
-      icon: const Icon(Icons.info_outline_rounded),
-    );
-    final closeButton = IconButton.filledTonal(
-      tooltip: '关闭',
-      style: chromeStyle,
-      onPressed: onClose,
-      icon: const Icon(Icons.close_rounded),
-    );
-    if (!television) {
-      // 普通端顶栏：底部遮罩反转为顶部渐变，缩放与详情、关闭同一排。
-      return DecoratedBox(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.bottomCenter,
-            end: Alignment.topCenter,
-            colors: LumaGradients.bottomScrim(extras.playerInk).colors,
-            stops: LumaGradients.bottomScrim(extras.playerInk).stops,
-          ),
-        ),
-        child: SafeArea(
-          bottom: false,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(
-              LumaSpacing.xs,
-              LumaSpacing.xs,
-              LumaSpacing.xs,
-              LumaSpacing.xl,
-            ),
-            child: Row(
-              children: [
-                detailsButton,
-                const Spacer(),
-                IconButton.filledTonal(
-                  tooltip: '放大',
-                  style: chromeStyle,
-                  onPressed: zoomIn,
-                  icon: const Icon(Icons.zoom_in_rounded),
-                ),
-                IconButton.filledTonal(
-                  tooltip: '缩小',
-                  style: chromeStyle,
-                  onPressed: zoomOut,
-                  icon: const Icon(Icons.zoom_out_rounded),
-                ),
-                IconButton.filledTonal(
-                  tooltip: '还原',
-                  style: chromeStyle,
-                  onPressed: onReset,
-                  icon: const Icon(Icons.fit_screen_rounded),
-                ),
-                const SizedBox(width: LumaSpacing.xs),
-                closeButton,
-              ],
-            ),
-          ),
-        ),
-      );
-    }
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: extras.badgeScrim,
-        borderRadius: BorderRadius.circular(LumaRadii.medium),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        child: Row(
-          children: [
-            _TvPreviewAction(
-              focusNode: toolbarFocusNode,
-              autofocus: true,
-              tooltip: '放大',
-              label: '放大',
-              icon: Icons.zoom_in_rounded,
-              onPressed: zoomIn,
-            ),
-            _TvPreviewAction(
-              tooltip: '缩小',
-              label: '缩小',
-              icon: Icons.zoom_out_rounded,
-              onPressed: zoomOut,
-            ),
-            _TvPreviewAction(
-              tooltip: '还原',
-              label: '还原',
-              icon: Icons.aspect_ratio_rounded,
-              onPressed: onReset,
-            ),
-            _TvPreviewAction(
-              tooltip: '详情',
-              label: '详情',
-              icon: Icons.info_outline_rounded,
-              onPressed: onDetails,
-            ),
-            const Spacer(),
-            _TvPreviewAction(
-              tooltip: '关闭',
-              label: '关闭',
-              icon: Icons.close_rounded,
-              onPressed: onClose,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _TvPreviewAction extends StatelessWidget {
-  const _TvPreviewAction({
-    required this.tooltip,
-    required this.label,
-    required this.icon,
-    required this.onPressed,
-    this.focusNode,
-    this.autofocus = false,
-  });
-
-  final String tooltip;
-  final String label;
-  final IconData icon;
-  final VoidCallback? onPressed;
-  final FocusNode? focusNode;
-  final bool autofocus;
-
-  @override
-  Widget build(BuildContext context) => Tooltip(
-    message: tooltip,
-    child: TextButton.icon(
-      focusNode: focusNode,
-      autofocus: autofocus,
-      onPressed: onPressed,
-      icon: Icon(icon),
-      label: Text(label),
-    ),
-  );
 }

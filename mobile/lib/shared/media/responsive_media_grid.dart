@@ -16,6 +16,8 @@ class ResponsiveMediaGrid extends StatelessWidget {
     this.physics = const NeverScrollableScrollPhysics(),
     this.shrinkWrap = true,
     this.heroTagPrefix,
+    this.selectionMode = false,
+    this.selectedIds = const {},
   });
 
   final List<MediaItem> items;
@@ -30,6 +32,11 @@ class ResponsiveMediaGrid extends StatelessWidget {
   /// 需保证同屏内各网格使用不同前缀。
   final String? heroTagPrefix;
 
+  /// 图片库批量选择态：卡片封面渲染勾选标记；默认关闭。
+  final bool selectionMode;
+
+  /// 当前已选中的媒体 id 集合；仅在 [selectionMode] 为 true 时生效。
+  final Set<String> selectedIds;
   @override
   Widget build(BuildContext context) {
     final detailsHeight = MediaCard.textDetailsHeight(context);
@@ -60,6 +67,8 @@ class ResponsiveMediaGrid extends StatelessWidget {
               heroTag: heroTag,
               onTap: () => onTap(item, heroTag: heroTag),
               onFavorite: onFavorite == null ? null : () => onFavorite!(item),
+              selectionMode: selectionMode,
+              selected: selectedIds.contains(item.id),
             );
           },
         );
@@ -94,12 +103,20 @@ class ResponsiveMediaSliverGrid extends StatelessWidget {
     required this.onTap,
     this.onFavorite,
     this.heroTagPrefix,
+    this.selectionMode = false,
+    this.selectedIds = const {},
   });
 
   final List<MediaItem> items;
   final MediaOpenCallback onTap;
   final ValueChanged<MediaItem>? onFavorite;
   final String? heroTagPrefix;
+
+  /// 图片库批量选择态：卡片封面渲染勾选标记；默认关闭。
+  final bool selectionMode;
+
+  /// 当前已选中的媒体 id 集合；仅在 [selectionMode] 为 true 时生效。
+  final Set<String> selectedIds;
 
   @override
   Widget build(BuildContext context) {
@@ -119,6 +136,8 @@ class ResponsiveMediaSliverGrid extends StatelessWidget {
             heroTag: heroTag,
             onTap: () => onTap(item, heroTag: heroTag),
             onFavorite: onFavorite == null ? null : () => onFavorite!(item),
+            selectionMode: selectionMode,
+            selected: selectedIds.contains(item.id),
           );
         },
         childCount: items.length,

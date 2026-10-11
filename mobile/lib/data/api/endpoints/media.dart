@@ -61,6 +61,19 @@ mixin _MediaEndpoints on _ApiTransport {
   Future<Map<String, dynamic>> getMediaDetail(String id) =>
       _json('GET', _api('/media/${_segment(id)}'));
 
+  /// 永久删除当前会话有访问权限的图片，仅以 204 确认完成；排队时换服会取消请求。
+  Future<Response<void>> deleteImage(String id) async {
+    final response = await _empty(
+      'DELETE',
+      _api('/media/${_segment(id)}'),
+      expectedSessionEpoch: _session?.epoch,
+    );
+    if (response.statusCode != 204) {
+      throw const ApiException(message: '服务器未确认图片删除完成');
+    }
+    return response;
+  }
+
   String thumbnailPath(String id) => _api('/media/${_segment(id)}/thumbnail');
 
   String streamPath(String id) => _api('/media/${_segment(id)}/stream');

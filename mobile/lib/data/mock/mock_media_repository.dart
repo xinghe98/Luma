@@ -88,6 +88,14 @@ class MockMediaRepository implements MediaRepository {
   @override
   Future<void> warmStream(String id) async {}
 
+  /// 在演示数据中删除图片，保留与真实仓库相同的类型和不存在校验。
+  @override
+  Future<void> deleteImage(String id) async {
+    final item = _items.firstWhere((item) => item.id == id);
+    if (item.type != MediaType.image) throw StateError('只能删除图片');
+    _items = _items.where((item) => item.id != id).toList(growable: false);
+  }
+
   Future<MediaItem> _replace(
     String id,
     MediaItem Function(MediaItem item) update,

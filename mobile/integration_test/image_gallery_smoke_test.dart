@@ -1,4 +1,4 @@
-// 在隔离 Windows 窗口验证图片库切图：复用真实预览、鉴权图片解码和内存分页仓储。
+// 在隔离 Windows 窗口验证图片库切图与删除，复用真实控件、鉴权解码和内存仓储。
 // 只访问本机测试服务器，截图不含其他窗口；退出时释放依赖和 HTTP 监听。
 import 'dart:io';
 import 'dart:ui' as ui;
@@ -65,7 +65,7 @@ void main() {
                     onOpenImageGallery: (value, {heroTag}) {
                       gallery = value;
                       return context.openImagePreview(
-                        value.currentItem,
+                        value.currentItem!,
                         gallery: value,
                         heroTag: heroTag,
                       );
@@ -85,17 +85,17 @@ void main() {
         await tester.tap(find.byKey(const ValueKey('image-0')));
         await tester.pumpAndSettle();
         await _expectDecodedImage(tester, 0);
-        expect(gallery!.currentItem.id, 'image-0');
+        expect(gallery!.currentItem!.id, 'image-0');
 
         await tester.tap(find.byTooltip('下一张'));
         await tester.pumpAndSettle();
         await _expectDecodedImage(tester, 1);
-        expect(gallery!.currentItem.id, 'image-1');
+        expect(gallery!.currentItem!.id, 'image-1');
 
         await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
         await tester.pumpAndSettle();
         await _expectDecodedImage(tester, 2);
-        expect(gallery!.currentItem.id, 'image-2');
+        expect(gallery!.currentItem!.id, 'image-2');
 
         await tester.drag(
           find.byType(InteractiveViewer),
@@ -103,7 +103,7 @@ void main() {
         );
         await tester.pumpAndSettle();
         await _expectDecodedImage(tester, 3);
-        expect(gallery!.currentItem.id, 'image-3');
+        expect(gallery!.currentItem!.id, 'image-3');
 
         await tester.tap(find.byTooltip('放大'));
         await tester.pumpAndSettle();
@@ -112,7 +112,7 @@ void main() {
           const Offset(-120, 0),
         );
         await tester.pumpAndSettle();
-        expect(gallery!.currentItem.id, 'image-3');
+        expect(gallery!.currentItem!.id, 'image-3');
         expect(
           tester
               .widget<InteractiveViewer>(find.byType(InteractiveViewer))
@@ -125,7 +125,7 @@ void main() {
         await tester.tap(find.byTooltip('上一张'));
         await tester.pumpAndSettle();
         await _expectDecodedImage(tester, 2);
-        expect(gallery!.currentItem.id, 'image-2');
+        expect(gallery!.currentItem!.id, 'image-2');
         expect(
           tester
               .widget<InteractiveViewer>(find.byType(InteractiveViewer))
@@ -139,7 +139,26 @@ void main() {
           'gallery-${scenario.size.width.toInt()}-${scenario.dark ? 'dark' : 'light'}',
         );
 
+        await tester.tap(find.byTooltip('删除图片'));
+        await tester.pumpAndSettle();
+        await _capture(surface, 'delete-confirm-${scenario.size.width.toInt()}');
         await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+        await tester.pumpAndSettle();
+        expect(gallery!.currentItem!.id, 'image-2');
+        expect(dependencies.media.isDeleted('image-2'), isFalse);
+        await tester.tap(find.byTooltip('删除图片'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('永久删除'));
+        await tester.pumpAndSettle();
+        expect(dependencies.media.isDeleted('image-2'), isTrue);
+        expect(gallery!.currentItem!.id, 'image-3');
+        await _expectDecodedImage(tester, 3);
+
+        await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+        await _waitFor(
+          tester,
+          () async => find.byType(ImagePreviewDialog).evaluate().isEmpty,
+        );
         await tester.pumpAndSettle();
         expect(find.byType(ImagePreviewDialog), findsNothing);
         expect(find.byType(ModalBarrier).hitTestable(), findsNothing);
@@ -147,10 +166,27 @@ void main() {
           find.byKey(const ValueKey('image-0')).hitTestable(),
           findsOneWidget,
         );
+        expect(find.byKey(const ValueKey('image-2')), findsNothing);
+        await tester.tap(find.byTooltip('选择图片'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const ValueKey('image-0')));
+        await tester.tap(find.byKey(const ValueKey('image-1')));
+        await tester.pumpAndSettle();
+        expect(find.text('已选 2 项'), findsOneWidget);
+        await _capture(surface, 'delete-selection-${scenario.size.width.toInt()}');
+        await tester.tap(find.text('删除(2)'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('永久删除'));
+        await tester.pumpAndSettle();
+        expect(dependencies.media.isDeleted('image-0'), isTrue);
+        expect(dependencies.media.isDeleted('image-1'), isTrue);
+        expect(find.byKey(const ValueKey('image-0')), findsNothing);
+        expect(find.byKey(const ValueKey('image-1')), findsNothing);
+        expect(find.byType(ModalBarrier).hitTestable(), findsNothing);
         expect(server.authFailures, 0);
         expect(tester.takeException(), isNull);
         debugPrint(
-          'NATIVE_GALLERY_OK: ${scenario.size} tap/key/swipe/zoom/pixels/close',
+          'NATIVE_GALLERY_OK: ${scenario.size} tap/key/swipe/zoom/pixels/close/delete',
         );
       } finally {
         await tester.pumpWidget(const SizedBox.shrink());

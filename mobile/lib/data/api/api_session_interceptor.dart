@@ -8,7 +8,7 @@ final class ApiSessionInterceptor extends Interceptor {
 
   final ApiSession session;
 
-  /// 写入请求 extra 的预期会话代数；用于阻止排队中的上传切换到新账号发送。
+  /// 写入请求 extra 的预期会话代数，阻止排队中的上传或删除改用新账号发送。
   static const expectedEpochKey = 'luma.expected_session_epoch';
 
   /// 绑定请求发起时的 origin、同源认证头和 epoch。

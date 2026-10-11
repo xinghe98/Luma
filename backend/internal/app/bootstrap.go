@@ -210,7 +210,7 @@ func (b *bootstrap) build(ctx context.Context) (*App, error) {
 			return nil, fmt.Errorf("注册自动扫描调度器: %w", err)
 		}
 	}
-	mediaService, err := service.NewMediaService(mediaRepository, thumbnailStore)
+	mediaService, err := service.NewMediaService(mediaRepository, thumbnailStore, localFactory, clock)
 	if err != nil {
 		return nil, fmt.Errorf("创建媒体服务: %w", err)
 	}

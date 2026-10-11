@@ -59,6 +59,8 @@ func FromError(c *gin.Context, err error) {
 		Error(c, http.StatusConflict, "SCAN_ALREADY_RUNNING", "媒体源已有扫描任务", nil)
 	case errors.Is(err, domain.ErrMediaNotFound), errors.Is(err, domain.ErrContentNotFound):
 		Error(c, http.StatusNotFound, "MEDIA_NOT_FOUND", "媒体不存在", nil)
+	case errors.Is(err, domain.ErrMediaInUse):
+		Error(c, http.StatusServiceUnavailable, "MEDIA_IN_USE", "图片正在处理中或被其他程序占用，请稍后重试", nil)
 	case errors.Is(err, domain.ErrStreamCacheMiss):
 		Error(c, http.StatusNotFound, "STREAM_CACHE_MISS", "该流副本已失效，请重新开始播放", nil)
 	case errors.Is(err, domain.ErrThumbnailNotFound):

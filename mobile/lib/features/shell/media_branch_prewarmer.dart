@@ -47,9 +47,14 @@ final class MediaBranchPrewarmer {
   bool _photosReady = false;
   bool _disposed = false;
 
-  /// 返回图片库预热快照；尚未完成或会话已变化时为空。
+  /// 返回尚未删除的图片预热快照；尚未完成或会话已变化时为空。
   List<MediaItem> get photos {
     _syncEpoch();
+    if (_photos.any((item) => _media.isDeleted(item.id))) {
+      _photos = _photos
+          .where((item) => !_media.isDeleted(item.id))
+          .toList(growable: false);
+    }
     return _photos;
   }
 

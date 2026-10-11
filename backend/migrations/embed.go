@@ -100,6 +100,11 @@ var FileCreatedAt string
 //go:embed 022_media_added_at_index.sql
 var MediaAddedAtIndex string
 
+// MediaDeleteTombstone 保存图片永久删除墓碑，阻止过期扫描快照复活已删路径。
+//
+//go:embed 023_media_delete_tombstone.sql
+var MediaDeleteTombstone string
+
 // CatalogMetadata 保存可扩展 Provider 刮削、候选与丰富作品资料结构。
 //
 //go:embed 013_catalog_metadata.sql

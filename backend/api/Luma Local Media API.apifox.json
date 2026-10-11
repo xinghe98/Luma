@@ -1188,6 +1188,25 @@
           "inheritPreProcessors": {},
           "items": [
             {
+              "name": "永久删除图片",
+              "api": {
+                "id": "luma-delete-image",
+                "method": "delete",
+                "path": "/media/{id}",
+                "parameters": {"query": [], "path": [{"id": "deleteImageId", "name": "id", "required": true, "enable": true, "description": "图片媒体 ID", "type": "string"}], "cookie": [], "header": []},
+                "auth": {"type": "inherit", "inherit": {}},
+                "securityScheme": {},
+                "commonParameters": {"query": [], "body": [], "cookie": [], "header": []},
+                "responses": [{"id": "luma-delete-image-204", "code": 204, "name": "已删除", "headers": [], "jsonSchema": {}, "itemSchema": {}, "description": "服务器原图及媒体索引已删除", "contentType": "noContent", "mediaType": ""}],
+                "responseExamples": [],
+                "requestBody": {"type": "none", "parameters": [], "required": false, "additionalContentTypes": [], "oasExtensions": ""},
+                "description": "当前用户必须拥有图片所属来源的访问授权。永久删除服务器原文件，影响该来源的全部用户。仅支持图片；视频返回 400，无会话 401，无权限或不存在 404，来源离线或不可写返回 503 SOURCE_OFFLINE；Windows 文件占用返回 503 MEDIA_IN_USE，保留原图和索引，稍后可重试。批量删除由客户端逐项调用并保留失败项。",
+                "tags": [], "status": "released", "serverId": "", "operationId": "deleteImage", "sourceUrl": "", "ordering": 35,
+                "cases": [], "mocks": [], "customApiFields": "{}", "advancedSettings": {"disabledSystemHeaders": {}}, "mockScript": {}, "codeSamples": [], "commonResponseStatus": {}, "responseChildren": [],
+                "visibility": "INHERITED", "moduleId": 8219895, "oasExtensions": "", "type": "http", "preProcessors": [], "postProcessors": [], "inheritPostProcessors": {}, "inheritPreProcessors": {}
+              }
+            },
+            {
               "name": "媒体资源列表",
               "api": {
                 "id": "489268152",

@@ -469,3 +469,210 @@ func TestReconcileStoresFileCreatedAt(t *testing.T) {
 		t.Fatalf("updated file_created_at_ms = %d, want %d", stored, later.UnixMilli())
 	}
 }
+
+// TestReconcileDoesNotResurrectDeletedImage 覆盖删除复活窗口：
+// 扫描已读取文件快照（DiscoveredFile 携带旧 mtime/size）→ 用户完成 DELETE
+// （文件已删+媒体行+任务）→ 过期快照走到 ReconcileFile 必须被墓碑拦截，
+// 不插入新行、不投递 probe，media_items 保持空表。
+func TestReconcileDoesNotResurrectDeletedImage(t *testing.T) {
+	sources, scans := newStage2Repositories(t)
+	db := scans.db
+	media, err := NewMediaRepository(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	access, err := NewAccessRepository(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Unix(1000, 0).UTC()
+	source := createTestSource(t, sources, now)
+	if err := access.GrantSource(context.Background(), "user_local", source.ID, now); err != nil {
+		t.Fatal(err)
+	}
+	// 1. 文件已索引，模拟此前一次正常扫描完成。
+	file := domain.DiscoveredFile{
+		RelativePath: "photos/a.png", Filename: "a.png", MediaType: domain.MediaTypeImage,
+		Size: 42, ModifiedAt: now, FileID: "fid-a",
+	}
+	first := createAndClaimScan(t, scans, source.ID, "scan_1", now)
+	if _, err := scans.ReconcileFile(context.Background(), first.ID, source.ID, "media_img", file, now); err != nil {
+		t.Fatal(err)
+	}
+	if err := scans.CompleteJob(context.Background(), first.ID, source.ID, now); err != nil {
+		t.Fatal(err)
+	}
+	// 2. 新一轮扫描进行中且已枚举到同一文件快照（与磁盘一致的旧 mtime/size）。
+	second := createAndClaimScan(t, scans, source.ID, "scan_2", now.Add(time.Second))
+	// 3. 用户在扫描途中永久删除该图片：行被移除，墓碑写入。
+	target, err := media.GetImageDeleteTarget(context.Background(), "media_img", "user_local")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := media.DeleteImageRecord(context.Background(), target, now.Add(2*time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	// 4. 过期快照继续 reconcile：不得复活任何媒体行。
+	result, err := scans.ReconcileFile(context.Background(), second.ID, source.ID, "media_new", file, now.Add(2*time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.NeedsProbe || result.MediaID != "" {
+		t.Fatalf("过期快照不应投递媒体: %#v", result)
+	}
+	var count int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM media_items`).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 {
+		t.Fatalf("删除后媒体索引复活: %d 行", count)
+	}
+	var jobs int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM jobs WHERE job_type = 'probe_media'`).Scan(&jobs); err != nil {
+		t.Fatal(err)
+	}
+	if jobs != 0 {
+		t.Fatalf("过期快照投递了 probe 任务: %d", jobs)
+	}
+	if err := scans.CompleteJob(context.Background(), second.ID, source.ID, now.Add(3*time.Second)); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestReconcileAcceptsIdenticalFileAfterDelete 验证删除后新启动的扫描
+// 即使发现 mtime/size 与被删文件完全相同的同名文件也正常入库并清掉墓碑：
+// 墓碑只拦截删除前已启动的旧扫描快照，不阻止真实重建的相同内容。
+func TestReconcileAcceptsIdenticalFileAfterDelete(t *testing.T) {
+	sources, scans := newStage2Repositories(t)
+	db := scans.db
+	media, err := NewMediaRepository(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	access, err := NewAccessRepository(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Unix(1000, 0).UTC()
+	source := createTestSource(t, sources, now)
+	if err := access.GrantSource(context.Background(), "user_local", source.ID, now); err != nil {
+		t.Fatal(err)
+	}
+	file := domain.DiscoveredFile{
+		RelativePath: "photos/a.png", Filename: "a.png", MediaType: domain.MediaTypeImage,
+		Size: 42, ModifiedAt: now, FileID: "fid-a",
+	}
+	first := createAndClaimScan(t, scans, source.ID, "scan_1", now)
+	if _, err := scans.ReconcileFile(context.Background(), first.ID, source.ID, "media_img", file, now); err != nil {
+		t.Fatal(err)
+	}
+	if err := scans.CompleteJob(context.Background(), first.ID, source.ID, now); err != nil {
+		t.Fatal(err)
+	}
+	target, err := media.GetImageDeleteTarget(context.Background(), "media_img", "user_local")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := media.DeleteImageRecord(context.Background(), target, now.Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	// 删除后放回一个 mtime/size 完全相同的同名文件；新扫描仍应入库。
+	second := createAndClaimScan(t, scans, source.ID, "scan_2", now.Add(2*time.Second))
+	result, err := scans.ReconcileFile(context.Background(), second.ID, source.ID, "media_new", file, now.Add(2*time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.NeedsProbe || result.MediaID != "media_new" {
+		t.Fatalf("删除后相同文件未被新扫描入库: %#v", result)
+	}
+	var tombstones int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM media_delete_tombstones WHERE source_id = ?`, source.ID).Scan(&tombstones); err != nil {
+		t.Fatal(err)
+	}
+	if tombstones != 0 {
+		t.Fatalf("新扫描通过后墓碑未清理: %d", tombstones)
+	}
+}
+
+// TestOldScanCannotOverwriteUploadedImage 验证旧扫描的迟到快照既不能复活已删文件，
+// 也不能覆盖删除后新上传的同名索引行：上传经 IndexUpload 绕过墓碑正常入库并保留墓碑，
+// 随后旧扫描的同路径回包按过期水位被拒，新记录不受触碰。
+func TestOldScanCannotOverwriteUploadedImage(t *testing.T) {
+	sources, scans := newStage2Repositories(t)
+	db := scans.db
+	media, err := NewMediaRepository(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	access, err := NewAccessRepository(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Unix(1000, 0).UTC()
+	source := createTestSource(t, sources, now)
+	if err := access.GrantSource(context.Background(), "user_local", source.ID, now); err != nil {
+		t.Fatal(err)
+	}
+	file := domain.DiscoveredFile{
+		RelativePath: "a.png", Filename: "a.png", MediaType: domain.MediaTypeImage,
+		Size: 42, ModifiedAt: now, FileID: "fid-a",
+	}
+	first := createAndClaimScan(t, scans, source.ID, "scan_1", now)
+	if _, err := scans.ReconcileFile(context.Background(), first.ID, source.ID, "media_img", file, now); err != nil {
+		t.Fatal(err)
+	}
+	if err := scans.CompleteJob(context.Background(), first.ID, source.ID, now); err != nil {
+		t.Fatal(err)
+	}
+	// 旧扫描在删除前已启动并枚举了旧文件快照。
+	second := createAndClaimScan(t, scans, source.ID, "scan_2", now.Add(time.Second))
+	target, err := media.GetImageDeleteTarget(context.Background(), "media_img", "user_local")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := media.DeleteImageRecord(context.Background(), target, now.Add(2*time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	// 同名重新上传：IndexUpload 绕过墓碑，新文件获得全新 media_id 并落索引。
+	uploaded := domain.DiscoveredFile{
+		RelativePath: "a.png", Filename: "a.png", MediaType: domain.MediaTypeImage,
+		Size: 77, ModifiedAt: now.Add(3 * time.Second), FileID: "fid-new",
+	}
+	up, err := scans.IndexUpload(context.Background(), source.ID, "media_reup", uploaded, now.Add(3*time.Second), "job_probe_reup")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if up.MediaID != "media_reup" || !up.NeedsProbe {
+		t.Fatalf("重新上传未正常入库: %#v", up)
+	}
+	// 墓碑仍然保留，旧扫描迟到回包必须被拒且不触碰新记录。
+	var tombstones int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM media_delete_tombstones WHERE source_id = ?`, source.ID).Scan(&tombstones); err != nil {
+		t.Fatal(err)
+	}
+	if tombstones != 1 {
+		t.Fatalf("上传不应清除墓碑: %d", tombstones)
+	}
+	result, err := scans.ReconcileFile(context.Background(), second.ID, source.ID, "media_stale", file, now.Add(4*time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.MediaID != "" || result.NeedsProbe {
+		t.Fatalf("旧扫描回包不应入库: %#v", result)
+	}
+	// 新上传记录的相对路径、file_id 未被旧快照覆盖。
+	var relPath, fid string
+	if err := db.QueryRow(`SELECT relative_path, COALESCE(file_id,'') FROM media_items WHERE id = 'media_reup'`).Scan(&relPath, &fid); err != nil {
+		t.Fatal(err)
+	}
+	if relPath != "a.png" || fid != "fid-new" {
+		t.Fatalf("旧扫描覆盖了新上传记录: %q %q", relPath, fid)
+	}
+	var count int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM media_items`).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Fatalf("媒体索引应有且仅有新上传行: %d", count)
+	}
+}

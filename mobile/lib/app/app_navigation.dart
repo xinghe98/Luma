@@ -59,7 +59,7 @@ extension AppNavigation on BuildContext {
   }
 
   /// 打开图片预览；有来源标签时从当前缩略图原地放大并在关闭时缩回。
-  /// [gallery] 提供时预览可左右翻看同一来源顺序，其生命周期归调用方。
+  /// [gallery] 提供同一来源顺序，生命周期归调用方；已删除图片不再进入详情。
   Future<void> openImagePreview(
     MediaItem item, {
     String? heroTag,
@@ -75,8 +75,10 @@ extension AppNavigation on BuildContext {
       gallery: gallery,
     );
     if (!mounted || action != ImagePreviewAction.openDetails) return;
-    // 预览里翻页后以停留的那张为准进入详情，单图回退到原条目。
-    openMediaDetails(gallery?.currentItem ?? item);
+    // 画廊删空时不能回退到已删除的入口图片。
+    final target = gallery == null ? item : gallery.currentItem;
+    if (target == null || AppScope.of(this).media.isDeleted(target.id)) return;
+    openMediaDetails(target);
   }
 
   /// 打开电影或电视剧详情，首帧复用来源卡片数据，并可让海报独占路由动效。

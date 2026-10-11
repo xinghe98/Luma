@@ -138,6 +138,15 @@ final class ApiMediaRepository
     _client.ensureSessionEpoch(epoch);
   }
 
+  /// 服务端确认删除后清除详情缓存；会话切换时拒绝旧请求结果。
+  @override
+  Future<void> deleteImage(String id) async {
+    final epoch = _captureSessionEpoch();
+    await _client.deleteImage(id);
+    _client.ensureSessionEpoch(epoch);
+    _items.remove(id);
+  }
+
   @override
   Future<MediaItem> setFavorite(String id, bool value) =>
       _updateUserData(id, {'favorite': value});

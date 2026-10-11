@@ -2,6 +2,7 @@ package sqlite
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"path/filepath"
 	"testing"
@@ -424,5 +425,208 @@ func TestMediaRepositoryDurationSortKeepsNullLast(t *testing.T) {
 	}
 	if len(items) != 1 || items[0].ID != "media_unknown" {
 		t.Fatalf("unexpected page after duration: %#v", items)
+	}
+}
+
+// insertMediaForUser 在指定用户授权的来源下插入一条媒体索引行。
+func insertImageMedia(t *testing.T, repository *MediaRepository, db *sql.DB, mediaID, sourceID, filename string) {
+	t.Helper()
+	now := time.UnixMilli(1000)
+	if _, err := db.Exec(`INSERT INTO media_items(
+        id, source_id, relative_path, filename, media_type, file_size, file_modified_at_ms, status,
+        discovered_at_ms, created_at_ms, updated_at_ms) VALUES(?,?,?,?,?,?,?,?,?,?,?)`,
+		mediaID, sourceID, mediaID+"/"+filename, filename, domain.MediaTypeImage, 100, 1,
+		domain.MediaStatusReady, now.UnixMilli(), now.UnixMilli(), now.UnixMilli()); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func newDeleteFixture(t *testing.T) (*MediaRepository, *SourceRepository, *AccessRepository, *sql.DB) {
+	t.Helper()
+	db, err := Open(context.Background(), config.DatabaseConfig{Path: filepath.Join(t.TempDir(), "media.db"), BusyTimeoutMS: 1000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	media, err := NewMediaRepository(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sources, err := NewSourceRepository(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	access, err := NewAccessRepository(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return media, sources, access, db
+}
+
+// TestDeleteImageTargetRequiresGrant 验证未授权用户拿不到删除定位。
+func TestDeleteImageTargetRequiresGrant(t *testing.T) {
+	repository, sources, access, db := newDeleteFixture(t)
+	now := time.UnixMilli(1000)
+	if err := sources.Create(context.Background(), domain.Source{
+		ID: "src", Name: "图库", Type: domain.SourceTypeLocal, RootPath: "/root",
+		Enabled: true, Status: domain.SourceStatusOnline, CreatedAt: now, UpdatedAt: now,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	insertImageMedia(t, repository, db, "img1", "src", "a.png")
+	if _, err := repository.GetImageDeleteTarget(context.Background(), "img1", "user_no_grant"); !errors.Is(err, domain.ErrMediaNotFound) {
+		t.Fatalf("未授权应返回媒体不存在: %v", err)
+	}
+	_ = access
+}
+
+// TestDeleteImageTargetRejectsVideo 验证非图片媒体返回参数错误而不是 404。
+func TestDeleteImageTargetRejectsVideo(t *testing.T) {
+	repository, sources, access, db := newDeleteFixture(t)
+	now := time.UnixMilli(1000)
+	if err := sources.Create(context.Background(), domain.Source{
+		ID: "src", Name: "图库", Type: domain.SourceTypeLocal, RootPath: "/root",
+		Enabled: true, Status: domain.SourceStatusOnline, CreatedAt: now, UpdatedAt: now,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := access.GrantSource(context.Background(), "user_local", "src", now); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO media_items(
+        id, source_id, relative_path, filename, media_type, file_size, file_modified_at_ms, status,
+        discovered_at_ms, created_at_ms, updated_at_ms) VALUES(?,?,?,?,?,?,?,?,?,?,?)`,
+		"vid1", "src", "vid1/a.mp4", "a.mp4", domain.MediaTypeVideo, 100, 1,
+		domain.MediaStatusReady, now.UnixMilli(), now.UnixMilli(), now.UnixMilli()); err != nil {
+		t.Fatal(err)
+	}
+	_, err := repository.GetImageDeleteTarget(context.Background(), "vid1", "user_local")
+	if !errors.Is(err, domain.ErrInvalidRequest) {
+		t.Fatalf("视频应返回 INVALID_REQUEST: %v", err)
+	}
+}
+
+// deleteTargetFor 为测试构造与插入行一致的删除定位（relative_path 与 insertImageMedia 对齐）。
+func deleteTargetFor(t *testing.T, repository *MediaRepository, mediaID, userID string) domain.DeleteImageTarget {
+	t.Helper()
+	target, err := repository.GetImageDeleteTarget(context.Background(), mediaID, userID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return target
+}
+
+// TestDeleteImageRecordHardDeletesAndCascades 验证删除后行、用户数据、资产、任务与墓碑正确落位。
+func TestDeleteImageRecordHardDeletesAndCascades(t *testing.T) {
+	repository, sources, access, db := newDeleteFixture(t)
+	now := time.UnixMilli(1000)
+	if err := sources.Create(context.Background(), domain.Source{
+		ID: "src", Name: "图库", Type: domain.SourceTypeLocal, RootPath: "/root",
+		Enabled: true, Status: domain.SourceStatusOnline, CreatedAt: now, UpdatedAt: now,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := access.GrantSource(context.Background(), "user_local", "src", now); err != nil {
+		t.Fatal(err)
+	}
+	insertImageMedia(t, repository, db, "img1", "src", "a.png")
+	// 插入关联行：资产、用户数据、处理任务。
+	if _, err := db.Exec(`INSERT INTO media_assets(id, media_id, asset_type, variant, storage_key, status,
+        generator_version, created_at_ms, updated_at_ms) VALUES('a1','img1','thumbnail','default','thumbnails/img1','ready',1,1,1)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO media_user_data(user_id, media_id, favorite, created_at_ms, updated_at_ms)
+        VALUES('user_local','img1',1,1,1)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO jobs(id, job_type, entity_id, status, max_attempts, available_at_ms,
+        created_at_ms, updated_at_ms) VALUES('j1','probe_media','img1','pending',2,1,1,1)`); err != nil {
+		t.Fatal(err)
+	}
+	target := deleteTargetFor(t, repository, "img1", "user_local")
+	if err := repository.DeleteImageRecord(context.Background(), target, now); err != nil {
+		t.Fatal(err)
+	}
+	for table, column := range map[string]string{
+		"media_items": "id", "media_assets": "media_id", "media_user_data": "media_id", "jobs": "entity_id",
+	} {
+		var count int
+		if err := db.QueryRow(`SELECT COUNT(*) FROM `+table+` WHERE `+column+` = 'img1'`).Scan(&count); err != nil {
+			t.Fatal(err)
+		}
+		if count != 0 {
+			t.Fatalf("%s 仍残留 %d 行", table, count)
+		}
+	}
+	// 墓碑应按来源与相对路径各落一行。
+	var tombstones int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM media_delete_tombstones WHERE source_id='src' AND relative_path='img1/a.png'`).Scan(&tombstones); err != nil {
+		t.Fatal(err)
+	}
+	if tombstones != 1 {
+		t.Fatalf("墓碑数=%d，期望 1", tombstones)
+	}
+}
+
+// TestDeleteImageRecordTwiceFails 验证重复删除返回媒体不存在。
+func TestDeleteImageRecordTwiceFails(t *testing.T) {
+	repository, sources, access, db := newDeleteFixture(t)
+	now := time.UnixMilli(1000)
+	if err := sources.Create(context.Background(), domain.Source{
+		ID: "src", Name: "图库", Type: domain.SourceTypeLocal, RootPath: "/root",
+		Enabled: true, Status: domain.SourceStatusOnline, CreatedAt: now, UpdatedAt: now,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := access.GrantSource(context.Background(), "user_local", "src", now); err != nil {
+		t.Fatal(err)
+	}
+	insertImageMedia(t, repository, db, "img1", "src", "a.png")
+	target := deleteTargetFor(t, repository, "img1", "user_local")
+	if err := repository.DeleteImageRecord(context.Background(), target, now); err != nil {
+		t.Fatal(err)
+	}
+	if err := repository.DeleteImageRecord(context.Background(), target, now); !errors.Is(err, domain.ErrMediaNotFound) {
+		t.Fatalf("重复删除应返回媒体不存在: %v", err)
+	}
+}
+
+// TestDeleteImageRecordRejectsOfflineSource 验证离线媒体源返回 SOURCE_OFFLINE 而不是静默放行。
+func TestDeleteImageRecordRejectsOfflineSource(t *testing.T) {
+	repository, sources, access, db := newDeleteFixture(t)
+	now := time.UnixMilli(1000)
+	if err := sources.Create(context.Background(), domain.Source{
+		ID: "src", Name: "图库", Type: domain.SourceTypeLocal, RootPath: "/root",
+		Enabled: true, Status: domain.SourceStatusOffline, CreatedAt: now, UpdatedAt: now,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := access.GrantSource(context.Background(), "user_local", "src", now); err != nil {
+		t.Fatal(err)
+	}
+	insertImageMedia(t, repository, db, "img1", "src", "a.png")
+	_, err := repository.GetImageDeleteTarget(context.Background(), "img1", "user_local")
+	if !errors.Is(err, domain.ErrSourceOffline) {
+		t.Fatalf("离线来源应返回 SOURCE_OFFLINE: %v", err)
+	}
+}
+
+// TestDeleteImageRecordRejectsDisabledSource 验证禁用媒体源返回 SOURCE_OFFLINE。
+func TestDeleteImageRecordRejectsDisabledSource(t *testing.T) {
+	repository, sources, access, db := newDeleteFixture(t)
+	now := time.UnixMilli(1000)
+	if err := sources.Create(context.Background(), domain.Source{
+		ID: "src", Name: "图库", Type: domain.SourceTypeLocal, RootPath: "/root",
+		Enabled: false, Status: domain.SourceStatusDisabled, CreatedAt: now, UpdatedAt: now,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := access.GrantSource(context.Background(), "user_local", "src", now); err != nil {
+		t.Fatal(err)
+	}
+	insertImageMedia(t, repository, db, "img1", "src", "a.png")
+	_, err := repository.GetImageDeleteTarget(context.Background(), "img1", "user_local")
+	if !errors.Is(err, domain.ErrSourceOffline) {
+		t.Fatalf("禁用来源应返回 SOURCE_OFFLINE: %v", err)
 	}
 }

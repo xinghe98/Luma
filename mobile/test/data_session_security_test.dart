@@ -57,6 +57,53 @@ void main() {
     expect(receivedUploads, 0, reason: '图片不能先发给新账号再丢弃响应');
   });
 
+  test('排队中的图片删除不能发给切换后的账号', () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    addTearDown(() => server.close(force: true));
+    var requests = 0;
+    server.listen((request) async {
+      requests++;
+      request.response.statusCode = HttpStatus.noContent;
+      await request.response.close();
+    });
+    final session = ApiSession(
+      origin: 'http://${server.address.host}:${server.port}',
+      token: 'old-account',
+    );
+    final dio = Dio()..interceptors.add(ApiSessionInterceptor(session));
+    addTearDown(dio.close);
+    final deletion = ApiClient(dio).deleteImage('shared-id');
+    session.update(origin: session.origin, token: 'new-account');
+    await expectLater(
+      deletion,
+      throwsA(isA<ApiException>().having(
+        (error) => error.code, 'code', 'SESSION_CHANGED',
+      )),
+    );
+    expect(requests, 0);
+  });
+
+  test('删除必须收到 204，其他成功状态不能误报已删除', () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    addTearDown(() => server.close(force: true));
+    var status = HttpStatus.accepted;
+    server.listen((request) async {
+      await request.drain<void>();
+      request.response.statusCode = status;
+      await request.response.close();
+    });
+    final session = ApiSession(
+      origin: 'http://${server.address.host}:${server.port}',
+      token: 'account',
+    );
+    final dio = Dio()..interceptors.add(ApiSessionInterceptor(session));
+    addTearDown(dio.close);
+    final api = ApiClient(dio);
+    await expectLater(api.deleteImage('image-id'), throwsA(isA<ApiException>()));
+    status = HttpStatus.noContent;
+    expect((await api.deleteImage('image-id')).statusCode, HttpStatus.noContent);
+  });
+
   test('resource access only authenticates same-origin URLs', () {
     final session = ApiSession(
       origin: 'https://media.example.com/luma/',

@@ -33,6 +33,7 @@ class MediaController extends ChangeNotifier {
 
   /// id → 最新 MediaItem，供 O(1) 查找；与 _items / continueWatching 同步维护。
   final Map<String, MediaItem> _byId = {};
+  final Set<String> _deletedIds = {};
   LoadState _loadState = LoadState.idle;
   String? _loadError;
   String? _detailError;
@@ -63,14 +64,23 @@ class MediaController extends ChangeNotifier {
 
   MediaItem? findById(String id) => _byId[id];
 
+  /// 当前连接会话的代数，供跨确认框或批量操作阻止换服后继续执行。
+  int get sessionGeneration => _sessionGeneration;
+
+  /// 当前会话中已确认删除的媒体，迟到的分页或缓存不能重新显示它。
+  bool isDeleted(String id) => _deletedIds.contains(id);
+
+  /// 缓存未删除的媒体，只在可见内容变化时通知订阅者。
   void remember(MediaItem item, {bool notify = true}) {
     final changedVisibleItem = _cacheAndReplaceHome(item);
     if (notify && changedVisibleItem) notifyListeners();
   }
 
+  /// 合并未删除的摘要，忽略删除前发起的请求返回的旧图片。
   void rememberAll(Iterable<MediaItem> items, {bool notify = true}) {
     var changed = false;
     for (final item in items) {
+      if (isDeleted(item.id)) continue;
       final before = _byId[item.id];
       _byId
         ..remove(item.id)
@@ -122,15 +132,28 @@ class MediaController extends ChangeNotifier {
     );
   }
 
-  Future<List<MediaItem>> search(MediaFilter filter) =>
-      _repository.search(filter);
+  /// 查询当前会话的媒体，并过滤请求期间已确认删除的图片。
+  Future<List<MediaItem>> search(MediaFilter filter) async {
+    final generation = _sessionGeneration;
+    final items = await _repository.search(filter);
+    _ensureSession(generation);
+    return _withoutDeleted(items);
+  }
 
-  /// 请求一页媒体摘要，并把调用方指定的页大小原样交给仓库。
+  /// 请求一页媒体摘要，保留服务端游标但过滤已删除条目与旧会话回包。
   Future<MediaListPage> searchPage(
     MediaFilter filter, {
     String? cursor,
     int? limit,
-  }) => _repository.searchPage(filter, cursor: cursor, limit: limit);
+  }) async {
+    final generation = _sessionGeneration;
+    final page = await _repository.searchPage(filter, cursor: cursor, limit: limit);
+    _ensureSession(generation);
+    return MediaListPage(
+      items: _withoutDeleted(page.items),
+      nextCursor: page.nextCursor,
+    );
+  }
 
   Future<void> refreshCatalogCount() async {
     final pending = _catalogCountRequest;
@@ -148,7 +171,13 @@ class MediaController extends ChangeNotifier {
 
   Future<void> _refreshCatalogCount(int sessionGeneration) async {
     try {
-      final total = await _repository.countMedia();
+      var deletionCount = _deletedIds.length;
+      var total = await _repository.countMedia();
+      while (!_disposed && sessionGeneration == _sessionGeneration &&
+          deletionCount != _deletedIds.length) {
+        deletionCount = _deletedIds.length;
+        total = await _repository.countMedia();
+      }
       if (_disposed || sessionGeneration != _sessionGeneration) return;
       if (_catalogCount == total) return;
       _catalogCount = total;
@@ -223,8 +252,8 @@ class MediaController extends ChangeNotifier {
     try {
       final bundle = await request();
       if (generation != _loadGeneration) return;
-      _items = bundle.items;
-      _continueWatching = bundle.continueWatching;
+      _items = _withoutDeleted(bundle.items);
+      _continueWatching = _withoutDeleted(bundle.continueWatching);
       _tags = bundle.tags;
       _rebuildIndex();
       _loadState = LoadState.ready;
@@ -235,6 +264,39 @@ class MediaController extends ChangeNotifier {
       _loadError = error.toString();
     }
     notifyListeners();
+  }
+
+  /// 永久删除图片，成功后同步移除首页、详情和分页消费者中的条目。
+  /// 同图操作沿用串行队列；失败保留原内容，旧会话的完成结果不会污染新连接。
+  Future<void> deleteImage(String id) async {
+    final session = _sessionGeneration;
+    _ensureSession(session);
+    final item = findById(id);
+    if (item != null && item.type != MediaType.image) {
+      throw StateError('只能删除图片');
+    }
+    await _runMutation(id, (_) async {
+      if (isDeleted(id)) return;
+      await _repository.deleteImage(id);
+      _ensureSession(session);
+      _deletedIds.add(id);
+      _byId.remove(id);
+      _items = _withoutDeleted(_items);
+      _continueWatching = _withoutDeleted(_continueWatching);
+      if (_catalogCount > 0) _catalogCount--;
+      notifyListeners();
+    });
+    _ensureSession(session);
+  }
+
+  List<MediaItem> _withoutDeleted(List<MediaItem> items) => _deletedIds.isEmpty
+      ? items
+      : items.where((item) => !isDeleted(item.id)).toList(growable: false);
+
+  void _ensureSession(int generation) {
+    if (_disposed || generation != _sessionGeneration) {
+      throw StateError('连接已更改，请在当前服务器重新操作');
+    }
   }
 
   Future<void> toggleFavorite(String id) {
@@ -293,6 +355,7 @@ class MediaController extends ChangeNotifier {
     _continueWatching = const [];
     _tags = const [];
     _byId.clear();
+    _deletedIds.clear();
     _catalogCount = 0;
     _loadState = LoadState.idle;
     _loadError = null;
@@ -313,12 +376,14 @@ class MediaController extends ChangeNotifier {
   }
 
   void _applyUserData(MediaItem updated) {
+    if (isDeleted(updated.id)) return;
     _cacheAndReplaceHome(updated);
     _syncContinueWatchingItem(updated);
     notifyListeners();
   }
 
   void _applyProgress(MediaItem updated) {
+    if (isDeleted(updated.id)) return;
     _cacheAndReplaceHome(updated);
     final continueIndex = _continueWatching.indexWhere(
       (item) => item.id == updated.id,
@@ -336,6 +401,7 @@ class MediaController extends ChangeNotifier {
   }
 
   bool _cacheAndReplaceHome(MediaItem updated) {
+    if (isDeleted(updated.id)) return false;
     final index = _items.indexWhere((item) => item.id == updated.id);
     final changedHomeItem = index >= 0 && !identical(_items[index], updated);
     if (changedHomeItem) {

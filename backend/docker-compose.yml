@@ -7,6 +7,9 @@ services:
         VERSION: ${LUMA_VERSION:-dev}
     ports:
       - "0.0.0.0:${LUMA_PORT:-8080}:8080"
+    environment:
+      LUMA_UID: ${LUMA_UID:-}
+      LUMA_GID: ${LUMA_GID:-}
     volumes:
       - luma-data:/data
     restart: unless-stopped

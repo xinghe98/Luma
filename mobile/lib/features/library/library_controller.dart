@@ -36,9 +36,11 @@ class LibraryController extends ChangeNotifier {
               media!.items,
               _filter,
             ).take(pageSize < 12 ? pageSize : 12).toList(growable: false);
-      _remoteItems = seed;
-      _visibleItems = seed;
-      _remoteIds.addAll(seed.map((item) => item.id));
+      _remoteItems = seed
+          .where((item) => !(_media?.isDeleted(item.id) ?? false))
+          .toList(growable: false);
+      _visibleItems = _remoteItems;
+      _remoteIds.addAll(_remoteItems.map((item) => item.id));
     }
   }
 
@@ -112,7 +114,9 @@ class LibraryController extends ChangeNotifier {
   /// [items] 仅在尚未启动远程分页时用于本地筛选（测试/兜底）。
   List<MediaItem> visibleItems([List<MediaItem>? items]) {
     if (_started) return _visibleItems;
-    return filterMediaItems(items ?? _media?.items ?? const [], _filter);
+    final visible = filterMediaItems(items ?? _media?.items ?? const [], _filter);
+    visible.removeWhere((item) => _media?.isDeleted(item.id) ?? false);
+    return visible;
   }
 
   /// 替换媒体类型并重新加载；失败时不继续展示上一类型的结果。
@@ -224,9 +228,15 @@ class LibraryController extends ChangeNotifier {
     if (_rebuildVisible()) notifyListeners();
   }
 
-  /// 合并 MediaController 的最新用户字段，并重新应用会随用户操作变化的筛选。
+  /// 移除已删除条目，合并最新用户字段，并重新应用会随操作变化的筛选。
   bool _rebuildVisible() {
     final media = _media;
+    if (media != null && _remoteItems.any((item) => media.isDeleted(item.id))) {
+      _remoteItems = _remoteItems
+          .where((item) => !media.isDeleted(item.id))
+          .toList(growable: false);
+      _remoteIds.removeWhere(media.isDeleted);
+    }
     final merged = media == null
         ? _remoteItems
         : [for (final item in _remoteItems) media.findById(item.id) ?? item];

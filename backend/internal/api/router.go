@@ -85,6 +85,7 @@ func NewRouter(params RouterParams) (http.Handler, error) {
 	protected.GET("/media/count", params.Media.Count)
 	protected.GET("/media/continue-watching", params.Media.ContinueWatching)
 	protected.GET("/media/:id", params.Media.Get)
+	protected.DELETE("/media/:id", params.Media.Delete)
 	protected.GET("/catalog", params.Catalog.List)
 	protected.GET("/catalog/:id", params.Catalog.Get)
 	protected.PATCH("/catalog/:id/user-data", params.Catalog.UpdateFavorite)

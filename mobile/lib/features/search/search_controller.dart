@@ -186,7 +186,8 @@ class SearchController extends ChangeNotifier {
       changed = true;
     }
     final nextResults = [
-      for (final item in _results) _media.findById(item.id) ?? item,
+      for (final item in _results)
+        if (!_media.isDeleted(item.id)) _media.findById(item.id) ?? item,
     ];
     if (!_sameItems(_results, nextResults)) {
       _results = nextResults;

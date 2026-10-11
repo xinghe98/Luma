@@ -23,6 +23,8 @@ var (
 	ErrNoPendingJob = errors.New("no pending processing job")
 	// ErrMediaNotFound 表示媒体索引不存在或来源已失效。
 	ErrMediaNotFound = errors.New("media not found")
+	// ErrMediaInUse 表示文件正被占用，释放占用后可重试删除。
+	ErrMediaInUse = errors.New("media file is in use")
 	// ErrContentNotFound 表示原始媒体文件不存在或未通过安全路径检查。
 	ErrContentNotFound = errors.New("media content not found")
 	// ErrStreamCacheMiss 表示本次播放固定的 faststart 流副本已不可用；

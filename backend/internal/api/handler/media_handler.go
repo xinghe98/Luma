@@ -20,6 +20,8 @@ type MediaUseCase interface {
 	Count(context.Context, domain.MediaListRequest, string) (int, error)
 	Get(context.Context, string, string) (domain.Media, error)
 	Thumbnail(context.Context, string, string, string, string) (domain.ThumbnailContent, error)
+	// DeleteImage 永久删除一张授权可见的图片及其索引记录。
+	DeleteImage(context.Context, string, string) error
 }
 
 func (h *MediaHandler) Count(c *gin.Context) {
@@ -203,6 +205,16 @@ func (h *MediaHandler) Get(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, presentMediaDetail(item))
+}
+
+// Delete 处理 DELETE /api/v1/media/:id，永久删除一张授权可见的图片。
+// 成功返回 204 无响应体；文件与索引语义由业务用例保证。
+func (h *MediaHandler) Delete(c *gin.Context) {
+	if err := h.service.DeleteImage(c.Request.Context(), c.Param("id"), c.GetString("user_id")); err != nil {
+		response.FromError(c, err)
+		return
+	}
+	c.Status(http.StatusNoContent)
 }
 
 // Thumbnail 处理 GET /api/v1/media/:id/thumbnail。

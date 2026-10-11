@@ -47,6 +47,7 @@ var allMigrations = []migration{
 	{version: 20, name: "020_expire_permanent_sessions", sql: migrations.ExpirePermanentSessions, checksum: "09c281670b1855f5122d0f3f3996d2d00ea648b6ceadbbcfea221c3bdf201a77"},
 	{version: 21, name: "021_file_created_at", sql: migrations.FileCreatedAt, checksum: "8eb18c4890a52aca70c868fe79bc69d54beb8e77d2394707164186abd0e5a014"},
 	{version: 22, name: "022_media_added_at_index", sql: migrations.MediaAddedAtIndex, checksum: "60cfeb4122dee567054514b0262d2fd234e06ab7dce9a3c872997f8cf6042081"},
+	{version: 23, name: "023_media_delete_tombstone", sql: migrations.MediaDeleteTombstone, checksum: "61f28b8ded7a276e411419c0947cabb9c9bbd79898f18421e2e427303ac2243d"},
 }
 
 // migrate 校验已发布迁移，在单个事务中幂等升级数据库并确保默认用户存在。

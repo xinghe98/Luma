@@ -105,11 +105,13 @@ abstract class _ApiTransport {
     }
   }
 
+  /// 发送无正文响应请求；指定会话代数时在网络发送前拒绝换服后的请求。
   Future<Response<void>> _empty(
     String method,
     String path, {
     Map<String, dynamic>? headers,
     Object? data,
+    int? expectedSessionEpoch,
   }) async {
     try {
       return await _dio.request<void>(
@@ -118,6 +120,9 @@ abstract class _ApiTransport {
         options: Options(
           method: method,
           headers: headers,
+          extra: expectedSessionEpoch == null
+              ? null
+              : {ApiSessionInterceptor.expectedEpochKey: expectedSessionEpoch},
           validateStatus: _acceptSuccessOrNotModified,
         ),
       );

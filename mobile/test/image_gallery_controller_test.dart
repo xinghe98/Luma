@@ -1,5 +1,6 @@
 // 图片库预览翻页会话的单元与组件集成测试：
-// 覆盖排序顺序、两端边界、远程分页衔接、失败重试与释放后的行为，
+// 覆盖排序顺序、两端边界、远程分页衔接、删除当前图后的落点与空会话、
+// 迟到分页的删除过滤、失败重试与释放后的行为，
 // 以及 LibraryPage 点击图片时交给预览的会话内容、首刷衔接和续页。
 import 'dart:async';
 
@@ -31,7 +32,7 @@ void main() {
       addTearDown(controller.dispose);
 
       expect(controller.currentIndex, 2);
-      expect(controller.currentItem.id, 'img-2');
+      expect(controller.currentItem!.id, 'img-2');
       expect(controller.length, 5);
       expect(controller.canPrevious, isTrue);
       expect(controller.canNext, isTrue);
@@ -65,7 +66,7 @@ void main() {
       await pending;
 
       // previous 在进行中时被忽略，最终停在 next 落定的 img-2。
-      expect(controller.currentItem.id, 'img-2');
+      expect(controller.currentItem!.id, 'img-2');
     });
 
     test('next 到末尾且无后续页时停下不回绕', () async {
@@ -80,7 +81,7 @@ void main() {
       expect(controller.canNext, isFalse);
       await controller.next();
       expect(controller.currentIndex, 1);
-      expect(controller.currentItem.id, 'img-1');
+      expect(controller.currentItem!.id, 'img-1');
     });
 
     test('next 在末尾先拉取下一页再进入新页首项', () async {
@@ -98,7 +99,7 @@ void main() {
 
       await controller.next();
       expect(loads, 1);
-      expect(controller.currentItem.id, 'img-2');
+      expect(controller.currentItem!.id, 'img-2');
       expect(controller.length, 4);
       expect(controller.canNext, isTrue);
     });
@@ -123,7 +124,7 @@ void main() {
       await Future.wait([first, second]);
 
       expect(loads, 1);
-      expect(controller.currentItem.id, 'img-1');
+      expect(controller.currentItem!.id, 'img-1');
       expect(controller.isLoadingMore, isFalse);
     });
 
@@ -142,13 +143,13 @@ void main() {
       addTearDown(controller.dispose);
 
       await controller.next();
-      expect(controller.currentItem.id, 'img-0');
+      expect(controller.currentItem!.id, 'img-0');
       expect(controller.error, isNotNull);
       expect(controller.isLoadingMore, isFalse);
 
       await controller.next();
       expect(attempts, 2);
-      expect(controller.currentItem.id, 'img-1');
+      expect(controller.currentItem!.id, 'img-1');
       expect(controller.error, isNull);
     });
 
@@ -167,7 +168,7 @@ void main() {
 
       await controller.next();
       expect(controller.length, 3);
-      expect(controller.currentItem.id, 'img-2');
+      expect(controller.currentItem!.id, 'img-2');
     });
 
     test('dispose 之后忽略迟到的分页结果', () async {
@@ -184,7 +185,163 @@ void main() {
       completer.complete(ImageGalleryPage(items: [_item(1)], hasMore: false));
       await pending;
 
-      expect(controller.currentItem.id, 'img-0');
+      expect(controller.currentItem!.id, 'img-0');
+    });
+    test('removeById 删除当前图后进入下一张', () async {
+      final controller = ImageGalleryController(
+        items: _items(3),
+        initialId: 'img-1',
+      );
+      addTearDown(controller.dispose);
+
+      expect(await controller.removeById(controller.currentItem!.id), isTrue);
+      expect(controller.currentItem!.id, 'img-2');
+      expect(controller.currentIndex, 1);
+      expect(controller.length, 2);
+    });
+
+    test('removeById 删除最后一张后退回上一张', () async {
+      final controller = ImageGalleryController(
+        items: _items(3),
+        initialId: 'img-2',
+      );
+      addTearDown(controller.dispose);
+
+      expect(await controller.removeById(controller.currentItem!.id), isTrue);
+      expect(controller.currentItem!.id, 'img-1');
+      expect(controller.currentIndex, 1);
+      expect(controller.canNext, isFalse);
+    });
+
+    test('removeById 删除唯一图片后会话变空', () async {
+      final controller = ImageGalleryController(
+        items: _items(1),
+        initialId: 'img-0',
+      );
+      addTearDown(controller.dispose);
+
+      expect(await controller.removeById(controller.currentItem!.id), isTrue);
+      expect(controller.isEmpty, isTrue);
+      expect(controller.currentItem, isNull);
+    });
+
+    test('removeById 删空已加载且来源还有后续页时补拉一页', () async {
+      final controller = ImageGalleryController(
+        items: _items(1),
+        initialId: 'img-0',
+        hasMore: true,
+        loadMore: () async =>
+            ImageGalleryPage(items: [_item(1), _item(2)], hasMore: false),
+      );
+      addTearDown(controller.dispose);
+
+      expect(await controller.removeById(controller.currentItem!.id), isTrue);
+      // 补拉后进入新页首项，不停留在已删除的 img-0 上。
+      expect(controller.currentItem!.id, 'img-1');
+      expect(controller.length, 2);
+      expect(controller.isEmpty, isFalse);
+    });
+
+    test('删空后跳过只含已删图片的旧页，继续寻找有效图片', () async {
+      var page = 0;
+      final controller = ImageGalleryController(
+        items: _items(1),
+        initialId: 'img-0',
+        hasMore: true,
+        loadMore: () async => ++page == 1
+            ? ImageGalleryPage(items: [_item(0)], hasMore: true)
+            : ImageGalleryPage(items: [_item(1)], hasMore: false),
+      );
+      addTearDown(controller.dispose);
+      await controller.removeById('img-0');
+      expect(controller.currentItem!.id, 'img-1');
+      expect(controller.containsId('img-0'), isFalse);
+    });
+
+    test('removeById 删空且补页失败时记录错误并保持空会话', () async {
+      final controller = ImageGalleryController(
+        items: _items(1),
+        initialId: 'img-0',
+        hasMore: true,
+        loadMore: () async => throw StateError('网络失败'),
+      );
+      addTearDown(controller.dispose);
+
+      expect(await controller.removeById(controller.currentItem!.id), isTrue);
+      expect(controller.isEmpty, isTrue);
+      expect(controller.currentItem, isNull);
+      expect(controller.error, isNotNull);
+    });
+
+    test('isRemoved 过滤迟到分页里已删除的条目', () async {
+      final removed = <String>{'img-2'};
+      final controller = ImageGalleryController(
+        items: _items(1),
+        initialId: 'img-0',
+        hasMore: true,
+        isRemoved: removed.contains,
+        loadMore: () async => ImageGalleryPage(
+          // 模拟旧页回包里夹带已删除的图片。
+          items: [_item(2), _item(3)],
+          hasMore: false,
+        ),
+      );
+      addTearDown(controller.dispose);
+
+      await controller.next();
+      expect(controller.length, 2);
+      expect(controller.containsId('img-2'), isFalse);
+      expect(controller.currentItem!.id, 'img-3');
+    });
+
+    test('removeById 在翻页进行中返回 false 不移除', () async {
+      final completer = Completer<ImageGalleryPage>();
+      final controller = ImageGalleryController(
+        items: _items(2),
+        initialId: 'img-1',
+        hasMore: true,
+        loadMore: () => completer.future,
+      );
+      addTearDown(() {
+        if (!completer.isCompleted) {
+          completer.complete(ImageGalleryPage(items: const [], hasMore: false));
+        }
+        controller.dispose();
+      });
+
+      final pending = controller.next();
+      expect(await controller.removeById(controller.currentItem!.id), isFalse);
+      completer.complete(ImageGalleryPage(items: [_item(2)], hasMore: false));
+      await pending;
+      // 翻页正常落定，删除请求未偷偷生效。
+      expect(controller.currentItem!.id, 'img-2');
+      expect(controller.length, 3);
+    });
+
+    test('removeById 移除非当前项时当前图片不变索引前移', () async {
+      final controller = ImageGalleryController(
+        items: _items(3),
+        initialId: 'img-2',
+      );
+      addTearDown(controller.dispose);
+
+      // 删除当前项之前的条目：当前图不变，索引随之前移。
+      expect(await controller.removeById('img-0'), isTrue);
+      expect(controller.currentItem!.id, 'img-2');
+      expect(controller.currentIndex, 1);
+      expect(controller.length, 2);
+    });
+
+    test('removeById 移除不存在的 id 返回 false', () async {
+      final controller = ImageGalleryController(
+        items: _items(2),
+        initialId: 'img-0',
+      );
+      addTearDown(controller.dispose);
+
+      expect(await controller.removeById('missing'), isFalse);
+      expect(controller.length, 2);
+      expect(controller.currentItem!.id, 'img-0');
     });
   });
 
@@ -248,13 +405,13 @@ void main() {
       final repository = _PagedImageRepository(total: 40, pageSize: 18);
       final gallery = await pumpLibraryAndOpen(tester, repository);
       expect(gallery.length, 18);
-      expect(gallery.currentItem.id, 'img-0');
+      expect(gallery.currentItem!.id, 'img-0');
       for (var i = 0; i < 17; i++) {
         await gallery.next();
       }
-      expect(gallery.currentItem.id, 'img-17');
+      expect(gallery.currentItem!.id, 'img-17');
       await gallery.next();
-      expect(gallery.currentItem.id, 'img-18');
+      expect(gallery.currentItem!.id, 'img-18');
       expect(gallery.length, 36);
       expect(repository.cursors, [null, '18']);
     });
@@ -270,11 +427,11 @@ void main() {
         await gallery.next();
       }
       await gallery.next();
-      expect(gallery.currentItem.id, 'img-17');
+      expect(gallery.currentItem!.id, 'img-17');
       expect(gallery.error, isNotNull);
       repository.failOnCursor = null;
       await gallery.next();
-      expect(gallery.currentItem.id, 'img-18');
+      expect(gallery.currentItem!.id, 'img-18');
       expect(gallery.error, isNull);
       expect(repository.cursors, [null, '18', '18']);
     });
@@ -294,12 +451,12 @@ void main() {
       await gallery.next();
       await gallery.next();
       final pending = gallery.next();
-      expect(gallery.currentItem.id, 'img-2');
+      expect(gallery.currentItem!.id, 'img-2');
       expect(gallery.isLoadingMore, isTrue);
       gate.complete();
       await tester.pump();
       await pending;
-      expect(gallery.currentItem.id, 'img-3');
+      expect(gallery.currentItem!.id, 'img-3');
       expect(gallery.length, 18);
       expect(repository.cursors, [null]);
     });
@@ -320,12 +477,12 @@ void main() {
       gate.complete();
       await tester.pump();
       await gallery.next();
-      expect(gallery.currentItem.id, 'img-0');
+      expect(gallery.currentItem!.id, 'img-0');
       expect(gallery.error, isNotNull);
       expect(gallery.canNext, isTrue);
       repository.failFirstPage = false;
       await gallery.next();
-      expect(gallery.currentItem.id, 'img-1');
+      expect(gallery.currentItem!.id, 'img-1');
       expect(gallery.error, isNull);
     });
 
@@ -345,7 +502,7 @@ void main() {
       expect(gallery.isLoadingMore, isTrue);
       await tester.pumpWidget(const SizedBox.shrink());
       await pending;
-      expect(gallery.currentItem.id, 'img-0');
+      expect(gallery.currentItem!.id, 'img-0');
       expect(gallery.canNext, isFalse);
       gate.complete();
       await tester.pump();
@@ -369,7 +526,7 @@ void main() {
           builder: (context, _) => Scaffold(
             body: TextButton(
               onPressed: () => context.openImagePreview(
-                gallery.currentItem,
+                gallery.currentItem!,
                 gallery: gallery,
               ),
               child: const Text('打开预览'),

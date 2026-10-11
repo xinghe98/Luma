@@ -134,6 +134,9 @@ class TvMediaSliverGrid extends StatelessWidget {
     this.artworkFit,
     this.reveal,
     this.firstItemFocusNode,
+    this.selectionMode = false,
+    this.selectedIds = const {},
+    this.onLongPress,
   });
 
   final List<MediaItem> items;
@@ -149,6 +152,14 @@ class TvMediaSliverGrid extends StatelessWidget {
   /// 附加到首卡的焦点节点；搜索页提交后聚焦首个结果时使用。
   final FocusNode? firstItemFocusNode;
 
+  /// 图片库批量选择态：卡片封面渲染勾选标记；默认关闭。
+  final bool selectionMode;
+
+  /// 当前已选中的媒体 id 集合；仅在 [selectionMode] 为 true 时生效。
+  final Set<String> selectedIds;
+
+  /// 选择态下长按仍可进入详情等原有手势。
+  final MediaOpenCallback? onLongPress;
   @override
   Widget build(BuildContext context) {
     return SliverLayoutBuilder(
@@ -174,6 +185,11 @@ class TvMediaSliverGrid extends StatelessWidget {
               focusBorderWidth: LumaTvLayout.focusStroke,
               focusNode: index == 0 ? firstItemFocusNode : null,
               artworkFit: artworkFit,
+              selectionMode: selectionMode,
+              selected: selectedIds.contains(item.id),
+              onLongPress: onLongPress == null
+                  ? null
+                  : () => onLongPress!(item),
               onFocusChange: (focused) {
                 if (focused) reveal?.track(index, width);
               },

@@ -183,6 +183,14 @@ final class TvSmokeMediaRepository implements MediaRepository {
     warmCalls++;
   }
 
+  /// 删除隔离图片数据并保留真实仓库的类型约束，不接触用户文件。
+  @override
+  Future<void> deleteImage(String id) async {
+    final item = _items.firstWhere((item) => item.id == id);
+    if (item.type != MediaType.image) throw StateError('只能删除图片');
+    _items = _items.where((item) => item.id != id).toList();
+  }
+
   @override
   Future<MediaItem> setFavorite(String id, bool value) =>
       _replace(id, (item) => item.copyWith(isFavorite: value));

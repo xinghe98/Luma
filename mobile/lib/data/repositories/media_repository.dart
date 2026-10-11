@@ -25,6 +25,9 @@ abstract interface class MediaRepository {
   /// 以受认证的 HEAD 请求异步触发媒体流预热，不读取响应体。
   Future<void> warmStream(String id);
 
+  /// 永久删除服务器原图及媒体索引；无权限、离线或非图片时抛出错误。
+  Future<void> deleteImage(String id);
+
   Future<MediaItem> setFavorite(String id, bool value);
   Future<MediaItem> saveNote(String id, String note);
   Future<MediaItem> updateProgress(String id, int positionMs);

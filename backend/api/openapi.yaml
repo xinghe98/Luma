@@ -389,6 +389,34 @@ paths:
         "400": { $ref: "#/components/responses/InvalidRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/MediaNotFound" }
+    delete:
+      summary: 永久删除一张授权可见的图片
+      description: |-
+        仅支持 media_type=image 且来源对当前用户可见的媒体。
+        物理删除来源根目录内的原始文件后，媒体索引行连同用户数据、
+        标签、资产与处理任务在同一事务内移除；任何来源可见的用户均可删除。
+        文件已不存在视为删除已达成，仍清除索引。
+        非图片媒体返回 400；未授权、已禁用或软删除来源下的媒体一律视为不存在。
+      security: [{ bearerAuth: [] }]
+      responses:
+        "204":
+          description: 图片已永久删除
+        "400":
+          description: 目标不是图片媒体，error.code 为 INVALID_REQUEST
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              example:
+                error: { code: INVALID_REQUEST, message: 仅支持删除图片媒体, details: null }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/MediaNotFound" }
+        "503":
+          description: 媒体源不可访问或不可写时 error.code 为 SOURCE_OFFLINE；Windows 文件被占用时为 MEDIA_IN_USE，保留原文件和索引，可在占用结束后重试。
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              example:
+                error: { code: SOURCE_OFFLINE, message: 媒体源当前不可访问, details: null }
   /api/v1/media/{id}/thumbnail:
     parameters:
       - $ref: "#/components/parameters/MediaID"

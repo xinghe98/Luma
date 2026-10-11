@@ -13,20 +13,65 @@ import (
 	"github.com/xinghe98/Luma/backend/internal/repository"
 )
 
-// MediaService 实现媒体查询、稳定分页和缩略图读取业务。
+// MediaService 实现媒体查询、稳定分页、缩略图读取与图片删除业务。
 type MediaService struct {
 	// repository 提供媒体及缩略图元数据查询。
 	repository repository.MediaRepository
 	// thumbnails 提供缩略图内容读取能力。
 	thumbnails ThumbnailReader
+	// files 删除授权来源根目录内的原始文件。
+	files SourceFileRemover
+	// clock 提供删除墓碑与索引写入的统一 UTC 时间。
+	clock Clock
 }
 
-// NewMediaService 创建媒体查询服务。
-func NewMediaService(repository repository.MediaRepository, thumbnails ThumbnailReader) (*MediaService, error) {
-	if repository == nil || thumbnails == nil {
-		return nil, errors.New("媒体 Repository 和缩略图存储不能为空")
+// SourceFileRemover 定义媒体服务删除原始文件所需的最小存储能力。
+type SourceFileRemover interface {
+	// RemoveSourceFile 删除媒体源根目录内的普通文件；目标已不存在时返回 nil。
+	RemoveSourceFile(context.Context, string, string) error
+}
+
+// NewMediaService 创建媒体查询与图片删除服务；任何依赖缺失都拒绝构造。
+func NewMediaService(repository repository.MediaRepository, thumbnails ThumbnailReader,
+	files SourceFileRemover, clock Clock) (*MediaService, error) {
+	if repository == nil || thumbnails == nil || files == nil || clock == nil {
+		return nil, errors.New("媒体 Repository、缩略图存储、文件删除与时钟不能为空")
 	}
-	return &MediaService{repository: repository, thumbnails: thumbnails}, nil
+	return &MediaService{repository: repository, thumbnails: thumbnails, files: files, clock: clock}, nil
+}
+
+// DeleteImage 永久删除一张授权可见的图片：先解除根目录内的原始文件，
+// 再硬删除媒体行并级联清理用户数据、资产与处理任务。
+// 顺序保证契约：文件删除失败时索引保持可见可恢复，绝不先隐藏再留孤儿文件；
+// 文件已不存在视为删除已达成，仍提交索引删除让列表立即收敛。
+func (s *MediaService) DeleteImage(ctx context.Context, mediaID, userID string) error {
+	if strings.TrimSpace(mediaID) == "" || userID == "" {
+		return fmt.Errorf("%w: 媒体 ID 无效", domain.ErrInvalidRequest)
+	}
+	target, err := s.repository.GetImageDeleteTarget(ctx, mediaID, userID)
+	if err != nil {
+		return err
+	}
+	if err := s.files.RemoveSourceFile(ctx, target.RootPath, target.RelativePath); err != nil {
+		return normalizeDeleteError(err)
+	}
+	return s.repository.DeleteImageRecord(ctx, target, s.clock.Now())
+}
+
+// normalizeDeleteError 只用 errors.Is 映射稳定的领域错误；字符串匹配不参与判定。
+func normalizeDeleteError(err error) error {
+	switch {
+	case errors.Is(err, domain.ErrSourceOffline),
+		errors.Is(err, domain.ErrContentNotFound),
+		errors.Is(err, domain.ErrInvalidRequest),
+		errors.Is(err, context.Canceled),
+		errors.Is(err, context.DeadlineExceeded):
+		return err
+	case uploadWritableError(err):
+		return fmt.Errorf("%w: 媒体源不可写", domain.ErrSourceOffline)
+	default:
+		return err
+	}
 }
 
 // List 校验参数并返回一页媒体。

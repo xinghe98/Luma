@@ -23,6 +23,15 @@ class TvLibraryHeader extends StatelessWidget {
     required this.onClear,
     this.onSearch,
     this.onUpload,
+    this.selectionMode = false,
+    this.selectedCount = 0,
+    this.onToggleSelect,
+    this.onDeleteSelected,
+    this.onSelectAll,
+    this.onCancelSelection,
+    this.deleting = false,
+    this.deleteTotal = 0,
+    this.deleteDone = 0,
   });
 
   final String title;
@@ -36,6 +45,33 @@ class TvLibraryHeader extends StatelessWidget {
   /// 进入图片上传页；由调用方负责选择、上传及返回后的刷新。
   final VoidCallback? onUpload;
   final VoidCallback onRefresh;
+
+  /// 图片库批量选择态；为 true 时操作行显示删除/全选/退出与计数。
+  final bool selectionMode;
+
+  /// 当前已选数量，供操作行按钮与文案展示。
+  final int selectedCount;
+
+  /// 进入或退出选择态；普通行与选择行共用。
+  final VoidCallback? onToggleSelect;
+
+  /// 触发删除已选图片；为 null 时禁用。
+  final VoidCallback? onDeleteSelected;
+
+  /// 全选当前已加载项；为 null 时禁用。
+  final VoidCallback? onSelectAll;
+
+  /// 退出选择态；为 null 时禁用。
+  final VoidCallback? onCancelSelection;
+
+  /// 是否正在执行批量删除；为 true 时操作行显示进度并只剩停止按钮。
+  final bool deleting;
+
+  /// 本批次确认删除的总数；仅在 [deleting] 时使用。
+  final int deleteTotal;
+
+  /// 本批次已完成请求的条数；仅在 [deleting] 时使用。
+  final int deleteDone;
   final VoidCallback onFilters;
   final ValueChanged<bool> onFavorites;
   final ValueChanged<MediaSort> onSort;
@@ -54,31 +90,77 @@ class TvLibraryHeader extends StatelessWidget {
     final actions = Wrap(
       spacing: LumaSpacing.sm,
       runSpacing: LumaSpacing.xs,
-      children: [
-        if (!isVideo && onUpload != null)
-          TextButton.icon(
-            onPressed: onUpload,
-            icon: const Icon(Icons.upload_rounded),
-            label: const Text('上传图片'),
-          ),
-        if (onSearch != null)
-          Tooltip(
-            message: '搜索',
-            child: TextButton.icon(
-              onPressed: onSearch,
-              icon: const Icon(Icons.search_rounded),
-              label: const Text('搜索'),
-            ),
-          ),
-        Tooltip(
-          message: '刷新',
-          child: TextButton.icon(
-            onPressed: onRefresh,
-            icon: const Icon(Icons.refresh_rounded),
-            label: const Text('刷新'),
-          ),
-        ),
-      ],
+      children: selectionMode
+          ? [
+              if (deleting)
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const SizedBox(
+                      width: LumaIconSize.status,
+                      height: LumaIconSize.status,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                    const SizedBox(width: LumaSpacing.xs),
+                    Text('删除中 $deleteDone/$deleteTotal'),
+                  ],
+                )
+              else ...[
+                TextButton.icon(
+                  onPressed: onCancelSelection,
+                  icon: const Icon(Icons.close_rounded),
+                  label: const Text('退出选择'),
+                ),
+                Text('已选 $selectedCount 项'),
+                TextButton.icon(
+                  onPressed: onSelectAll,
+                  icon: const Icon(Icons.select_all_rounded),
+                  label: const Text('全选已加载'),
+                ),
+                FilledButton.icon(
+                  onPressed: selectedCount == 0 ? null : onDeleteSelected,
+                  icon: const Icon(Icons.delete_outline_rounded),
+                  label: Text('删除($selectedCount)'),
+                ),
+              ],
+              if (deleting)
+                TextButton.icon(
+                  onPressed: onCancelSelection,
+                  icon: const Icon(Icons.stop_rounded),
+                  label: const Text('停止剩余'),
+                ),
+            ]
+          : [
+              if (!isVideo && onToggleSelect != null)
+                TextButton.icon(
+                  onPressed: onToggleSelect,
+                  icon: const Icon(Icons.checklist_rounded),
+                  label: const Text('选择'),
+                ),
+              if (!isVideo && onUpload != null)
+                TextButton.icon(
+                  onPressed: onUpload,
+                  icon: const Icon(Icons.upload_rounded),
+                  label: const Text('上传图片'),
+                ),
+              if (onSearch != null)
+                Tooltip(
+                  message: '搜索',
+                  child: TextButton.icon(
+                    onPressed: onSearch,
+                    icon: const Icon(Icons.search_rounded),
+                    label: const Text('搜索'),
+                  ),
+                ),
+              Tooltip(
+                message: '刷新',
+                child: TextButton.icon(
+                  onPressed: onRefresh,
+                  icon: const Icon(Icons.refresh_rounded),
+                  label: const Text('刷新'),
+                ),
+              ),
+            ],
     );
     return Padding(
       padding: const EdgeInsets.fromLTRB(
@@ -99,7 +181,11 @@ class TvLibraryHeader extends StatelessWidget {
               if (compact) {
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [heading, const SizedBox(height: LumaSpacing.sm), actions],
+                  children: [
+                    heading,
+                    const SizedBox(height: LumaSpacing.sm),
+                    actions,
+                  ],
                 );
               }
               return Row(

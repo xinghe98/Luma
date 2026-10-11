@@ -1,6 +1,6 @@
 import 'dart:async';
-
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../app/app_scope.dart';
 import '../../app/controllers/media_controller.dart';
@@ -21,10 +21,12 @@ import '../../shared/states/empty_state.dart';
 import '../../shared/states/error_state.dart';
 import '../../shared/states/skeleton.dart';
 import '../../shared/layout/scroll_to_top_app_bar_title.dart';
+import '../../shared/media/image_delete_dialog.dart';
 import '../shell/shell_entry_gate.dart';
 import 'dialogs/library_filter_sheet.dart';
 import 'library_controller.dart';
 import 'widgets/tv_library_header.dart';
+import 'widgets/library_selection_bar.dart';
 import 'widgets/active_filter_bar.dart';
 import 'widgets/library_sort_button.dart';
 
@@ -94,6 +96,19 @@ class _LibraryPageState extends State<LibraryPage>
   /// 预览打开期间暂停网格自动补页，分页只由预览翻页驱动。
   bool _galleryPreviewActive = false;
   bool _uploadPageOpen = false;
+
+  /// 图片批量选择状态；仅图片库维护。
+  final Set<String> _selectedIds = {};
+  bool _selectMode = false;
+
+  /// 删除批次状态：确认后即置 [_deleting]，防重入与误触；
+  /// [_deleteStop] 表示用户要求当前项完成后停止剩余批次。
+  bool _deleting = false;
+  bool _confirmingDelete = false;
+  bool _deleteStop = false;
+  int _deleteTotal = 0;
+  int _deleteDone = 0;
+  String? _selectionError;
 
   /// TV 网格的滚动基准与稳定 id 表；控制器通知后重建。
   TvGridReveal? _tvReveal;
@@ -204,10 +219,7 @@ class _LibraryPageState extends State<LibraryPage>
       return;
     }
     final items = controller.visibleItems();
-    assert(
-      items.any((entry) => entry.id == item.id),
-      '点击图片必须来自当前可见列表',
-    );
+    assert(items.any((entry) => entry.id == item.id), '点击图片必须来自当前可见列表');
     if (items.isEmpty) {
       widget.onOpenMedia(item, heroTag: heroTag);
       return;
@@ -223,6 +235,8 @@ class _LibraryPageState extends State<LibraryPage>
       initialId: item.id,
       hasMore: hasMore,
       loadMore: () => _loadGalleryPage(controller, gallery),
+      // 已确认删除的图片不再借后续分页回到预览会话。
+      isRemoved: AppScope.of(context).media.isDeleted,
     );
     _galleryPreviewActive = true;
     openGallery(gallery, heroTag: heroTag).whenComplete(() {
@@ -449,9 +463,14 @@ class _LibraryPageState extends State<LibraryPage>
                       ),
                       sliver: TvMediaSliverGrid(
                         items: items,
-                        onTap: _openGallery,
+                        onTap: _onMediaTap,
                         artworkFit: BoxFit.contain,
                         reveal: _tvRevealSafe,
+                        selectionMode: _selectMode,
+                        selectedIds: _selectedIds,
+                        onLongPress: _selectMode
+                            ? null
+                            : widget.onLongPressMedia,
                       ),
                     )
                   else
@@ -470,10 +489,14 @@ class _LibraryPageState extends State<LibraryPage>
                         sliver: MasonryMediaSliver(
                           items: items,
                           spacing: LumaSpacing.xxs,
-                          onTap: _openGallery,
-                          onLongPress: widget.onLongPressMedia,
+                          onTap: _onMediaTap,
+                          onLongPress: _selectMode
+                              ? null
+                              : widget.onLongPressMedia,
                           onFavorite: (item) =>
                               context.toggleFavoriteWithFeedback(media, item),
+                          selectionMode: _selectMode,
+                          selectedIds: _selectedIds,
                         ),
                       ),
                     ),
@@ -561,6 +584,15 @@ class _LibraryPageState extends State<LibraryPage>
                   ),
                   onSort: controller.setSort,
                   onClear: controller.clearFilters,
+                  selectionMode: _selectMode,
+                  selectedCount: _selectedIds.length,
+                  onToggleSelect: isVideo ? null : _toggleSelectionMode,
+                  onDeleteSelected: isVideo ? null : _deleteSelected,
+                  onSelectAll: isVideo ? null : _selectAllLoaded,
+                  onCancelSelection: isVideo ? null : _cancelOrStopSelection,
+                  deleting: _deleting,
+                  deleteTotal: _deleteTotal,
+                  deleteDone: _deleteDone,
                 ),
                 Expanded(child: scrollHost),
               ],
@@ -568,7 +600,12 @@ class _LibraryPageState extends State<LibraryPage>
           );
           return widget.inShell || widget.embedded
               ? tvPage
-              : TvKeyBindings(child: TvContentFrame(child: tvPage));
+              : _SelectionScope(
+                  active: _selectMode,
+                  busy: _deleting,
+                  onCancel: _cancelOrStopSelection,
+                  child: TvKeyBindings(child: TvContentFrame(child: tvPage)),
+                );
         }
         if (widget.embedded) {
           return Column(
@@ -577,75 +614,293 @@ class _LibraryPageState extends State<LibraryPage>
                 height: LumaLayout.minTapTarget,
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.end,
-                  children: _actions(),
+                  children: _actions(context),
                 ),
               ),
               Expanded(child: scrollHost),
             ],
           );
         }
-        final scaffold = Scaffold(
-          appBar: AppBar(
-            title: ScrollToTopAppBarTitle(
-              title: widget.title ?? (isVideo ? '影音库' : '图片库'),
-              controller: _scroll,
+        return _SelectionScope(
+          active: _selectMode,
+          busy: _deleting,
+          onCancel: _cancelOrStopSelection,
+          child: Scaffold(
+            appBar: AppBar(
+              title: ScrollToTopAppBarTitle(
+                title: widget.title ?? (isVideo ? '影音库' : '图片库'),
+                controller: _scroll,
+              ),
+              actions: _actions(context),
             ),
-            actions: _actions(),
+            body: scrollHost,
+            bottomNavigationBar: _selectMode ? _selectionBar() : null,
           ),
-          body: scrollHost,
         );
-        return scaffold;
       },
     );
   }
 
-  List<Widget> _actions() => [
-    if (widget.type == MediaType.image && widget.onUploadImages != null)
-      IconButton(
-        tooltip: '上传图片',
-        style: IconButton.styleFrom(
-          minimumSize: const Size.square(LumaLayout.minTapTarget),
-          visualDensity: VisualDensity.standard,
+  /// 进入或退出图片批量选择；删除进行中锁定退出，只能先停止批次。
+  void _toggleSelectionMode() {
+    if (_deleting) return;
+    setState(() {
+      _selectMode = !_selectMode;
+      _selectedIds.clear();
+      _selectionError = null;
+    });
+  }
+
+  /// 普通态退出选择；删除中改为请求停止剩余批次（当前请求完成即止）。
+  void _cancelOrStopSelection() {
+    if (_deleting) {
+      _requestDeleteStop();
+      return;
+    }
+    _toggleSelectionMode();
+  }
+
+  /// 请求批次在下一个 await 边界停止；不中断已发出的删除请求。
+  void _requestDeleteStop() {
+    if (!_deleting || _deleteStop) return;
+    setState(() => _deleteStop = true);
+  }
+
+  /// 切换单个已加载项的选中态；不在选择态或删除中时忽略。
+  void _toggleSelectItem(MediaItem item) {
+    if (!_selectMode || _deleting || widget.type != MediaType.image) return;
+    setState(() {
+      if (!_selectedIds.remove(item.id)) _selectedIds.add(item.id);
+      _selectionError = null;
+    });
+  }
+
+  /// 仅全选当前已加载的项目，避免暗示覆盖远端未加载分页。
+  void _selectAllLoaded() {
+    final controller = _controller;
+    if (!_selectMode || _deleting || controller == null) return;
+    setState(() {
+      _selectedIds.addAll(controller.visibleItems().map((item) => item.id));
+      _selectionError = null;
+    });
+  }
+
+  /// 删除前确认并逐条请求后端；每项完成后更新进度与选择集合。
+  /// 会话切换（换服/重连）立即停止并清空选择，避免把旧勾选误删到新服务器。
+  Future<void> _deleteSelected() async {
+    final media = AppScope.of(context).media;
+    // 确认等待期也要防重入：重复点击删除不会再起第二个确认框。
+    if (_deleting || _confirmingDelete || _selectedIds.isEmpty) return;
+    final generation = media.sessionGeneration;
+    _confirmingDelete = true;
+    bool confirmed;
+    try {
+      confirmed = await confirmImageDeletion(
+        context,
+        count: _selectedIds.length,
+      );
+    } finally {
+      _confirmingDelete = false;
+    }
+    if (!mounted ||
+        !confirmed ||
+        _deleting ||
+        generation != media.sessionGeneration) {
+      return;
+    }
+    final ids = _selectedIds.toList(growable: false);
+    setState(() {
+      _deleting = true;
+      _deleteStop = false;
+      _deleteTotal = ids.length;
+      _deleteDone = 0;
+      _selectionError = null;
+    });
+    var failures = 0;
+    var stopped = false;
+    var sessionChanged = false;
+    for (final id in ids) {
+      if (!mounted || _deleteStop || generation != media.sessionGeneration) {
+        stopped = _deleteStop && generation == media.sessionGeneration;
+        sessionChanged = generation != media.sessionGeneration;
+        break;
+      }
+      try {
+        await media.deleteImage(id);
+        if (!mounted) return;
+        setState(() {
+          _selectedIds.remove(id);
+          _deleteDone++;
+        });
+      } on Object {
+        if (!mounted) return;
+        setState(() {
+          failures++;
+          _deleteDone++;
+        });
+      }
+    }
+    if (!mounted) return;
+    setState(() {
+      _deleting = false;
+      _deleteStop = false;
+      _deleteTotal = 0;
+      _deleteDone = 0;
+      if (sessionChanged) {
+        // 新会话下旧勾选可能指向不同媒体，必须整体作废；
+        // 保留选择态仅作提示承载，由用户显式退出。
+        _selectedIds.clear();
+        _selectionError = '连接已更改，已清空选择';
+      } else {
+        _selectionError = failures == 0
+            ? (stopped ? '已停止剩余删除' : null)
+            : '有 $failures 项删除失败，仍在选择列表中，可重试';
+        if (_selectedIds.isEmpty && !stopped) _selectMode = false;
+      }
+    });
+  }
+
+  /// 选择态下点击卡片只切换选中；否则进入预览。
+  void _onMediaTap(MediaItem item, {String? heroTag}) {
+    if (_selectMode) {
+      _toggleSelectItem(item);
+      return;
+    }
+    _openGallery(item, heroTag: heroTag);
+  }
+
+  /// 选择态操作栏：呈现与回调在 [LibrarySelectionBar]，状态由页面持有。
+  Widget _selectionBar() => LibrarySelectionBar(
+    selectedCount: _selectedIds.length,
+    deleting: _deleting,
+    deleteTotal: _deleteTotal,
+    deleteDone: _deleteDone,
+    onSelectAll: _selectAllLoaded,
+    onDelete: _deleteSelected,
+    onCancelOrStop: _cancelOrStopSelection,
+    error: _selectionError,
+  );
+
+  /// 窄屏时把次要操作收进溢出菜单：上传/选择/搜索保持独立 48dp 可达，
+  /// 收藏与排序合并为 PopupMenuButton，避免 320px + 大字号下溢出 AppBar。
+  List<Widget> _actions(BuildContext context) {
+    final isImage = widget.type == MediaType.image;
+    // 紧凑分支在更宽的窗口才展开全部按钮；阈值按已上传图库的最大操作数设定。
+    final compact =
+        MediaQuery.sizeOf(context).width < LumaLayout.actionWidthBreakpoint;
+    final primary = <Widget>[
+      if (isImage && widget.onUploadImages != null)
+        IconButton(
+          tooltip: '上传图片',
+          style: IconButton.styleFrom(
+            minimumSize: const Size.square(LumaLayout.minTapTarget),
+            visualDensity: VisualDensity.standard,
+          ),
+          onPressed: _openUpload,
+          icon: const Icon(Icons.upload_rounded),
         ),
-        onPressed: _openUpload,
-        icon: const Icon(Icons.upload_rounded),
-      ),
-    if (!widget.embedded)
-      IconButton(
-        tooltip: '搜索',
-        onPressed: widget.onOpenSearch,
-        icon: const Icon(Icons.search_rounded),
-      ),
-    if (widget.type == MediaType.video)
-      IconButton(
-        tooltip: '筛选',
-        onPressed: _openFilters,
-        icon: Badge(
-          isLabelVisible: _controller?.hasExtraFilters ?? false,
-          child: const Icon(Icons.tune_rounded),
-        ),
-      )
-    else
-      IconButton(
-        tooltip: _controller?.favoritesOnly ?? false ? '显示全部图片' : '仅显示收藏',
-        onPressed: () => _controller?.applyFilters(
-          LibraryFilters(favoritesOnly: !(_controller?.favoritesOnly ?? false)),
-        ),
-        icon: Badge(
-          isLabelVisible: _controller?.favoritesOnly ?? false,
-          child: Icon(
-            _controller?.favoritesOnly ?? false
-                ? Icons.favorite_rounded
-                : Icons.favorite_border_rounded,
+      if (isImage)
+        IconButton(
+          tooltip: _selectMode ? '退出选择' : '选择图片',
+          style: IconButton.styleFrom(
+            minimumSize: const Size.square(LumaLayout.minTapTarget),
+            visualDensity: VisualDensity.standard,
+          ),
+          // 删除中退出按钮解释为停止剩余批次，避免误以为已取消仍在删除。
+          onPressed: _selectMode && _deleting
+              ? _requestDeleteStop
+              : _toggleSelectionMode,
+          icon: Icon(
+            _selectMode ? Icons.close_rounded : Icons.checklist_rounded,
           ),
         ),
+      if (!widget.embedded)
+        IconButton(
+          tooltip: '搜索',
+          onPressed: widget.onOpenSearch,
+          icon: const Icon(Icons.search_rounded),
+        ),
+    ];
+    final secondary = <Widget>[
+      if (widget.type == MediaType.video)
+        IconButton(
+          tooltip: '筛选',
+          onPressed: _openFilters,
+          icon: Badge(
+            isLabelVisible: _controller?.hasExtraFilters ?? false,
+            child: const Icon(Icons.tune_rounded),
+          ),
+        )
+      else
+        IconButton(
+          tooltip: _controller?.favoritesOnly ?? false ? '显示全部图片' : '仅显示收藏',
+          onPressed: () => _controller?.applyFilters(
+            LibraryFilters(
+              favoritesOnly: !(_controller?.favoritesOnly ?? false),
+            ),
+          ),
+          icon: Badge(
+            isLabelVisible: _controller?.favoritesOnly ?? false,
+            child: Icon(
+              _controller?.favoritesOnly ?? false
+                  ? Icons.favorite_rounded
+                  : Icons.favorite_border_rounded,
+            ),
+          ),
+        ),
+      LibrarySortButton(
+        value: _controller?.sort ?? MediaSort.newest,
+        onChanged: (sort) => _controller?.setSort(sort),
+        showDuration: widget.type == MediaType.video,
       ),
-    LibrarySortButton(
-      value: _controller?.sort ?? MediaSort.newest,
-      onChanged: (sort) => _controller?.setSort(sort),
-      showDuration: widget.type == MediaType.video,
-    ),
-  ];
+    ];
+    if (!compact) return [...primary, ...secondary];
+    // 紧凑分支：收藏与排序合入一个溢出菜单，菜单项仍保留完整 48dp 行高。
+    final favoritesOnly = _controller?.favoritesOnly ?? false;
+    return [
+      ...primary,
+      PopupMenuButton<String>(
+        tooltip: '更多操作',
+        icon: Badge(
+          isLabelVisible: favoritesOnly,
+          child: const Icon(Icons.more_vert_rounded),
+        ),
+        itemBuilder: (context) => [
+          PopupMenuItem(
+            value: 'favorite',
+            child: ListTile(
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(
+                favoritesOnly
+                    ? Icons.favorite_rounded
+                    : Icons.favorite_border_rounded,
+              ),
+              title: Text(favoritesOnly ? '显示全部图片' : '仅显示收藏'),
+            ),
+          ),
+          PopupMenuItem(
+            enabled: false,
+            child: LibrarySortButton(
+              value: _controller?.sort ?? MediaSort.newest,
+              onChanged: (sort) {
+                Navigator.of(context).pop();
+                _controller?.setSort(sort);
+              },
+              showDuration: widget.type == MediaType.video,
+            ),
+          ),
+        ],
+        onSelected: (value) {
+          if (value == 'favorite') {
+            _controller?.applyFilters(
+              LibraryFilters(favoritesOnly: !favoritesOnly),
+            );
+          }
+        },
+      ),
+    ];
+  }
 
   /// 上传页关闭后只刷新当前查询，已加载图片在刷新失败时仍然保留。
   Future<void> _openUpload() async {
@@ -684,4 +939,46 @@ class _LibraryPageState extends State<LibraryPage>
     if (!mounted || _entrySettled) return;
     setState(() => _entrySettled = true);
   }
+}
+
+/// 选择态下的返回/Escape 作用域：路由 PopScope 拦截系统返回并先退出选择，
+/// FocusScope 在键盘上把 Back/Escape 映射为同一取消动作，避免双重处理。
+/// 删除进行中 [busy] 为 true：返回只请求停止剩余批次，既不清空勾选也不出栈。
+class _SelectionScope extends StatelessWidget {
+  const _SelectionScope({
+    required this.active,
+    required this.busy,
+    required this.onCancel,
+    required this.child,
+  });
+
+  /// 是否处于选择态；false 时按键与返回都透传给下层。
+  final bool active;
+
+  /// 是否正在执行批量删除；true 时 Back/Escape 只请求停止剩余批次。
+  final bool busy;
+
+  /// 非删除态的退出选择，或删除态的停止剩余批次；由调用方按 [busy] 判定。
+  final VoidCallback onCancel;
+
+  final Widget child;
+
+  KeyEventResult _handleKey(FocusNode node, KeyEvent event) {
+    if (!active) return KeyEventResult.ignored;
+    final key = event.logicalKey;
+    if (key != LogicalKeyboardKey.escape && key != LogicalKeyboardKey.goBack) {
+      return KeyEventResult.ignored;
+    }
+    if (event is KeyDownEvent) onCancel();
+    return KeyEventResult.handled;
+  }
+
+  @override
+  Widget build(BuildContext context) => PopScope(
+    canPop: !active,
+    onPopInvokedWithResult: (didPop, _) {
+      if (!didPop) onCancel();
+    },
+    child: FocusScope(onKeyEvent: _handleKey, child: child),
+  );
 }
